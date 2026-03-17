@@ -20,6 +20,9 @@ component DiffLineRow inherits Rectangle {
     in property <int> status;
     in property <bool> is-current;
     in property <int> highlight-type: -1;
+    in property <int> diff-idx: -1;
+
+    callback line-clicked(int);
 
     background: is-current ? current-bg : status == 1 ? #e6ffec : status == 2 ? #ffebe9 : status == 3 ? #fff8c5 : status == 4 ? #e0e8ff : Palette.background;
 
@@ -30,15 +33,27 @@ component DiffLineRow inherits Rectangle {
         padding-right: 4px;
         spacing: 8px;
 
-        // Line number
-        Text {
+        // Line number (clickable for diff selection)
+        Rectangle {
             width: 40px;
-            text: line-no;
-            font-size: 12px;
-            color: Palette.foreground.transparentize(0.5);
-            horizontal-alignment: right;
-            vertical-alignment: center;
-            font-family: "monospace";
+            background: line-no-touch.has-hover && diff-idx >= 0 ? Palette.background.darker(0.08) : transparent;
+
+            Text {
+                text: line-no;
+                font-size: 12px;
+                color: Palette.foreground.transparentize(0.5);
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                font-family: "monospace";
+            }
+
+            line-no-touch := TouchArea {
+                clicked => {
+                    if diff-idx >= 0 {
+                        root.line-clicked(diff-idx);
+                    }
+                }
+            }
         }
 
         // Status marker
@@ -107,8 +122,15 @@ export component DiffView inherits Rectangle {
     in property <[DiffLineData]> diff-lines;
     in property <int> current-diff-index: -1;
 
+    in property <bool> context-menu-enabled: true;
+
     callback copy-to-right(/* diff-index */ int);
     callback copy-to-left(/* diff-index */ int);
+    callback select-diff(/* diff-index */ int);
+    callback next-diff();
+    callback prev-diff();
+    callback copy-left-text();
+    callback copy-right-text();
 
     border-color: Palette.border;
     border-width: 1px;
@@ -159,7 +181,7 @@ export component DiffView inherits Rectangle {
             }
 
             // Spacer for location pane
-            Rectangle {
+            if root.diff-lines.length > 0 : Rectangle {
                 width: 12px;
                 background: Palette.background.darker(0.05);
             }
@@ -168,14 +190,31 @@ export component DiffView inherits Rectangle {
         // Diff content
         HorizontalLayout {
             // Left pane
-            ListView {
-                for line in diff-lines: DiffLineRow {
-                    height: 24px;
-                    line-no: line.left-line-no;
-                    text: line.left-text;
-                    status: line.status == 1 ? 0 : line.status;
-                    is-current: line.is-current-diff;
-                    highlight-type: line.left-highlight;
+            Rectangle {
+                if root.context-menu-enabled : ContextMenuArea {
+                    Menu {
+                        title: "Context";
+                        MenuItem { title: "Copy to Right →"; enabled: root.current-diff-index >= 0; activated => { root.copy-to-right(root.current-diff-index); } }
+                        MenuItem { title: "← Copy to Left"; enabled: root.current-diff-index >= 0; activated => { root.copy-to-left(root.current-diff-index); } }
+                        MenuSeparator {}
+                        MenuItem { title: "Copy Text"; activated => { root.copy-left-text(); } }
+                        MenuSeparator {}
+                        MenuItem { title: "Next Difference"; activated => { root.next-diff(); } }
+                        MenuItem { title: "Previous Difference"; activated => { root.prev-diff(); } }
+                    }
+                }
+
+                left-list := ListView {
+                    for line in diff-lines: DiffLineRow {
+                        height: 24px;
+                        line-no: line.left-line-no;
+                        text: line.left-text;
+                        status: line.status == 1 ? 0 : line.status;
+                        is-current: line.is-current-diff;
+                        highlight-type: line.left-highlight;
+                        diff-idx: line.diff-index;
+                        line-clicked(idx) => { root.select-diff(idx); }
+                    }
                 }
             }
 
@@ -186,7 +225,8 @@ export component DiffView inherits Rectangle {
                 border-color: Palette.border;
                 border-width: 1px;
 
-                ListView {
+                mid-list := ListView {
+                    viewport-y: left-list.viewport-y;
                     for line in diff-lines: Rectangle {
                         height: 24px;
                         if line.status != 0 : HorizontalLayout {
@@ -234,19 +274,37 @@ export component DiffView inherits Rectangle {
             }
 
             // Right pane
-            ListView {
-                for line in diff-lines: DiffLineRow {
-                    height: 24px;
-                    line-no: line.right-line-no;
-                    text: line.right-text;
-                    status: line.status == 2 ? 0 : line.status;
-                    is-current: line.is-current-diff;
-                    highlight-type: line.right-highlight;
+            Rectangle {
+                if root.context-menu-enabled : ContextMenuArea {
+                    Menu {
+                        title: "Context";
+                        MenuItem { title: "← Copy to Left"; enabled: root.current-diff-index >= 0; activated => { root.copy-to-left(root.current-diff-index); } }
+                        MenuItem { title: "Copy to Right →"; enabled: root.current-diff-index >= 0; activated => { root.copy-to-right(root.current-diff-index); } }
+                        MenuSeparator {}
+                        MenuItem { title: "Copy Text"; activated => { root.copy-right-text(); } }
+                        MenuSeparator {}
+                        MenuItem { title: "Next Difference"; activated => { root.next-diff(); } }
+                        MenuItem { title: "Previous Difference"; activated => { root.prev-diff(); } }
+                    }
+                }
+
+                right-list := ListView {
+                    viewport-y: left-list.viewport-y;
+                    for line in diff-lines: DiffLineRow {
+                        height: 24px;
+                        line-no: line.right-line-no;
+                        text: line.right-text;
+                        status: line.status == 2 ? 0 : line.status;
+                        is-current: line.is-current-diff;
+                        highlight-type: line.right-highlight;
+                        diff-idx: line.diff-index;
+                        line-clicked(idx) => { root.select-diff(idx); }
+                    }
                 }
             }
 
-            // Location pane (minimap)
-            LocationPane {
+            // Location pane (minimap) - only show when there are lines
+            if root.diff-lines.length > 0 : LocationPane {
                 diff-lines: root.diff-lines;
                 current-diff-index: root.current-diff-index;
             }

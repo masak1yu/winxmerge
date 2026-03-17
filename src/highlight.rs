@@ -142,6 +142,36 @@ fn get_highlight_config(ext: &str) -> Option<HighlightConfiguration> {
             "",
             "",
         ),
+        "cpp" | "cc" | "cxx" | "hpp" | "hxx" => (
+            tree_sitter_cpp::LANGUAGE.into(),
+            tree_sitter_cpp::HIGHLIGHT_QUERY,
+            "",
+            "",
+        ),
+        "go" => (
+            tree_sitter_go::LANGUAGE.into(),
+            tree_sitter_go::HIGHLIGHTS_QUERY,
+            "",
+            "",
+        ),
+        "ts" | "mts" | "cts" => (
+            tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            tree_sitter_typescript::HIGHLIGHTS_QUERY,
+            "",
+            tree_sitter_typescript::LOCALS_QUERY,
+        ),
+        "tsx" => (
+            tree_sitter_typescript::LANGUAGE_TSX.into(),
+            tree_sitter_typescript::HIGHLIGHTS_QUERY,
+            "",
+            tree_sitter_typescript::LOCALS_QUERY,
+        ),
+        "rb" | "rake" | "gemspec" => (
+            tree_sitter_ruby::LANGUAGE.into(),
+            tree_sitter_ruby::HIGHLIGHTS_QUERY,
+            "",
+            tree_sitter_ruby::LOCALS_QUERY,
+        ),
         _ => return None,
     };
 

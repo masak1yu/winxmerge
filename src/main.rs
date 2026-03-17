@@ -3,6 +3,8 @@ mod diff;
 mod encoding;
 mod highlight;
 mod models;
+mod export;
+mod settings;
 
 slint::include_modules!();
 
@@ -10,19 +12,59 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use app::{
-    add_tab, close_tab, copy_to_left, copy_to_right, discard_and_proceed, navigate_diff,
-    navigate_search, open_file_dialog, open_folder_dialog, open_folder_item, redo, replace_all_text,
-    replace_text, run_folder_compare, save_file, search_text, start_compare, switch_tab,
+    add_tab, apply_options, close_tab, copy_current_line_text, copy_to_left, copy_to_right,
+    discard_and_proceed, export_html_report, navigate_diff, navigate_search, open_file_dialog,
+    open_folder_dialog, open_folder_item, redo, replace_all_text, replace_text,
+    run_folder_compare, save_file, search_text, select_diff, start_compare, switch_tab,
     toggle_ignore_case, toggle_ignore_whitespace, undo, AppState,
 };
 use slint::SharedString;
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
     let window = MainWindow::new().unwrap();
     let state = Rc::new(RefCell::new(AppState::new()));
+    let settings = Rc::new(RefCell::new(settings::AppSettings::load()));
+
+    // Apply loaded settings
+    {
+        let s = settings.borrow();
+        window.set_ignore_whitespace(s.ignore_whitespace);
+        window.set_ignore_case(s.ignore_case);
+        window.set_show_toolbar(s.show_toolbar);
+        window.set_opt_ignore_blank_lines(s.ignore_blank_lines);
+        window.set_opt_ignore_eol(s.ignore_eol);
+        window.set_opt_detect_moved_lines(s.detect_moved_lines);
+        window.set_opt_show_line_numbers(s.show_line_numbers);
+        window.set_opt_word_wrap(s.word_wrap);
+        window.set_opt_syntax_highlighting(s.syntax_highlighting);
+        window.set_opt_font_size(s.font_size as i32);
+        window.set_opt_tab_width(s.tab_width);
+        window.set_opt_enable_context_menu(s.enable_context_menu);
+        let mut app = state.borrow_mut();
+        app.current_tab_mut().diff_options.ignore_whitespace = s.ignore_whitespace;
+        app.current_tab_mut().diff_options.ignore_case = s.ignore_case;
+    }
 
     // Initialize tab list
     app::sync_tab_list(&window, &state.borrow());
+
+    // Handle CLI arguments: winxmerge <left> <right>
+    if args.len() >= 3 {
+        let left = std::path::PathBuf::from(&args[1]);
+        let right = std::path::PathBuf::from(&args[2]);
+        let mut s = state.borrow_mut();
+        {
+            let tab = s.current_tab_mut();
+            tab.left_path = Some(left);
+            tab.right_path = Some(right);
+            tab.view_mode = 0;
+        }
+        window.set_view_mode(0);
+        app::run_diff(&window, &mut s);
+        app::sync_tab_list(&window, &s);
+    }
 
     // --- Tab management ---
     {
@@ -133,9 +175,13 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
+        let settings = settings.clone();
         window.on_start_compare(move |left, right, is_folder| {
             let window = window_weak.unwrap();
             start_compare(&window, &mut state.borrow_mut(), &left, &right, is_folder);
+            let mut s = settings.borrow_mut();
+            s.add_recent(&left, &right, is_folder);
+            s.save();
         });
     }
 
@@ -233,18 +279,26 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
+        let settings = settings.clone();
         window.on_toggle_ignore_whitespace(move || {
             let window = window_weak.unwrap();
             toggle_ignore_whitespace(&window, &mut state.borrow_mut());
+            let mut s = settings.borrow_mut();
+            s.ignore_whitespace = window.get_ignore_whitespace();
+            s.save();
         });
     }
 
     {
         let window_weak = window.as_weak();
         let state = state.clone();
+        let settings = settings.clone();
         window.on_toggle_ignore_case(move || {
             let window = window_weak.unwrap();
             toggle_ignore_case(&window, &mut state.borrow_mut());
+            let mut s = settings.borrow_mut();
+            s.ignore_case = window.get_ignore_case();
+            s.save();
         });
     }
 
@@ -295,6 +349,16 @@ fn main() {
         });
     }
 
+    // Select diff (from line number click)
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_select_diff(move |idx| {
+            let window = window_weak.unwrap();
+            select_diff(&window, &mut state.borrow_mut(), idx);
+        });
+    }
+
     // Undo/Redo
     {
         let window_weak = window.as_weak();
@@ -311,6 +375,46 @@ fn main() {
         window.on_redo(move || {
             let window = window_weak.unwrap();
             redo(&window, &mut state.borrow_mut());
+        });
+    }
+
+    // Copy text to clipboard (from context menu)
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_copy_left_text(move || {
+            let window = window_weak.unwrap();
+            copy_current_line_text(&window, &state.borrow(), true);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_copy_right_text(move || {
+            let window = window_weak.unwrap();
+            copy_current_line_text(&window, &state.borrow(), false);
+        });
+    }
+
+    // Apply options
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        let settings = settings.clone();
+        window.on_apply_options(move || {
+            let window = window_weak.unwrap();
+            apply_options(&window, &mut state.borrow_mut(), &mut settings.borrow_mut());
+        });
+    }
+
+    // Export HTML
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_export_html(move || {
+            let window = window_weak.unwrap();
+            export_html_report(&window, &state.borrow());
         });
     }
 

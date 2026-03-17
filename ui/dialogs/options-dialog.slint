@@ -1,0 +1,180 @@
+import { Button, CheckBox, SpinBox, Palette } from "std-widgets.slint";
+
+export component OptionsDialog inherits Rectangle {
+    in-out property <bool> visible-flag: false;
+
+    // Compare options
+    in-out property <bool> opt-ignore-whitespace: false;
+    in-out property <bool> opt-ignore-case: false;
+    in-out property <bool> opt-ignore-blank-lines: false;
+    in-out property <bool> opt-ignore-eol: false;
+    in-out property <bool> opt-detect-moved-lines: true;
+
+    // View options
+    in-out property <bool> opt-show-line-numbers: true;
+    in-out property <bool> opt-word-wrap: true;
+    in-out property <bool> opt-syntax-highlighting: true;
+    in-out property <int> opt-font-size: 13;
+    in-out property <int> opt-tab-width: 4;
+    in-out property <bool> opt-enable-context-menu: true;
+
+    callback apply();
+    callback cancel();
+
+    if visible-flag : Rectangle {
+        // Overlay background
+        background: #00000060;
+        TouchArea { clicked => { root.cancel(); } }
+
+        // Dialog box
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 500px;
+            height: 480px;
+            background: Palette.background;
+            border-color: Palette.border;
+            border-width: 1px;
+            border-radius: 8px;
+
+            TouchArea {} // Block overlay click
+
+            VerticalLayout {
+                padding: 24px;
+                spacing: 8px;
+
+                // Title
+                Text {
+                    text: "Options";
+                    font-size: 20px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                }
+
+                Rectangle { height: 12px; }
+
+                // Compare section
+                Text {
+                    text: "Compare";
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: Palette.foreground;
+                }
+                Rectangle {
+                    height: 1px;
+                    background: Palette.border;
+                }
+
+                CheckBox {
+                    text: "Ignore whitespace differences";
+                    checked: root.opt-ignore-whitespace;
+                    toggled => { root.opt-ignore-whitespace = self.checked; }
+                }
+                CheckBox {
+                    text: "Ignore case differences";
+                    checked: root.opt-ignore-case;
+                    toggled => { root.opt-ignore-case = self.checked; }
+                }
+                CheckBox {
+                    text: "Ignore blank lines";
+                    checked: root.opt-ignore-blank-lines;
+                    toggled => { root.opt-ignore-blank-lines = self.checked; }
+                }
+                CheckBox {
+                    text: "Ignore line ending differences (CR/LF)";
+                    checked: root.opt-ignore-eol;
+                    toggled => { root.opt-ignore-eol = self.checked; }
+                }
+                CheckBox {
+                    text: "Detect moved lines";
+                    checked: root.opt-detect-moved-lines;
+                    toggled => { root.opt-detect-moved-lines = self.checked; }
+                }
+
+                Rectangle { height: 8px; }
+
+                // View section
+                Text {
+                    text: "Editor";
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: Palette.foreground;
+                }
+                Rectangle {
+                    height: 1px;
+                    background: Palette.border;
+                }
+
+                CheckBox {
+                    text: "Show line numbers";
+                    checked: root.opt-show-line-numbers;
+                    toggled => { root.opt-show-line-numbers = self.checked; }
+                }
+                CheckBox {
+                    text: "Word wrap";
+                    checked: root.opt-word-wrap;
+                    toggled => { root.opt-word-wrap = self.checked; }
+                }
+                CheckBox {
+                    text: "Syntax highlighting";
+                    checked: root.opt-syntax-highlighting;
+                    toggled => { root.opt-syntax-highlighting = self.checked; }
+                }
+                CheckBox {
+                    text: "Enable right-click context menu";
+                    checked: root.opt-enable-context-menu;
+                    toggled => { root.opt-enable-context-menu = self.checked; }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Text {
+                        text: "Font size:";
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                    SpinBox {
+                        value: root.opt-font-size;
+                        minimum: 8;
+                        maximum: 32;
+                        edited(val) => { root.opt-font-size = val; }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Text {
+                        text: "Tab width:";
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                    SpinBox {
+                        value: root.opt-tab-width;
+                        minimum: 1;
+                        maximum: 8;
+                        edited(val) => { root.opt-tab-width = val; }
+                    }
+                }
+
+                Rectangle { vertical-stretch: 1; }
+
+                // Buttons
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 12px;
+
+                    Button {
+                        text: "Apply";
+                        clicked => { root.apply(); }
+                    }
+                    Button {
+                        text: "Cancel";
+                        clicked => { root.cancel(); }
+                    }
+                }
+            }
+        }
+    }
+}

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use slint::{Model, ModelRc, SharedString, VecModel};
 
 use crate::diff::engine::{compute_diff_with_options, DiffOptions};
+use crate::settings::AppSettings;
 use crate::diff::folder::compare_folders;
 use crate::encoding::{decode_file, encode_text};
 use crate::highlight::{detect_file_type, highlight_lines};
@@ -379,6 +380,14 @@ pub fn recompute_diff_from_text_with_highlights(
     window.set_status_text(SharedString::from(status));
 }
 
+pub fn select_diff(window: &MainWindow, state: &mut AppState, diff_index: i32) {
+    let tab = state.current_tab();
+    if diff_index < 0 || diff_index as usize >= tab.diff_positions.len() {
+        return;
+    }
+    update_current_diff(window, state, diff_index);
+}
+
 pub fn navigate_diff(window: &MainWindow, state: &mut AppState, forward: bool) {
     let tab = state.current_tab();
     if tab.diff_positions.is_empty() {
@@ -609,6 +618,72 @@ fn rebuild_left_after_copy_from_right(vec_model: &VecModel<DiffLineData>) -> Str
     lines.join("\n") + "\n"
 }
 
+pub fn copy_current_line_text(window: &MainWindow, state: &AppState, is_left: bool) {
+    let tab = state.current_tab();
+    if tab.current_diff < 0 || tab.current_diff as usize >= tab.diff_positions.len() {
+        return;
+    }
+
+    let pos = tab.diff_positions[tab.current_diff as usize];
+    let model = window.get_diff_lines();
+    if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        if let Some(row) = vec_model.row_data(pos) {
+            let text = if is_left {
+                row.left_text.to_string()
+            } else {
+                row.right_text.to_string()
+            };
+
+            if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                let _ = clipboard.set_text(&text);
+                let side = if is_left { "Left" } else { "Right" };
+                window.set_status_text(SharedString::from(format!(
+                    "{} text copied to clipboard",
+                    side
+                )));
+            }
+        }
+    }
+}
+
+pub fn export_html_report(window: &MainWindow, state: &AppState) {
+    let tab = state.current_tab();
+
+    // Rebuild DiffResult from current state
+    let left_text = tab.left_lines.join("\n") + "\n";
+    let right_text = tab.right_lines.join("\n") + "\n";
+    let result = compute_diff_with_options(&left_text, &right_text, &tab.diff_options);
+
+    let left_title = tab.left_path.as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Left".to_string());
+    let right_title = tab.right_path.as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Right".to_string());
+
+    let html = crate::export::export_html(&result, &left_title, &right_title);
+
+    // Save dialog
+    if let Some(path) = rfd::FileDialog::new()
+        .set_title("Export HTML Report")
+        .set_file_name("diff-report.html")
+        .add_filter("HTML", &["html"])
+        .save_file()
+    {
+        match fs::write(&path, &html) {
+            Ok(_) => {
+                window.set_status_text(SharedString::from(format!(
+                    "Exported to {}",
+                    path.to_string_lossy()
+                )));
+            }
+            Err(e) => {
+                window.set_status_text(SharedString::from(format!("Export error: {}", e)));
+            }
+        }
+    }
+}
+
 pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
     let model = window.get_diff_lines();
     let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
@@ -645,6 +720,33 @@ pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
             encoding
         )));
     }
+}
+
+pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut AppSettings) {
+    // Read options from window
+    settings.ignore_whitespace = window.get_ignore_whitespace();
+    settings.ignore_case = window.get_ignore_case();
+    settings.ignore_blank_lines = window.get_opt_ignore_blank_lines();
+    settings.ignore_eol = window.get_opt_ignore_eol();
+    settings.detect_moved_lines = window.get_opt_detect_moved_lines();
+    settings.show_line_numbers = window.get_opt_show_line_numbers();
+    settings.word_wrap = window.get_opt_word_wrap();
+    settings.syntax_highlighting = window.get_opt_syntax_highlighting();
+    settings.enable_context_menu = window.get_opt_enable_context_menu();
+    settings.font_size = window.get_opt_font_size() as f32;
+    settings.tab_width = window.get_opt_tab_width();
+    settings.save();
+
+    // Apply diff options to current tab and re-run
+    let tab = state.current_tab_mut();
+    tab.diff_options.ignore_whitespace = settings.ignore_whitespace;
+    tab.diff_options.ignore_case = settings.ignore_case;
+
+    if tab.left_path.is_some() && tab.right_path.is_some() {
+        run_diff(window, state);
+    }
+
+    window.set_status_text(SharedString::from("Options applied"));
 }
 
 pub fn toggle_ignore_whitespace(window: &MainWindow, state: &mut AppState) {
@@ -971,6 +1073,7 @@ pub fn open_folder_item(window: &MainWindow, state: &mut AppState, index: i32) {
             tab.view_mode = 0;
         }
         window.set_view_mode(0);
+        window.set_has_folder_context(true);
         run_diff(window, state);
     }
 }
