@@ -10,7 +10,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Line-level diff display (additions/deletions/changes/moves with color coding)
 - Word-level (character-level) diff display for modified lines
 - Diff navigation (first/previous/next/last diff)
-- Merge operations (block-level copy: left→right / right→left)
+- Merge operations (block-level copy: left→right / right→left, copy & advance, copy all)
 - Two-pane display with inline diff markers
 - Location pane (minimap of diff positions)
 - Automatic detection of moved lines (blue highlight)
@@ -39,9 +39,20 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Each tab maintains independent state
 - Cmd+T to create new tab, Cmd+W to close
 
+### Diff Detail Pane
+- Bottom pane showing the selected diff block's left/right content
+- Top = left (removed), Bottom = right (added) with scrollable view
+- Automatically updates when navigating between diffs
+
+### Toolbar
+- WinMerge-style icon toolbar with SVG icons
+- Single row: New, Open, Save, Undo/Redo, Rescan, Options, Navigation, Copy, Copy & Advance, Copy All, Ignore WS/Case
+- Hover hints shown in status bar
+- Toggle buttons for Ignore Whitespace / Ignore Case
+
 ### Syntax Highlighting
 - Line-level highlighting via tree-sitter
-- Supported languages: Rust, JavaScript, Python, JSON, C, C++, Go, TypeScript, TSX, Ruby
+- Supported languages: Rust, JavaScript, Python, JSON, C, C++, Go, TypeScript, TSX, Ruby, Java, C#, YAML, TOML, Markdown
 - Automatic file type detection
 - Toggle on/off in options
 
@@ -235,6 +246,7 @@ winxmerge/
 ├── ui/
 │   ├── main.slint              # Main window
 │   ├── theme.slint             # Theme color definitions (light/dark)
+│   ├── icons/                  # SVG toolbar icons
 │   ├── dialogs/
 │   │   ├── open-dialog.slint   # File/folder selection dialog
 │   │   └── options-dialog.slint # Options dialog
@@ -248,7 +260,7 @@ winxmerge/
 │   ├── app.rs                  # Application state management (tab support)
 │   ├── encoding.rs             # Encoding detection and conversion
 │   ├── export.rs               # HTML report export
-│   ├── highlight.rs            # Syntax highlighting (10 languages)
+│   ├── highlight.rs            # Syntax highlighting (15 languages)
 │   ├── settings.rs             # Settings persistence
 │   ├── diff/
 │   │   ├── engine.rs           # 2-way diff engine
