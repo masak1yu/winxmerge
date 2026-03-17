@@ -1,0 +1,141 @@
+import { VerticalBox, HorizontalBox, ListView, Palette } from "std-widgets.slint";
+
+export struct DiffLineData {
+    left-line-no: string,
+    right-line-no: string,
+    left-text: string,
+    right-text: string,
+    // 0=Equal, 1=Added, 2=Removed, 3=Modified
+    status: int,
+    is-current-diff: bool,
+}
+
+component DiffLineRow inherits Rectangle {
+    in property <string> line-no;
+    in property <string> text;
+    in property <int> status;
+    in property <bool> is-current;
+
+    background: is-current ? current-bg : status == 1 ? #e6ffec : status == 2 ? #ffebe9 : status == 3 ? #fff8c5 : Palette.background;
+
+    property <color> current-bg: status == 1 ? #ccffd8 : status == 2 ? #ffd7d5 : status == 3 ? #fff2a8 : Palette.background.darker(0.05);
+
+    HorizontalLayout {
+        padding-left: 4px;
+        padding-right: 4px;
+        spacing: 8px;
+
+        // Line number
+        Text {
+            width: 40px;
+            text: line-no;
+            font-size: 12px;
+            color: Palette.foreground.transparentize(0.5);
+            horizontal-alignment: right;
+            vertical-alignment: center;
+            font-family: "monospace";
+        }
+
+        // Status marker
+        Rectangle {
+            width: 16px;
+            Text {
+                text: status == 1 ? "+" : status == 2 ? "-" : status == 3 ? "~" : " ";
+                font-size: 12px;
+                font-family: "monospace";
+                color: status == 1 ? #22863a : status == 2 ? #cb2431 : status == 3 ? #b08800 : Palette.foreground.transparentize(0.5);
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+
+        // Text content
+        Text {
+            text: text;
+            font-size: 13px;
+            font-family: "monospace";
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+export component DiffView inherits Rectangle {
+    in property <string> left-title: "Left";
+    in property <string> right-title: "Right";
+    in property <[DiffLineData]> diff-lines;
+    in property <int> current-diff-index: -1;
+
+    border-color: Palette.border;
+    border-width: 1px;
+
+    VerticalLayout {
+        // Header
+        HorizontalLayout {
+            height: 28px;
+
+            Rectangle {
+                background: Palette.background.darker(0.05);
+                border-color: Palette.border;
+                border-width: 1px;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    Text {
+                        text: left-title;
+                        font-size: 12px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            Rectangle {
+                background: Palette.background.darker(0.05);
+                border-color: Palette.border;
+                border-width: 1px;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    Text {
+                        text: right-title;
+                        font-size: 12px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+
+        // Diff content
+        HorizontalLayout {
+            // Left pane
+            ListView {
+                for line in diff-lines: DiffLineRow {
+                    height: 24px;
+                    line-no: line.left-line-no;
+                    text: line.left-text;
+                    status: line.status == 1 ? 0 : line.status;
+                    is-current: line.is-current-diff;
+                }
+            }
+
+            // Separator
+            Rectangle {
+                width: 2px;
+                background: Palette.border;
+            }
+
+            // Right pane
+            ListView {
+                for line in diff-lines: DiffLineRow {
+                    height: 24px;
+                    line-no: line.right-line-no;
+                    text: line.right-text;
+                    status: line.status == 2 ? 0 : line.status;
+                    is-current: line.is-current-diff;
+                }
+            }
+        }
+    }
+}
