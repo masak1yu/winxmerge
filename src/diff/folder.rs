@@ -153,7 +153,11 @@ fn collect_entries(
                     .and_then(|e| e.to_str())
                     .unwrap_or("")
                     .to_lowercase();
-                if !options.extension_filter.iter().any(|f| f.to_lowercase() == ext) {
+                if !options
+                    .extension_filter
+                    .iter()
+                    .any(|f| f.to_lowercase() == ext)
+                {
                     continue;
                 }
             }
@@ -256,7 +260,16 @@ fn format_time(time: SystemTime) -> String {
     let month_days = [
         31,
         if leap { 29 } else { 28 },
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
     ];
     let mut month = 1u64;
     for &md in &month_days {

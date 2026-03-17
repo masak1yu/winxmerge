@@ -225,21 +225,24 @@ mod tests {
 
     #[test]
     fn test_equal_files() {
-        let result = compute_diff_with_options("hello\nworld\n", "hello\nworld\n", &DiffOptions::default());
+        let result =
+            compute_diff_with_options("hello\nworld\n", "hello\nworld\n", &DiffOptions::default());
         assert_eq!(result.diff_count, 0);
         assert_eq!(result.lines.len(), 2);
     }
 
     #[test]
     fn test_added_line() {
-        let result = compute_diff_with_options("hello\n", "hello\nworld\n", &DiffOptions::default());
+        let result =
+            compute_diff_with_options("hello\n", "hello\nworld\n", &DiffOptions::default());
         assert_eq!(result.diff_count, 1);
         assert_eq!(result.lines[1].status, LineStatus::Added);
     }
 
     #[test]
     fn test_removed_line() {
-        let result = compute_diff_with_options("hello\nworld\n", "hello\n", &DiffOptions::default());
+        let result =
+            compute_diff_with_options("hello\nworld\n", "hello\n", &DiffOptions::default());
         assert_eq!(result.diff_count, 1);
         assert_eq!(result.lines[1].status, LineStatus::Removed);
     }
@@ -257,8 +260,7 @@ mod tests {
             ignore_whitespace: true,
             ..Default::default()
         };
-        let result =
-            compute_diff_with_options("hello   world\n", "hello world\n", &opts);
+        let result = compute_diff_with_options("hello   world\n", "hello world\n", &opts);
         assert_eq!(result.diff_count, 0);
     }
 
@@ -277,7 +279,11 @@ mod tests {
         let left = "aaa\nbbb\nccc\n";
         let right = "ccc\nbbb\naaa\n";
         let result = compute_diff_with_options(left, right, &DiffOptions::default());
-        let moved_count = result.lines.iter().filter(|l| l.status == LineStatus::Moved).count();
+        let moved_count = result
+            .lines
+            .iter()
+            .filter(|l| l.status == LineStatus::Moved)
+            .count();
         assert!(moved_count > 0, "Should detect moved lines");
     }
 
@@ -298,8 +304,7 @@ mod tests {
             ignore_case: true,
             ..Default::default()
         };
-        let result =
-            compute_diff_with_options("Hello   World\n", "hello world\n", &opts);
+        let result = compute_diff_with_options("Hello   World\n", "hello world\n", &opts);
         assert_eq!(result.diff_count, 0);
     }
 }

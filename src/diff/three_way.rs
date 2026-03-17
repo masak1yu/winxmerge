@@ -2,11 +2,11 @@ use similar::{ChangeTag, TextDiff};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ThreeWayStatus {
-    Equal,           // Same in all three
-    LeftChanged,     // Only left changed from base
-    RightChanged,    // Only right changed from base
-    BothChanged,     // Both changed same way (auto-merge)
-    Conflict,        // Both changed differently
+    Equal,        // Same in all three
+    LeftChanged,  // Only left changed from base
+    RightChanged, // Only right changed from base
+    BothChanged,  // Both changed same way (auto-merge)
+    Conflict,     // Both changed differently
 }
 
 #[derive(Debug, Clone)]
@@ -64,8 +64,12 @@ pub fn compute_three_way_diff(
         let right_change = right_changes.get(ri as usize);
 
         // Check if current base line has changes
-        let left_at_base = left_change.map(|c| c.base_line == base_idx).unwrap_or(false);
-        let right_at_base = right_change.map(|c| c.base_line == base_idx).unwrap_or(false);
+        let left_at_base = left_change
+            .map(|c| c.base_line == base_idx)
+            .unwrap_or(false);
+        let right_at_base = right_change
+            .map(|c| c.base_line == base_idx)
+            .unwrap_or(false);
 
         if left_at_base && right_at_base {
             let lc = left_change.unwrap();
@@ -77,7 +81,10 @@ pub fn compute_three_way_diff(
                 right_idx += 1;
                 base_idx += 1;
                 result_lines.push(ThreeWayLine {
-                    base_text: base_lines.get(lc.base_line as usize).unwrap_or(&"").to_string(),
+                    base_text: base_lines
+                        .get(lc.base_line as usize)
+                        .unwrap_or(&"")
+                        .to_string(),
                     left_text: lc.new_text.clone(),
                     right_text: rc.new_text.clone(),
                     status: ThreeWayStatus::BothChanged,
@@ -93,7 +100,10 @@ pub fn compute_three_way_diff(
                 right_idx += 1;
                 base_idx += 1;
                 result_lines.push(ThreeWayLine {
-                    base_text: base_lines.get(lc.base_line as usize).unwrap_or(&"").to_string(),
+                    base_text: base_lines
+                        .get(lc.base_line as usize)
+                        .unwrap_or(&"")
+                        .to_string(),
                     left_text: lc.new_text.clone(),
                     right_text: rc.new_text.clone(),
                     status: ThreeWayStatus::Conflict,
@@ -110,9 +120,15 @@ pub fn compute_three_way_diff(
             right_idx += 1;
             base_idx += 1;
             result_lines.push(ThreeWayLine {
-                base_text: base_lines.get(lc.base_line as usize).unwrap_or(&"").to_string(),
+                base_text: base_lines
+                    .get(lc.base_line as usize)
+                    .unwrap_or(&"")
+                    .to_string(),
                 left_text: lc.new_text.clone(),
-                right_text: right_lines.get(right_idx as usize - 1).unwrap_or(&"").to_string(),
+                right_text: right_lines
+                    .get(right_idx as usize - 1)
+                    .unwrap_or(&"")
+                    .to_string(),
                 status: ThreeWayStatus::LeftChanged,
                 base_line_no: Some(base_idx),
                 left_line_no: Some(left_idx),
@@ -125,8 +141,14 @@ pub fn compute_three_way_diff(
             right_idx += 1;
             base_idx += 1;
             result_lines.push(ThreeWayLine {
-                base_text: base_lines.get(rc.base_line as usize).unwrap_or(&"").to_string(),
-                left_text: left_lines.get(left_idx as usize - 1).unwrap_or(&"").to_string(),
+                base_text: base_lines
+                    .get(rc.base_line as usize)
+                    .unwrap_or(&"")
+                    .to_string(),
+                left_text: left_lines
+                    .get(left_idx as usize - 1)
+                    .unwrap_or(&"")
+                    .to_string(),
                 right_text: rc.new_text.clone(),
                 status: ThreeWayStatus::RightChanged,
                 base_line_no: Some(base_idx),
@@ -139,7 +161,10 @@ pub fn compute_three_way_diff(
             left_idx += 1;
             right_idx += 1;
             base_idx += 1;
-            let text = base_lines.get(base_idx as usize - 1).unwrap_or(&"").to_string();
+            let text = base_lines
+                .get(base_idx as usize - 1)
+                .unwrap_or(&"")
+                .to_string();
             result_lines.push(ThreeWayLine {
                 base_text: text.clone(),
                 left_text: text.clone(),
