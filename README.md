@@ -8,6 +8,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 
 ### File Comparison (2-way)
 - Line-level diff display (additions/deletions/changes/moves with color coding)
+- Word-level (character-level) diff display for modified lines
 - Diff navigation (first/previous/next/last diff)
 - Merge operations (block-level copy: left→right / right→left)
 - Two-pane display with inline diff markers
@@ -24,7 +25,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Auto-merge when both sides have identical changes
 
 ### Folder Comparison
-- Recursive directory comparison
+- Recursive directory comparison with tree-style indentation
 - File status display (identical / different / one-side only)
 - Left/right modification timestamps
 - Automatic .gitignore pattern loading (.git directories auto-excluded)
@@ -58,6 +59,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 ### Filters
 - **Line filters**: Exclude lines matching regex patterns from comparison (e.g., comments, timestamps)
 - **Substitution filters**: Apply regex find/replace before comparison (e.g., normalize dates, version numbers)
+- Multiple rules support via pipe-separated patterns
 - Configured via Edit → Options... → Filters
 - Settings persisted across sessions
 
@@ -95,6 +97,25 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 | Alt+Home | First diff |
 | Alt+End | Last diff |
 | F2 | Next bookmark |
+| F5 | Rescan files |
+
+### Open in External Editor
+- Open left or right file in system default editor (File menu)
+- Custom editor command configurable in settings
+
+### Plugin System
+- Execute external commands with file path placeholders ({LEFT}, {RIGHT})
+- Plugins configured in settings.json
+- Available via Plugins menu
+
+### Auto-rescan
+- Automatic file change detection (polls every 2 seconds)
+- Re-runs diff when files are modified externally
+- Toggle via Edit → Options... → Auto-rescan
+
+### Accessibility
+- ARIA-compatible accessible roles and labels on key UI components
+- Screen reader support for diff view and folder comparison
 
 ### Internationalization (i18n)
 - Japanese / English UI switching (Edit → Options... → Appearance → Language)

@@ -7,11 +7,11 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 ## 現在の状態
 
-- **バージョン:** 0.10.0
-- **ブランチ:** `feature/v0.10.0`
+- **バージョン:** 0.11.0
+- **ブランチ:** `feature/v0.11.0`
 - **テスト:** 16件すべてパス
 - **ビルド:** `cargo build` 成功
-- **CI:** GitHub Actions（ubuntu / macOS）
+- **CI:** GitHub Actions（ubuntu / macOS / Windows）
 
 ## リリース履歴
 
@@ -26,12 +26,14 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | v0.7.0 | #7 | テーマ切替（ライト/ダーク）、ThemeColors グローバルによるカラー一元管理 |
 | v0.8.0 | #8 | 国際化 (i18n)：日本語/英語切替、@tr() マクロ、gettext .po ファイル |
 | v0.9.0 | #9 | First/Last diff、Go to Line、ブックマーク、フォルダ操作、リリースCI、Windows CI |
-| v0.10.0 | - | 行フィルタ、置換フィルタ（正規表現）、オプション画面拡張 |
+| v0.10.0 | #10 | 行フィルタ、置換フィルタ（正規表現）、オプション画面拡張 |
+| v0.11.0 | - | ワードレベル差分、プラグインシステム、アクセシビリティ、自動再スキャン、フォルダツリー表示、外部エディタ連携 |
 
 ## 実装済み機能一覧
 
 ### ファイル比較 (2-way)
 - 行単位の差分表示（追加=緑 / 削除=赤 / 変更=黄 / 移動=青）
+- ワードレベル（文字レベル）差分表示（変更行の下に差分文字を表示）
 - 差分ナビゲーション（次/前の差分へジャンプ、Alt+↓/↑）
 - マージ操作（左→右 / 右→左コピー、ツールバー + インラインボタン）
 - Undo/Redo（スナップショットベース、Cmd+Z / Cmd+Shift+Z）
@@ -48,7 +50,7 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 - 選択ダイアログに「3-way merge」チェックボックス + ベースファイル入力
 
 ### フォルダ比較
-- ディレクトリの再帰比較
+- ディレクトリの再帰比較（ツリー表示：パス深度に応じたインデント）
 - ファイル状態表示（同一/異なる/片方のみ）
 - 左右の更新日時を表示
 - .gitignore パターン自動読み込み（.git ディレクトリ自動除外）
@@ -115,9 +117,31 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 ### 行フィルタ / 置換フィルタ
 - 行フィルタ: 正規表現でマッチする行を比較から除外（`|` 区切りで複数指定可）
 - 置換フィルタ: 正規表現で比較前にテキスト置換（タイムスタンプ、バージョン番号等の無視に有用）
+- 複数ルール対応（パイプ `|` 区切り）
 - オプション画面の Filters セクションで設定
 - `regex` クレート使用、無効な正規表現は安全にスキップ
 - 設定は `settings.json` に永続化
+
+### プラグインシステム
+- 外部コマンドをプラグインとして実行
+- `{LEFT}` / `{RIGHT}` プレースホルダーでファイルパスを渡す
+- `settings.json` の `plugins` フィールドで設定
+- Plugins メニューから実行
+
+### 外部エディタ連携
+- File メニューから左/右ファイルをシステムデフォルトエディタで開く
+- `open` クレート使用（`open::that_detached()`）
+- カスタムエディタコマンドを `settings.json` の `external_editor` で設定可能
+
+### 自動再スキャン
+- ファイル変更を自動検出（2秒間隔でポーリング）
+- 変更検出時に差分を自動再計算
+- オプション画面で Auto-rescan オン/オフ切替
+- F5 キーで手動再スキャン
+
+### アクセシビリティ
+- Slint の `accessible-role` / `accessible-label` を主要 UI コンポーネントに設定
+- DiffView、FolderView にスクリーンリーダー対応ラベル
 
 ### CI 拡張
 - Windows をビルド・テストマトリクスに追加
@@ -137,6 +161,7 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | Alt+↓/↑ | 次/前の差分 |
 | Alt+Home/End | 最初/最後の差分 |
 | F2 | 次のブックマーク |
+| F5 | 再スキャン |
 
 ### 国際化 (i18n)
 - 日本語 / 英語の UI 切替（オプション画面の Appearance セクション）
@@ -208,12 +233,17 @@ AppState
     ├── view_mode                       # 0=diff, 1=folder, 2=open dialog
     ├── diff_line_data                  # UI 表示用キャッシュ
     ├── folder_items / folder_item_data # フォルダ比較結果
-    └── left_encoding / right_encoding  # 検出されたエンコーディング
+    ├── left_encoding / right_encoding  # 検出されたエンコーディング
+    └── left_mtime / right_mtime        # ファイル更新時刻（自動再スキャン用）
 
 AppSettings (永続化)
 ├── 比較オプション（ignore_whitespace, ignore_case, etc.）
 ├── エディタ設定（font_size, tab_width, etc.）
 ├── UI 設定（show_toolbar, enable_context_menu）
+├── フィルタ設定（line_filters, substitution_filters）
+├── plugins: Vec<PluginEntry>   # プラグイン定義（name, command）
+├── external_editor: String     # 外部エディタコマンド
+├── auto_rescan: bool           # 自動再スキャン
 └── recent_files: Vec<RecentEntry>
 ```
 
@@ -228,33 +258,25 @@ AppSettings (永続化)
 - **arboard 3** — クリップボード操作
 - **serde + serde_json** — 設定の永続化
 - **dirs 6** — 設定ファイルパス取得
+- **open 5** — 外部エディタ / デフォルトアプリでファイルを開く
+- **regex 1** — 行フィルタ・置換フィルタの正規表現
 
 ## 既知の問題・制限
 
 1. **シンタックスハイライトが行単位** — Slint の `Text` がリッチテキスト非対応のため
 2. **ドラッグ＆ドロップ非対応** — Slint 1.15 が外部ファイル D&D をサポートしていない
-3. **行内（文字レベル）差分非対応** — Slint のリッチテキスト制限
-4. **word_wrap / tab_width** — 設定は保存されるが UI に未反映（Slint ListView の制約）
+3. **word_wrap / tab_width** — 設定は保存されるが UI に未反映（Slint ListView の制約）
+4. **ワードレベル差分の表示** — リッチテキスト非対応のため、変更文字は別行で表示
 
 ---
 
-## 次にやるべき項目 (v0.11.0+)
+## 次にやるべき項目 (v0.12.0+)
 
-### 優先度高
-
-1. **ワードレベル差分**
-   - `similar` の文字レベル diff で変更位置を計算
-   - Slint のリッチテキスト対応を待つか、複数 Text 要素で近似実装
-
-### 優先度低
-
-2. **プラグインシステム**
-   - カスタム差分フィルタ（前処理）
-   - 外部ツール連携
-
-3. **アクセシビリティ**
-    - スクリーンリーダー対応
-    - キーボードのみでの全操作対応
+1. **インライン編集** — 差分ビュー上で直接テキスト編集
+2. **ドラッグ＆ドロップ** — Slint の D&D サポート待ち
+3. **印刷機能** — 差分レポートの直接印刷
+4. **パフォーマンス** — 超大ファイル（100K行以上）の仮想スクロール最適化
+5. **プラグイン強化** — UI からのプラグイン管理、出力結果の表示
 
 ## ビルド・テスト手順
 

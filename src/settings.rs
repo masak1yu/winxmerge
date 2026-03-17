@@ -53,6 +53,18 @@ pub struct AppSettings {
     #[serde(default)]
     pub substitution_filters: Vec<SubstitutionFilter>,
 
+    // Plugins
+    #[serde(default)]
+    pub plugins: Vec<PluginEntry>,
+
+    // External editor command (empty = system default)
+    #[serde(default)]
+    pub external_editor: String,
+
+    // Auto-rescan: watch files for changes
+    #[serde(default)]
+    pub auto_rescan: bool,
+
     #[serde(default)]
     pub recent_files: Vec<RecentEntry>,
 }
@@ -61,6 +73,12 @@ pub struct AppSettings {
 pub struct SubstitutionFilter {
     pub pattern: String,
     pub replacement: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginEntry {
+    pub name: String,
+    pub command: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,6 +131,9 @@ impl Default for AppSettings {
             language: default_language(),
             line_filters: Vec::new(),
             substitution_filters: Vec::new(),
+            plugins: Vec::new(),
+            external_editor: String::new(),
+            auto_rescan: false,
             recent_files: Vec::new(),
         }
     }

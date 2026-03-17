@@ -173,6 +173,19 @@ export component MainWindow inherits Window {
     callback folder-copy-to-left(int);
     callback folder-delete-item(int);
 
+    // Open in external editor
+    callback open-left-in-editor();
+    callback open-right-in-editor();
+
+    // Plugin execution
+    callback run-plugin(/* command */ string);
+
+    // Rescan files
+    callback rescan();
+
+    // Auto-rescan timer callback
+    callback check-auto-rescan();
+
     in-out property <[RecentEntryData]> recent-entries;
 
     // 3-way merge
@@ -202,6 +215,12 @@ export component MainWindow inherits Window {
     in-out property <string> opt-line-filters: "";
     in-out property <string> opt-substitution-patterns: "";
     in-out property <string> opt-substitution-replacements: "";
+
+    // Auto-rescan
+    in-out property <bool> opt-auto-rescan: false;
+
+    // Plugin list (pipe-separated "name:command" pairs)
+    in-out property <string> plugin-list: "";
 
     // Theme: 0=Light, 1=Dark
     in-out property <int> opt-theme: 0;
@@ -238,6 +257,11 @@ export component MainWindow inherits Window {
             MenuSeparator {}
             MenuItem { title: @tr("Save Left"); enabled: root.has-unsaved-changes; activated => { root.save-left(); } }
             MenuItem { title: @tr("Save Right"); enabled: root.has-unsaved-changes; activated => { root.save-right(); } }
+            MenuSeparator {}
+            MenuItem { title: @tr("Open Left in Editor"); enabled: root.left-path != ""; activated => { root.open-left-in-editor(); } }
+            MenuItem { title: @tr("Open Right in Editor"); enabled: root.right-path != ""; activated => { root.open-right-in-editor(); } }
+            MenuSeparator {}
+            MenuItem { title: @tr("Rescan (F5)"); activated => { root.rescan(); } }
             MenuSeparator {}
             MenuItem { title: @tr("Export HTML Report..."); enabled: root.diff-count > 0; activated => { root.export-html(); } }
         }
@@ -288,6 +312,10 @@ export component MainWindow inherits Window {
             MenuItem { title: @tr("Toggle Bookmark"); activated => { root.toggle-bookmark(root.current-diff-index); } }
             MenuItem { title: @tr("Next Bookmark"); activated => { root.next-bookmark(); } }
             MenuItem { title: @tr("Previous Bookmark"); activated => { root.prev-bookmark(); } }
+        }
+        Menu {
+            title: @tr("Plugins");
+            MenuItem { title: @tr("Run Plugin Command..."); enabled: root.plugin-list != ""; activated => { root.run-plugin(root.plugin-list); } }
         }
     }
 
@@ -673,6 +701,11 @@ export component MainWindow inherits Window {
                 root.next-bookmark();
                 return accept;
             }
+            // F5 for rescan
+            if event.text == Key.F5 {
+                root.rescan();
+                return accept;
+            }
             return reject;
         }
     }
@@ -698,6 +731,7 @@ export component MainWindow inherits Window {
         opt-line-filters <=> root.opt-line-filters;
         opt-substitution-patterns <=> root.opt-substitution-patterns;
         opt-substitution-replacements <=> root.opt-substitution-replacements;
+        opt-auto-rescan <=> root.opt-auto-rescan;
         apply => {
             root.show-options-dialog = false;
             root.set-theme(root.opt-theme);
