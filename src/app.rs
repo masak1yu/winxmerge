@@ -11,6 +11,13 @@ use crate::models::diff_line::LineStatus;
 use crate::models::folder_item::FileCompareStatus;
 use crate::{DiffLineData, FolderItemData, MainWindow, TabData};
 
+/// Snapshot for undo/redo
+#[derive(Clone)]
+struct TextSnapshot {
+    left_text: String,
+    right_text: String,
+}
+
 /// Per-tab state
 pub struct TabState {
     pub left_path: Option<PathBuf>,
@@ -20,6 +27,9 @@ pub struct TabState {
     pub left_lines: Vec<String>,
     pub right_lines: Vec<String>,
     pub has_unsaved_changes: bool,
+    // Undo/Redo
+    undo_stack: Vec<TextSnapshot>,
+    redo_stack: Vec<TextSnapshot>,
     pub left_folder: Option<PathBuf>,
     pub right_folder: Option<PathBuf>,
     pub folder_items: Vec<crate::models::folder_item::FolderItem>,
@@ -45,6 +55,8 @@ impl TabState {
             left_lines: Vec::new(),
             right_lines: Vec::new(),
             has_unsaved_changes: false,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
             left_folder: None,
             right_folder: None,
             folder_items: Vec::new(),
@@ -191,6 +203,15 @@ pub fn sync_tab_list(window: &MainWindow, state: &AppState) {
         .collect();
     window.set_tab_list(ModelRc::new(VecModel::from(tab_data)));
     window.set_active_tab_index(state.active_tab as i32);
+
+    // Update window title
+    let tab = state.current_tab();
+    let title = if tab.title == "New" {
+        "WinXMerge".to_string()
+    } else {
+        format!("{} - WinXMerge", tab.title)
+    };
+    window.set_window_title(SharedString::from(title));
 }
 
 // --- Diff operations (work on current tab) ---
@@ -276,6 +297,14 @@ pub fn recompute_diff_from_text_with_highlights(
         0
     };
 
+    // Build position→index lookup for O(1) access
+    let pos_to_idx: std::collections::HashMap<usize, i32> = result
+        .diff_positions
+        .iter()
+        .enumerate()
+        .map(|(idx, &pos)| (pos, idx as i32))
+        .collect();
+
     let diff_line_data: Vec<DiffLineData> = result
         .lines
         .iter()
@@ -288,12 +317,7 @@ pub fn recompute_diff_from_text_with_highlights(
                 LineStatus::Modified => 3,
                 LineStatus::Moved => 4,
             };
-            let diff_index = result
-                .diff_positions
-                .iter()
-                .position(|&pos| pos == i)
-                .map(|idx| idx as i32)
-                .unwrap_or(-1);
+            let diff_index = pos_to_idx.get(&i).copied().unwrap_or(-1);
 
             // Map line numbers to highlight indices
             let left_hl = line.left_line_no
@@ -403,6 +427,60 @@ fn update_current_diff(window: &MainWindow, state: &mut AppState, new_index: i32
     )));
 }
 
+fn push_undo_snapshot(state: &mut AppState, vec_model: &VecModel<DiffLineData>) {
+    let left_text = rebuild_left(vec_model);
+    let right_text = rebuild_right(vec_model);
+    let tab = state.current_tab_mut();
+    tab.undo_stack.push(TextSnapshot { left_text, right_text });
+    tab.redo_stack.clear();
+}
+
+pub fn undo(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab_mut();
+    if tab.undo_stack.is_empty() {
+        return;
+    }
+
+    // Save current state to redo stack
+    let current_left = tab.left_lines.join("\n") + "\n";
+    let current_right = tab.right_lines.join("\n") + "\n";
+    tab.redo_stack.push(TextSnapshot {
+        left_text: current_left,
+        right_text: current_right,
+    });
+
+    let snapshot = tab.undo_stack.pop().unwrap();
+    recompute_diff_from_text(window, state, &snapshot.left_text, &snapshot.right_text);
+
+    let tab = state.current_tab();
+    window.set_can_undo(!tab.undo_stack.is_empty());
+    window.set_can_redo(!tab.redo_stack.is_empty());
+    window.set_status_text(SharedString::from("Undo"));
+}
+
+pub fn redo(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab_mut();
+    if tab.redo_stack.is_empty() {
+        return;
+    }
+
+    // Save current state to undo stack
+    let current_left = tab.left_lines.join("\n") + "\n";
+    let current_right = tab.right_lines.join("\n") + "\n";
+    tab.undo_stack.push(TextSnapshot {
+        left_text: current_left,
+        right_text: current_right,
+    });
+
+    let snapshot = tab.redo_stack.pop().unwrap();
+    recompute_diff_from_text(window, state, &snapshot.left_text, &snapshot.right_text);
+
+    let tab = state.current_tab();
+    window.set_can_undo(!tab.undo_stack.is_empty());
+    window.set_can_redo(!tab.redo_stack.is_empty());
+    window.set_status_text(SharedString::from("Redo"));
+}
+
 pub fn copy_to_right(window: &MainWindow, state: &mut AppState, diff_index: i32) {
     let tab = state.current_tab();
     if diff_index < 0 || diff_index as usize >= tab.diff_positions.len() {
@@ -414,6 +492,8 @@ pub fn copy_to_right(window: &MainWindow, state: &mut AppState, diff_index: i32)
         Some(m) => m,
         None => return,
     };
+
+    push_undo_snapshot(state, vec_model);
 
     let right_text = rebuild_right_after_copy_from_left(vec_model);
     let left_text = rebuild_left(vec_model);
@@ -428,6 +508,8 @@ pub fn copy_to_right(window: &MainWindow, state: &mut AppState, diff_index: i32)
         let new_idx = (diff_index as usize).min(tab.diff_positions.len() - 1);
         update_current_diff(window, state, new_idx as i32);
     }
+    window.set_can_undo(true);
+    window.set_can_redo(false);
     sync_tab_list(window, state);
 }
 
@@ -443,6 +525,8 @@ pub fn copy_to_left(window: &MainWindow, state: &mut AppState, diff_index: i32) 
         None => return,
     };
 
+    push_undo_snapshot(state, vec_model);
+
     let left_text = rebuild_left_after_copy_from_right(vec_model);
     let right_text = rebuild_right(vec_model);
 
@@ -456,6 +540,8 @@ pub fn copy_to_left(window: &MainWindow, state: &mut AppState, diff_index: i32) 
         let new_idx = (diff_index as usize).min(tab.diff_positions.len() - 1);
         update_current_diff(window, state, new_idx as i32);
     }
+    window.set_can_undo(true);
+    window.set_can_redo(false);
     sync_tab_list(window, state);
 }
 

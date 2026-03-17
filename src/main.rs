@@ -11,9 +11,9 @@ use std::rc::Rc;
 
 use app::{
     add_tab, close_tab, copy_to_left, copy_to_right, discard_and_proceed, navigate_diff,
-    navigate_search, open_file_dialog, open_folder_dialog, open_folder_item, replace_all_text,
+    navigate_search, open_file_dialog, open_folder_dialog, open_folder_item, redo, replace_all_text,
     replace_text, run_folder_compare, save_file, search_text, start_compare, switch_tab,
-    toggle_ignore_case, toggle_ignore_whitespace, AppState,
+    toggle_ignore_case, toggle_ignore_whitespace, undo, AppState,
 };
 use slint::SharedString;
 
@@ -292,6 +292,25 @@ fn main() {
         window.on_replace_all(move |search, replacement| {
             let window = window_weak.unwrap();
             replace_all_text(&window, &mut state.borrow_mut(), &search, &replacement);
+        });
+    }
+
+    // Undo/Redo
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_undo(move || {
+            let window = window_weak.unwrap();
+            undo(&window, &mut state.borrow_mut());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_redo(move || {
+            let window = window_weak.unwrap();
+            redo(&window, &mut state.borrow_mut());
         });
     }
 

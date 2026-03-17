@@ -1,6 +1,13 @@
-use similar::{ChangeTag, TextDiff};
+use std::time::Duration;
+
+use similar::{Algorithm, ChangeTag, TextDiff};
 
 use crate::models::diff_line::{DiffLine, DiffResult, LineStatus};
+
+/// Maximum number of lines before switching to a faster algorithm
+const LARGE_FILE_THRESHOLD: usize = 10_000;
+/// Timeout for diff computation
+const DIFF_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Default)]
 pub struct DiffOptions {
@@ -20,7 +27,18 @@ pub fn compute_diff_with_options(
     let left_orig_lines: Vec<&str> = left_text.lines().collect();
     let right_orig_lines: Vec<&str> = right_text.lines().collect();
 
-    let diff = TextDiff::from_lines(&left_normalized, &right_normalized);
+    // Use faster algorithm for large files
+    let line_count = left_orig_lines.len().max(right_orig_lines.len());
+    let algorithm = if line_count > LARGE_FILE_THRESHOLD {
+        Algorithm::Patience
+    } else {
+        Algorithm::Myers
+    };
+
+    let diff = TextDiff::configure()
+        .algorithm(algorithm)
+        .timeout(DIFF_TIMEOUT)
+        .diff_lines(&left_normalized, &right_normalized);
     let mut lines = Vec::new();
     let mut diff_positions = Vec::new();
     let mut left_line_no: u32 = 0;
