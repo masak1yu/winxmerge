@@ -1,11 +1,7 @@
 use crate::models::diff_line::{DiffResult, LineStatus};
 
 /// Export diff result as an HTML file
-pub fn export_html(
-    diff_result: &DiffResult,
-    left_title: &str,
-    right_title: &str,
-) -> String {
+pub fn export_html(diff_result: &DiffResult, left_title: &str, right_title: &str) -> String {
     let mut html = String::new();
 
     html.push_str("<!DOCTYPE html>\n<html>\n<head>\n");

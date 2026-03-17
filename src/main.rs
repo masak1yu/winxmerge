@@ -1,9 +1,9 @@
 mod app;
 mod diff;
 mod encoding;
+mod export;
 mod highlight;
 mod models;
-mod export;
 mod settings;
 
 slint::include_modules!();
@@ -12,12 +12,12 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use app::{
-    add_tab, apply_options, close_tab, copy_current_line_text, copy_to_left, copy_to_right,
-    discard_and_proceed, export_html_report, navigate_conflict, navigate_diff, navigate_search,
-    open_file_dialog, open_folder_dialog, open_folder_item, redo, replace_all_text, replace_text,
-    resolve_conflict_use_left, resolve_conflict_use_right, run_folder_compare, save_file,
-    search_text, select_diff, start_compare, start_three_way_compare, switch_tab,
-    toggle_ignore_case, toggle_ignore_whitespace, undo, AppState,
+    AppState, add_tab, apply_options, close_tab, copy_current_line_text, copy_to_left,
+    copy_to_right, discard_and_proceed, export_html_report, navigate_conflict, navigate_diff,
+    navigate_search, open_file_dialog, open_folder_dialog, open_folder_item, redo,
+    replace_all_text, replace_text, resolve_conflict_use_left, resolve_conflict_use_right,
+    run_folder_compare, save_file, search_text, select_diff, start_compare,
+    start_three_way_compare, switch_tab, toggle_ignore_case, toggle_ignore_whitespace, undo,
 };
 use slint::{ModelRc, SharedString, VecModel};
 
@@ -501,13 +501,7 @@ fn main() {
                 let right = entry.right_path.clone();
                 let is_folder = entry.is_folder;
                 drop(s);
-                start_compare(
-                    &window,
-                    &mut state.borrow_mut(),
-                    &left,
-                    &right,
-                    is_folder,
-                );
+                start_compare(&window, &mut state.borrow_mut(), &left, &right, is_folder);
             }
         });
     }
