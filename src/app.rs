@@ -4,8 +4,10 @@ use std::path::PathBuf;
 use slint::{Model, ModelRc, SharedString, VecModel};
 
 use crate::diff::engine::compute_diff;
+use crate::diff::folder::compare_folders;
 use crate::models::diff_line::LineStatus;
-use crate::{DiffLineData, MainWindow};
+use crate::models::folder_item::FileCompareStatus;
+use crate::{DiffLineData, FolderItemData, MainWindow};
 
 pub struct AppState {
     pub left_path: Option<PathBuf>,
@@ -15,6 +17,10 @@ pub struct AppState {
     pub left_lines: Vec<String>,
     pub right_lines: Vec<String>,
     pub has_unsaved_changes: bool,
+    // Folder comparison state
+    pub left_folder: Option<PathBuf>,
+    pub right_folder: Option<PathBuf>,
+    pub folder_items: Vec<crate::models::folder_item::FolderItem>,
 }
 
 impl AppState {
@@ -27,12 +33,19 @@ impl AppState {
             left_lines: Vec::new(),
             right_lines: Vec::new(),
             has_unsaved_changes: false,
+            left_folder: None,
+            right_folder: None,
+            folder_items: Vec::new(),
         }
     }
 }
 
 pub fn open_file_dialog(title: &str) -> Option<PathBuf> {
     rfd::FileDialog::new().set_title(title).pick_file()
+}
+
+pub fn open_folder_dialog(title: &str) -> Option<PathBuf> {
+    rfd::FileDialog::new().set_title(title).pick_folder()
 }
 
 pub fn run_diff(window: &MainWindow, state: &mut AppState) {
@@ -68,7 +81,7 @@ pub fn recompute_diff_from_text(
         .lines
         .iter()
         .enumerate()
-        .map(|(_i, line)| {
+        .map(|(i, line)| {
             let status: i32 = match line.status {
                 LineStatus::Equal => 0,
                 LineStatus::Added => 1,
@@ -78,7 +91,7 @@ pub fn recompute_diff_from_text(
             let diff_index = result
                 .diff_positions
                 .iter()
-                .position(|&pos| pos == _i)
+                .position(|&pos| pos == i)
                 .map(|idx| idx as i32)
                 .unwrap_or(-1);
             DiffLineData {
@@ -175,7 +188,6 @@ fn update_current_diff(window: &MainWindow, state: &mut AppState, new_index: i32
     )));
 }
 
-/// Copy left side to right side for the given diff index
 pub fn copy_to_right(window: &MainWindow, state: &mut AppState, diff_index: i32) {
     if diff_index < 0 || diff_index as usize >= state.diff_positions.len() {
         return;
@@ -187,31 +199,20 @@ pub fn copy_to_right(window: &MainWindow, state: &mut AppState, diff_index: i32)
         None => return,
     };
 
-    let row_idx = state.diff_positions[diff_index as usize];
-    let row = match vec_model.row_data(row_idx) {
-        Some(r) => r,
-        None => return,
-    };
-
-    // Reconstruct right file with the left side's content for this diff
     let right_text = rebuild_right_after_copy_from_left(vec_model);
     let left_text = rebuild_left(vec_model);
 
     state.has_unsaved_changes = true;
     window.set_has_unsaved_changes(true);
 
-    // Preserve the current diff navigation position
-    let _ = row;
     recompute_diff_from_text(window, state, &left_text, &right_text);
 
-    // Try to stay near the same diff position
     if !state.diff_positions.is_empty() {
         let new_idx = (diff_index as usize).min(state.diff_positions.len() - 1);
         update_current_diff(window, state, new_idx as i32);
     }
 }
 
-/// Copy right side to left side for the given diff index
 pub fn copy_to_left(window: &MainWindow, state: &mut AppState, diff_index: i32) {
     if diff_index < 0 || diff_index as usize >= state.diff_positions.len() {
         return;
@@ -223,19 +224,12 @@ pub fn copy_to_left(window: &MainWindow, state: &mut AppState, diff_index: i32) 
         None => return,
     };
 
-    let row_idx = state.diff_positions[diff_index as usize];
-    let row = match vec_model.row_data(row_idx) {
-        Some(r) => r,
-        None => return,
-    };
-
     let left_text = rebuild_left_after_copy_from_right(vec_model);
     let right_text = rebuild_right(vec_model);
 
     state.has_unsaved_changes = true;
     window.set_has_unsaved_changes(true);
 
-    let _ = row;
     recompute_diff_from_text(window, state, &left_text, &right_text);
 
     if !state.diff_positions.is_empty() {
@@ -248,7 +242,6 @@ fn rebuild_left(vec_model: &VecModel<DiffLineData>) -> String {
     let mut lines = Vec::new();
     for i in 0..vec_model.row_count() {
         let row = vec_model.row_data(i).unwrap();
-        // Skip Added lines (only exist on right side)
         if row.status == 1 {
             continue;
         }
@@ -261,7 +254,6 @@ fn rebuild_right(vec_model: &VecModel<DiffLineData>) -> String {
     let mut lines = Vec::new();
     for i in 0..vec_model.row_count() {
         let row = vec_model.row_data(i).unwrap();
-        // Skip Removed lines (only exist on left side)
         if row.status == 2 {
             continue;
         }
@@ -270,32 +262,18 @@ fn rebuild_right(vec_model: &VecModel<DiffLineData>) -> String {
     lines.join("\n") + "\n"
 }
 
-/// Rebuild right text, but for the current diff (first one with is_current_diff), use left text
 fn rebuild_right_after_copy_from_left(vec_model: &VecModel<DiffLineData>) -> String {
     let mut lines = Vec::new();
     for i in 0..vec_model.row_count() {
         let row = vec_model.row_data(i).unwrap();
         if row.is_current_diff {
-            // Copy from left to right
             match row.status {
-                2 => {
-                    // Removed: skip (don't add to right)
-                    continue;
-                }
-                1 => {
-                    // Added: replace with left (which is empty, so skip)
-                    continue;
-                }
-                3 => {
-                    // Modified: use left text
-                    lines.push(row.left_text.to_string());
-                }
-                _ => {
-                    lines.push(row.right_text.to_string());
-                }
+                2 => continue,
+                1 => continue,
+                3 => lines.push(row.left_text.to_string()),
+                _ => lines.push(row.right_text.to_string()),
             }
         } else if row.status == 2 {
-            // Removed line (not current diff): skip on right side
             continue;
         } else {
             lines.push(row.right_text.to_string());
@@ -304,31 +282,18 @@ fn rebuild_right_after_copy_from_left(vec_model: &VecModel<DiffLineData>) -> Str
     lines.join("\n") + "\n"
 }
 
-/// Rebuild left text, but for the current diff, use right text
 fn rebuild_left_after_copy_from_right(vec_model: &VecModel<DiffLineData>) -> String {
     let mut lines = Vec::new();
     for i in 0..vec_model.row_count() {
         let row = vec_model.row_data(i).unwrap();
         if row.is_current_diff {
             match row.status {
-                1 => {
-                    // Added: copy to left
-                    lines.push(row.right_text.to_string());
-                }
-                2 => {
-                    // Removed: skip (remove from left too)
-                    continue;
-                }
-                3 => {
-                    // Modified: use right text
-                    lines.push(row.right_text.to_string());
-                }
-                _ => {
-                    lines.push(row.left_text.to_string());
-                }
+                1 => lines.push(row.right_text.to_string()),
+                2 => continue,
+                3 => lines.push(row.right_text.to_string()),
+                _ => lines.push(row.left_text.to_string()),
             }
         } else if row.status == 1 {
-            // Added line (not current diff): skip on left side
             continue;
         } else {
             lines.push(row.left_text.to_string());
@@ -361,5 +326,85 @@ pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
             side,
             path.to_string_lossy()
         )));
+    }
+}
+
+// --- Folder comparison ---
+
+pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
+    let (left_folder, right_folder) = match (&state.left_folder, &state.right_folder) {
+        (Some(l), Some(r)) => (l.clone(), r.clone()),
+        _ => return,
+    };
+
+    let items = compare_folders(&left_folder, &right_folder);
+
+    let folder_item_data: Vec<FolderItemData> = items
+        .iter()
+        .map(|item| {
+            let status: i32 = match item.status {
+                FileCompareStatus::Identical => 0,
+                FileCompareStatus::Different => 1,
+                FileCompareStatus::LeftOnly => 2,
+                FileCompareStatus::RightOnly => 3,
+            };
+            FolderItemData {
+                relative_path: SharedString::from(&item.relative_path),
+                is_directory: item.is_directory,
+                status,
+                left_size: item
+                    .left_size
+                    .map(|s| SharedString::from(format_size(s)))
+                    .unwrap_or_default(),
+                right_size: item
+                    .right_size
+                    .map(|s| SharedString::from(format_size(s)))
+                    .unwrap_or_default(),
+            }
+        })
+        .collect();
+
+    let different_count = items
+        .iter()
+        .filter(|i| i.status != FileCompareStatus::Identical)
+        .count();
+
+    state.folder_items = items;
+    window.set_folder_items(ModelRc::new(VecModel::from(folder_item_data)));
+    window.set_view_mode(1);
+    window.set_status_text(SharedString::from(format!(
+        "{} items, {} differences",
+        state.folder_items.len(),
+        different_count
+    )));
+}
+
+pub fn open_folder_item(window: &MainWindow, state: &mut AppState, index: i32) {
+    if index < 0 || index as usize >= state.folder_items.len() {
+        return;
+    }
+
+    let item = &state.folder_items[index as usize];
+
+    if item.is_directory {
+        return;
+    }
+
+    // Open file diff for this item
+    if let (Some(left), Some(right)) = (&item.left_path, &item.right_path) {
+        state.left_path = Some(left.clone());
+        state.right_path = Some(right.clone());
+        window.set_view_mode(0);
+        run_diff(window, state);
+    }
+}
+
+fn format_size(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     }
 }

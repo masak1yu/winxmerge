@@ -7,7 +7,10 @@ slint::include_modules!();
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use app::{copy_to_left, copy_to_right, navigate_diff, open_file_dialog, run_diff, save_file, AppState};
+use app::{
+    copy_to_left, copy_to_right, navigate_diff, open_file_dialog, open_folder_dialog,
+    open_folder_item, run_diff, run_folder_compare, save_file, AppState,
+};
 
 fn main() {
     let window = MainWindow::new().unwrap();
@@ -20,8 +23,10 @@ fn main() {
         window.on_open_left_file(move || {
             if let Some(path) = open_file_dialog("Select left file") {
                 let window = window_weak.unwrap();
-                state.borrow_mut().left_path = Some(path);
-                run_diff(&window, &mut state.borrow_mut());
+                let mut s = state.borrow_mut();
+                s.left_path = Some(path);
+                window.set_view_mode(0);
+                run_diff(&window, &mut s);
             }
         });
     }
@@ -33,9 +38,50 @@ fn main() {
         window.on_open_right_file(move || {
             if let Some(path) = open_file_dialog("Select right file") {
                 let window = window_weak.unwrap();
-                state.borrow_mut().right_path = Some(path);
-                run_diff(&window, &mut state.borrow_mut());
+                let mut s = state.borrow_mut();
+                s.right_path = Some(path);
+                window.set_view_mode(0);
+                run_diff(&window, &mut s);
             }
+        });
+    }
+
+    // Open left folder
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_open_folder_left(move || {
+            if let Some(path) = open_folder_dialog("Select left folder") {
+                let window = window_weak.unwrap();
+                let mut s = state.borrow_mut();
+                s.left_folder = Some(path);
+                run_folder_compare(&window, &mut s);
+            }
+        });
+    }
+
+    // Open right folder
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_open_folder_right(move || {
+            if let Some(path) = open_folder_dialog("Select right folder") {
+                let window = window_weak.unwrap();
+                let mut s = state.borrow_mut();
+                s.right_folder = Some(path);
+                run_folder_compare(&window, &mut s);
+            }
+        });
+    }
+
+    // Folder item double click
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_folder_item_double_clicked(move |idx| {
+            let window = window_weak.unwrap();
+            let mut s = state.borrow_mut();
+            open_folder_item(&window, &mut s, idx);
         });
     }
 
@@ -96,6 +142,18 @@ fn main() {
         window.on_save_right(move || {
             let window = window_weak.unwrap();
             save_file(&window, &mut state.borrow_mut(), false);
+        });
+    }
+
+    // Back to folder view
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_back_to_folder_view(move || {
+            let window = window_weak.unwrap();
+            let mut s = state.borrow_mut();
+            window.set_view_mode(1);
+            run_folder_compare(&window, &mut s);
         });
     }
 
