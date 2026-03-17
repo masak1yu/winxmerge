@@ -617,6 +617,44 @@ fn rebuild_left_after_copy_from_right(vec_model: &VecModel<DiffLineData>) -> Str
     lines.join("\n") + "\n"
 }
 
+pub fn export_html_report(window: &MainWindow, state: &AppState) {
+    let tab = state.current_tab();
+
+    // Rebuild DiffResult from current state
+    let left_text = tab.left_lines.join("\n") + "\n";
+    let right_text = tab.right_lines.join("\n") + "\n";
+    let result = compute_diff_with_options(&left_text, &right_text, &tab.diff_options);
+
+    let left_title = tab.left_path.as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Left".to_string());
+    let right_title = tab.right_path.as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Right".to_string());
+
+    let html = crate::export::export_html(&result, &left_title, &right_title);
+
+    // Save dialog
+    if let Some(path) = rfd::FileDialog::new()
+        .set_title("Export HTML Report")
+        .set_file_name("diff-report.html")
+        .add_filter("HTML", &["html"])
+        .save_file()
+    {
+        match fs::write(&path, &html) {
+            Ok(_) => {
+                window.set_status_text(SharedString::from(format!(
+                    "Exported to {}",
+                    path.to_string_lossy()
+                )));
+            }
+            Err(e) => {
+                window.set_status_text(SharedString::from(format!("Export error: {}", e)));
+            }
+        }
+    }
+}
+
 pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
     let model = window.get_diff_lines();
     let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {

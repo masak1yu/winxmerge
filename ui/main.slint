@@ -145,6 +145,7 @@ export component MainWindow inherits Window {
     callback switch-tab(int);
     callback undo();
     callback redo();
+    callback export-html();
 
     // Helper: check unsaved before action
     function request-action(action: int) {
@@ -170,6 +171,8 @@ export component MainWindow inherits Window {
             MenuSeparator {}
             MenuItem { title: "Save Left"; enabled: root.has-unsaved-changes; activated => { root.save-left(); } }
             MenuItem { title: "Save Right"; enabled: root.has-unsaved-changes; activated => { root.save-right(); } }
+            MenuSeparator {}
+            MenuItem { title: "Export HTML Report..."; enabled: root.diff-count > 0; activated => { root.export-html(); } }
         }
         Menu {
             title: "Edit";
