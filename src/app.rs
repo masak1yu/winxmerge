@@ -379,6 +379,14 @@ pub fn recompute_diff_from_text_with_highlights(
     window.set_status_text(SharedString::from(status));
 }
 
+pub fn select_diff(window: &MainWindow, state: &mut AppState, diff_index: i32) {
+    let tab = state.current_tab();
+    if diff_index < 0 || diff_index as usize >= tab.diff_positions.len() {
+        return;
+    }
+    update_current_diff(window, state, diff_index);
+}
+
 pub fn navigate_diff(window: &MainWindow, state: &mut AppState, forward: bool) {
     let tab = state.current_tab();
     if tab.diff_positions.is_empty() {
@@ -971,6 +979,7 @@ pub fn open_folder_item(window: &MainWindow, state: &mut AppState, index: i32) {
             tab.view_mode = 0;
         }
         window.set_view_mode(0);
+        window.set_has_folder_context(true);
         run_diff(window, state);
     }
 }

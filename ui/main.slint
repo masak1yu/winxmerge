@@ -111,6 +111,9 @@ export component MainWindow inherits Window {
     in-out property <string> open-right-path-input: "";
     in-out property <bool> open-is-folder-mode: false;
 
+    // Folder context (show back button when navigated from folder view)
+    in-out property <bool> has-folder-context: false;
+
     // Tabs
     in-out property <[TabData]> tab-list: [{title: "New", is-active: true, has-unsaved: false}];
     in-out property <int> active-tab-index: 0;
@@ -123,6 +126,7 @@ export component MainWindow inherits Window {
     callback prev-diff();
     callback copy-to-right(int);
     callback copy-to-left(int);
+    callback select-diff(int);
     callback save-left();
     callback save-right();
     callback folder-item-double-clicked(int);
@@ -230,6 +234,11 @@ export component MainWindow inherits Window {
                 }
 
                 Rectangle { width: 4px; }
+
+                if root.view-mode == 0 && root.has-folder-context : Button {
+                    text: "< Back";
+                    clicked => { root.back-to-folder-view(); }
+                }
 
                 Button {
                     text: "Open Left...";
@@ -432,6 +441,7 @@ export component MainWindow inherits Window {
             right-title: root.right-path != "" ? root.right-path : "Right file";
             copy-to-right(idx) => { root.copy-to-right(idx); }
             copy-to-left(idx) => { root.copy-to-left(idx); }
+            select-diff(idx) => { root.select-diff(idx); }
         }
 
         if root.view-mode == 1 : FolderView {
