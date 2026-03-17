@@ -21,6 +21,9 @@ export component OptionsDialog inherits Rectangle {
     // Theme: 0=Light, 1=Dark
     in-out property <int> opt-theme: 0;
 
+    // Language: 0=English, 1=Japanese
+    in-out property <int> opt-language: 0;
+
     callback apply();
     callback cancel();
 
@@ -34,7 +37,7 @@ export component OptionsDialog inherits Rectangle {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             width: 500px;
-            height: 540px;
+            height: 580px;
             background: Palette.background;
             border-color: Palette.border;
             border-width: 1px;
@@ -48,7 +51,7 @@ export component OptionsDialog inherits Rectangle {
 
                 // Title
                 Text {
-                    text: "Options";
+                    text: @tr("Options");
                     font-size: 20px;
                     font-weight: 700;
                     horizontal-alignment: center;
@@ -58,7 +61,7 @@ export component OptionsDialog inherits Rectangle {
 
                 // Appearance section
                 Text {
-                    text: "Appearance";
+                    text: @tr("Appearance");
                     font-size: 14px;
                     font-weight: 600;
                     color: Palette.foreground;
@@ -72,7 +75,7 @@ export component OptionsDialog inherits Rectangle {
                     spacing: 8px;
                     alignment: start;
                     Text {
-                        text: "Theme:";
+                        text: @tr("Theme:");
                         font-size: 13px;
                         vertical-alignment: center;
                     }
@@ -84,11 +87,27 @@ export component OptionsDialog inherits Rectangle {
                     }
                 }
 
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Text {
+                        text: @tr("Language:");
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                    ComboBox {
+                        width: 120px;
+                        model: ["English", "日本語"];
+                        current-index: root.opt-language;
+                        selected(val) => { root.opt-language = self.current-index; }
+                    }
+                }
+
                 Rectangle { height: 8px; }
 
                 // Compare section
                 Text {
-                    text: "Compare";
+                    text: @tr("Compare");
                     font-size: 14px;
                     font-weight: 600;
                     color: Palette.foreground;
@@ -99,27 +118,27 @@ export component OptionsDialog inherits Rectangle {
                 }
 
                 CheckBox {
-                    text: "Ignore whitespace differences";
+                    text: @tr("Ignore whitespace differences");
                     checked: root.opt-ignore-whitespace;
                     toggled => { root.opt-ignore-whitespace = self.checked; }
                 }
                 CheckBox {
-                    text: "Ignore case differences";
+                    text: @tr("Ignore case differences");
                     checked: root.opt-ignore-case;
                     toggled => { root.opt-ignore-case = self.checked; }
                 }
                 CheckBox {
-                    text: "Ignore blank lines";
+                    text: @tr("Ignore blank lines");
                     checked: root.opt-ignore-blank-lines;
                     toggled => { root.opt-ignore-blank-lines = self.checked; }
                 }
                 CheckBox {
-                    text: "Ignore line ending differences (CR/LF)";
+                    text: @tr("Ignore line ending differences (CR/LF)");
                     checked: root.opt-ignore-eol;
                     toggled => { root.opt-ignore-eol = self.checked; }
                 }
                 CheckBox {
-                    text: "Detect moved lines";
+                    text: @tr("Detect moved lines");
                     checked: root.opt-detect-moved-lines;
                     toggled => { root.opt-detect-moved-lines = self.checked; }
                 }
@@ -128,7 +147,7 @@ export component OptionsDialog inherits Rectangle {
 
                 // View section
                 Text {
-                    text: "Editor";
+                    text: @tr("Editor");
                     font-size: 14px;
                     font-weight: 600;
                     color: Palette.foreground;
@@ -139,22 +158,22 @@ export component OptionsDialog inherits Rectangle {
                 }
 
                 CheckBox {
-                    text: "Show line numbers";
+                    text: @tr("Show line numbers");
                     checked: root.opt-show-line-numbers;
                     toggled => { root.opt-show-line-numbers = self.checked; }
                 }
                 CheckBox {
-                    text: "Word wrap";
+                    text: @tr("Word wrap");
                     checked: root.opt-word-wrap;
                     toggled => { root.opt-word-wrap = self.checked; }
                 }
                 CheckBox {
-                    text: "Syntax highlighting";
+                    text: @tr("Syntax highlighting");
                     checked: root.opt-syntax-highlighting;
                     toggled => { root.opt-syntax-highlighting = self.checked; }
                 }
                 CheckBox {
-                    text: "Enable right-click context menu";
+                    text: @tr("Enable right-click context menu");
                     checked: root.opt-enable-context-menu;
                     toggled => { root.opt-enable-context-menu = self.checked; }
                 }
@@ -163,7 +182,7 @@ export component OptionsDialog inherits Rectangle {
                     spacing: 8px;
                     alignment: start;
                     Text {
-                        text: "Font size:";
+                        text: @tr("Font size:");
                         font-size: 13px;
                         vertical-alignment: center;
                     }
@@ -179,7 +198,7 @@ export component OptionsDialog inherits Rectangle {
                     spacing: 8px;
                     alignment: start;
                     Text {
-                        text: "Tab width:";
+                        text: @tr("Tab width:");
                         font-size: 13px;
                         vertical-alignment: center;
                     }
@@ -199,11 +218,11 @@ export component OptionsDialog inherits Rectangle {
                     spacing: 12px;
 
                     Button {
-                        text: "Apply";
+                        text: @tr("Apply");
                         clicked => { root.apply(); }
                     }
                     Button {
-                        text: "Cancel";
+                        text: @tr("Cancel");
                         clicked => { root.cancel(); }
                     }
                 }

@@ -43,6 +43,10 @@ pub struct AppSettings {
     #[serde(default = "default_theme")]
     pub theme: String,
 
+    // Language: "en", "ja"
+    #[serde(default = "default_language")]
+    pub language: String,
+
     #[serde(default)]
     pub recent_files: Vec<RecentEntry>,
 }
@@ -72,6 +76,9 @@ fn default_true() -> bool {
 fn default_theme() -> String {
     "light".to_string()
 }
+fn default_language() -> String {
+    "en".to_string()
+}
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -91,6 +98,7 @@ impl Default for AppSettings {
             syntax_highlighting: true,
             enable_context_menu: true,
             theme: default_theme(),
+            language: default_language(),
             recent_files: Vec::new(),
         }
     }

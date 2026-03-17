@@ -55,12 +55,12 @@ component ConfirmDialog inherits Rectangle {
                     spacing: 12px;
 
                     Button {
-                        text: "Discard";
+                        text: @tr("Discard");
                         clicked => { root.confirmed(); }
                     }
 
                     Button {
-                        text: "Cancel";
+                        text: @tr("Cancel");
                         clicked => { root.cancelled(); }
                     }
                 }
@@ -81,7 +81,7 @@ export component MainWindow inherits Window {
     in-out property <int> current-diff-index: -1;
     in-out property <string> left-path: "";
     in-out property <string> right-path: "";
-    in-out property <string> status-text: "Select files or folders to compare";
+    in-out property <string> status-text: @tr("Select files or folders to compare");
     in-out property <bool> has-unsaved-changes: false;
     in-out property <bool> show-toolbar: true;
 
@@ -184,6 +184,9 @@ export component MainWindow inherits Window {
     // Theme: 0=Light, 1=Dark
     in-out property <int> opt-theme: 0;
 
+    // Language: 0=English, 1=Japanese
+    in-out property <int> opt-language: 0;
+
     // Apply the color scheme from opt-theme
     public function set-theme(theme-index: int) {
         Palette.color-scheme = theme-index == 1 ? ColorScheme.dark : ColorScheme.light;
@@ -202,57 +205,57 @@ export component MainWindow inherits Window {
 
     MenuBar {
         Menu {
-            title: "File";
-            MenuItem { title: "New Tab"; activated => { root.new-tab(); } }
-            MenuItem { title: "New Compare..."; activated => { root.request-action(5); } }
+            title: @tr("File");
+            MenuItem { title: @tr("New Tab"); activated => { root.new-tab(); } }
+            MenuItem { title: @tr("New Compare..."); activated => { root.request-action(5); } }
             MenuSeparator {}
-            MenuItem { title: "Open Left File..."; activated => { root.request-action(1); } }
-            MenuItem { title: "Open Right File..."; activated => { root.request-action(2); } }
-            MenuItem { title: "Open Left Folder..."; activated => { root.request-action(3); } }
-            MenuItem { title: "Open Right Folder..."; activated => { root.request-action(4); } }
+            MenuItem { title: @tr("Open Left File..."); activated => { root.request-action(1); } }
+            MenuItem { title: @tr("Open Right File..."); activated => { root.request-action(2); } }
+            MenuItem { title: @tr("Open Left Folder..."); activated => { root.request-action(3); } }
+            MenuItem { title: @tr("Open Right Folder..."); activated => { root.request-action(4); } }
             MenuSeparator {}
-            MenuItem { title: "Save Left"; enabled: root.has-unsaved-changes; activated => { root.save-left(); } }
-            MenuItem { title: "Save Right"; enabled: root.has-unsaved-changes; activated => { root.save-right(); } }
+            MenuItem { title: @tr("Save Left"); enabled: root.has-unsaved-changes; activated => { root.save-left(); } }
+            MenuItem { title: @tr("Save Right"); enabled: root.has-unsaved-changes; activated => { root.save-right(); } }
             MenuSeparator {}
-            MenuItem { title: "Export HTML Report..."; enabled: root.diff-count > 0; activated => { root.export-html(); } }
+            MenuItem { title: @tr("Export HTML Report..."); enabled: root.diff-count > 0; activated => { root.export-html(); } }
         }
         Menu {
-            title: "Edit";
-            MenuItem { title: "Undo"; enabled: root.can-undo; activated => { root.undo(); } }
-            MenuItem { title: "Redo"; enabled: root.can-redo; activated => { root.redo(); } }
+            title: @tr("Edit");
+            MenuItem { title: @tr("Undo"); enabled: root.can-undo; activated => { root.undo(); } }
+            MenuItem { title: @tr("Redo"); enabled: root.can-redo; activated => { root.redo(); } }
             MenuSeparator {}
             MenuItem {
-                title: "Find / Replace...";
+                title: @tr("Find / Replace...");
                 activated => { root.show-search = !root.show-search; }
             }
             MenuSeparator {}
             MenuItem {
-                title: "Options...";
+                title: @tr("Options...");
                 activated => { root.show-options-dialog = true; }
             }
         }
         Menu {
-            title: "View";
+            title: @tr("View");
             MenuItem {
-                title: root.show-toolbar ? "Hide Toolbar" : "Show Toolbar";
+                title: root.show-toolbar ? @tr("Hide Toolbar") : @tr("Show Toolbar");
                 activated => { root.show-toolbar = !root.show-toolbar; }
             }
             MenuItem {
-                title: root.ignore-whitespace ? "✓ Ignore Whitespace" : "  Ignore Whitespace";
+                title: root.ignore-whitespace ? @tr("✓ Ignore Whitespace") : @tr("  Ignore Whitespace");
                 activated => { root.toggle-ignore-whitespace(); }
             }
             MenuItem {
-                title: root.ignore-case ? "✓ Ignore Case" : "  Ignore Case";
+                title: root.ignore-case ? @tr("✓ Ignore Case") : @tr("  Ignore Case");
                 activated => { root.toggle-ignore-case(); }
             }
         }
         Menu {
-            title: "Merge";
-            MenuItem { title: "Next Difference"; enabled: root.diff-count > 0; activated => { root.next-diff(); } }
-            MenuItem { title: "Previous Difference"; enabled: root.diff-count > 0; activated => { root.prev-diff(); } }
+            title: @tr("Merge");
+            MenuItem { title: @tr("Next Difference"); enabled: root.diff-count > 0; activated => { root.next-diff(); } }
+            MenuItem { title: @tr("Previous Difference"); enabled: root.diff-count > 0; activated => { root.prev-diff(); } }
             MenuSeparator {}
-            MenuItem { title: "Copy Left to Right"; enabled: root.current-diff-index >= 0; activated => { root.copy-to-right(root.current-diff-index); } }
-            MenuItem { title: "Copy Right to Left"; enabled: root.current-diff-index >= 0; activated => { root.copy-to-left(root.current-diff-index); } }
+            MenuItem { title: @tr("Copy Left to Right"); enabled: root.current-diff-index >= 0; activated => { root.copy-to-right(root.current-diff-index); } }
+            MenuItem { title: @tr("Copy Right to Left"); enabled: root.current-diff-index >= 0; activated => { root.copy-to-left(root.current-diff-index); } }
         }
     }
 
@@ -279,37 +282,37 @@ export component MainWindow inherits Window {
                 alignment: start;
 
                 Button {
-                    text: "New...";
+                    text: @tr("New...");
                     clicked => { root.request-action(5); }
                 }
 
                 Rectangle { width: 4px; }
 
                 if root.view-mode == 0 && root.has-folder-context : Button {
-                    text: "< Back";
+                    text: @tr("< Back");
                     clicked => { root.back-to-folder-view(); }
                 }
 
                 Button {
-                    text: "Open Left...";
+                    text: @tr("Open Left...");
                     clicked => { root.request-action(1); }
                 }
 
                 Button {
-                    text: "Open Right...";
+                    text: @tr("Open Right...");
                     clicked => { root.request-action(2); }
                 }
 
                 Rectangle { width: 8px; }
 
                 if root.view-mode == 0 : Button {
-                    text: "Save Left";
+                    text: @tr("Save Left");
                     enabled: has-unsaved-changes;
                     clicked => { root.save-left(); }
                 }
 
                 if root.view-mode == 0 : Button {
-                    text: "Save Right";
+                    text: @tr("Save Right");
                     enabled: has-unsaved-changes;
                     clicked => { root.save-right(); }
                 }
@@ -317,13 +320,13 @@ export component MainWindow inherits Window {
                 if root.view-mode == 0 : Rectangle { width: 8px; }
 
                 if root.view-mode == 0 : Button {
-                    text: "◀ Prev";
+                    text: @tr("◀ Prev");
                     enabled: diff-count > 0;
                     clicked => { root.prev-diff(); }
                 }
 
                 if root.view-mode == 0 : Button {
-                    text: "Next ▶";
+                    text: @tr("Next ▶");
                     enabled: diff-count > 0;
                     clicked => { root.next-diff(); }
                 }
@@ -331,13 +334,13 @@ export component MainWindow inherits Window {
                 if root.view-mode == 0 : Rectangle { width: 8px; }
 
                 if root.view-mode == 0 : Button {
-                    text: "Copy →";
+                    text: @tr("Copy →");
                     enabled: current-diff-index >= 0;
                     clicked => { root.copy-to-right(root.current-diff-index); }
                 }
 
                 if root.view-mode == 0 : Button {
-                    text: "← Copy";
+                    text: @tr("← Copy");
                     enabled: current-diff-index >= 0;
                     clicked => { root.copy-to-left(root.current-diff-index); }
                 }
@@ -345,13 +348,13 @@ export component MainWindow inherits Window {
                 Rectangle { width: 8px; }
 
                 CheckBox {
-                    text: "Ignore WS";
+                    text: @tr("Ignore WS");
                     checked: root.ignore-whitespace;
                     toggled => { root.toggle-ignore-whitespace(); }
                 }
 
                 CheckBox {
-                    text: "Ignore Case";
+                    text: @tr("Ignore Case");
                     checked: root.ignore-case;
                     toggled => { root.toggle-ignore-case(); }
                 }
@@ -376,7 +379,7 @@ export component MainWindow inherits Window {
 
                     Text {
                         width: 60px;
-                        text: "Find:";
+                        text: @tr("Find:");
                         font-size: 12px;
                         vertical-alignment: center;
                         horizontal-alignment: right;
@@ -385,7 +388,7 @@ export component MainWindow inherits Window {
                     search-input := LineEdit {
                         width: 250px;
                         text: root.search-query;
-                        placeholder-text: "Search text...";
+                        placeholder-text: @tr("Search text...");
                         accepted(text) => {
                             root.search-query = text;
                             root.search(text);
@@ -434,7 +437,7 @@ export component MainWindow inherits Window {
 
                     Text {
                         width: 60px;
-                        text: "Replace:";
+                        text: @tr("Replace:");
                         font-size: 12px;
                         vertical-alignment: center;
                         horizontal-alignment: right;
@@ -442,17 +445,17 @@ export component MainWindow inherits Window {
 
                     replace-input := LineEdit {
                         width: 250px;
-                        placeholder-text: "Replace with...";
+                        placeholder-text: @tr("Replace with...");
                     }
 
                     Button {
-                        text: "Replace";
+                        text: @tr("Replace");
                         enabled: search-match-count > 0;
                         clicked => { root.replace(root.search-query, replace-input.text); }
                     }
 
                     Button {
-                        text: "Replace All";
+                        text: @tr("Replace All");
                         enabled: search-match-count > 0;
                         clicked => { root.replace-all(root.search-query, replace-input.text); }
                     }
@@ -492,8 +495,8 @@ export component MainWindow inherits Window {
         if root.view-mode == 0 : DiffView {
             diff-lines: root.diff-lines;
             current-diff-index: root.current-diff-index;
-            left-title: root.left-path != "" ? root.left-path : "Left file";
-            right-title: root.right-path != "" ? root.right-path : "Right file";
+            left-title: root.left-path != "" ? root.left-path : @tr("Left file");
+            right-title: root.right-path != "" ? root.right-path : @tr("Right file");
             context-menu-enabled: root.opt-enable-context-menu;
             show-line-numbers: root.opt-show-line-numbers;
             editor-font-size: root.opt-font-size;
@@ -516,9 +519,9 @@ export component MainWindow inherits Window {
         if root.view-mode == 3 : DiffView3Way {
             lines: root.three-way-lines;
             current-conflict-index: root.current-conflict-index;
-            left-title: root.left-path != "" ? root.left-path : "Left (Mine)";
-            base-title: root.base-path != "" ? root.base-path : "Base";
-            right-title: root.right-path != "" ? root.right-path : "Right (Theirs)";
+            left-title: root.left-path != "" ? root.left-path : @tr("Left (Mine)");
+            base-title: root.base-path != "" ? root.base-path : @tr("Base");
+            right-title: root.right-path != "" ? root.right-path : @tr("Right (Theirs)");
             show-line-numbers: root.opt-show-line-numbers;
             editor-font-size: root.opt-font-size;
             next-conflict => { root.next-conflict(); }
@@ -545,7 +548,7 @@ export component MainWindow inherits Window {
                 }
 
                 Text {
-                    text: root.has-unsaved-changes ? "● Modified" : "";
+                    text: root.has-unsaved-changes ? @tr("● Modified") : "";
                     font-size: 12px;
                     color: #b08800;
                     vertical-alignment: center;
@@ -622,6 +625,7 @@ export component MainWindow inherits Window {
         opt-tab-width <=> root.opt-tab-width;
         opt-enable-context-menu <=> root.opt-enable-context-menu;
         opt-theme <=> root.opt-theme;
+        opt-language <=> root.opt-language;
         apply => {
             root.show-options-dialog = false;
             root.set-theme(root.opt-theme);
@@ -637,7 +641,7 @@ export component MainWindow inherits Window {
         width: 100%;
         height: 100%;
         visible-flag: root.show-confirm-dialog;
-        message: "You have unsaved changes. Discard and continue?";
+        message: @tr("You have unsaved changes. Discard and continue?");
         confirmed => {
             root.show-confirm-dialog = false;
             root.has-unsaved-changes = false;
