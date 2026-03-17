@@ -1,0 +1,5 @@
+Hello, World!
+This is the RIGHT version.
+Line three is common.
+This line stays the same.
+The end is near.

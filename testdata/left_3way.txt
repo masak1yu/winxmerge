@@ -1,0 +1,6 @@
+Hello, World!
+This is the LEFT version.
+Line three is common.
+This line stays the same.
+Left added this line.
+The end.

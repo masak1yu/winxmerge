@@ -9,11 +9,14 @@ export struct RecentEntryData {
 export component OpenDialog inherits Rectangle {
     in-out property <string> left-path-input: "";
     in-out property <string> right-path-input: "";
+    in-out property <string> base-path-input: "";
     in-out property <bool> is-folder-mode: false;
+    in-out property <bool> is-three-way: false;
     in property <[RecentEntryData]> recent-entries;
 
     callback browse-left();
     callback browse-right();
+    callback browse-base();
     callback compare();
     callback open-recent(int);
 
@@ -46,13 +49,23 @@ export component OpenDialog inherits Rectangle {
 
             Rectangle { height: 16px; }
 
-            // Mode toggle
+            // Mode toggles
             HorizontalLayout {
                 alignment: center;
+                spacing: 16px;
                 CheckBox {
                     text: "Folder comparison";
                     checked: root.is-folder-mode;
-                    toggled => { root.is-folder-mode = self.checked; }
+                    toggled => {
+                        root.is-folder-mode = self.checked;
+                        if self.checked { root.is-three-way = false; }
+                    }
+                }
+                CheckBox {
+                    text: "3-way merge";
+                    checked: root.is-three-way;
+                    enabled: !root.is-folder-mode;
+                    toggled => { root.is-three-way = self.checked; }
                 }
             }
 
@@ -81,6 +94,33 @@ export component OpenDialog inherits Rectangle {
                     Button {
                         text: "Browse...";
                         clicked => { root.browse-left(); }
+                    }
+                }
+            }
+
+            // Base path (only for 3-way)
+            if root.is-three-way : VerticalLayout {
+                spacing: 4px;
+                HorizontalLayout {
+                    alignment: start;
+                    Text {
+                        text: "Base File (common ancestor):";
+                        font-size: 13px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    LineEdit {
+                        horizontal-stretch: 1;
+                        text: root.base-path-input;
+                        placeholder-text: "Select base file...";
+                        edited(text) => { root.base-path-input = text; }
+                    }
+                    Button {
+                        text: "Browse...";
+                        clicked => { root.browse-base(); }
                     }
                 }
             }
@@ -119,7 +159,7 @@ export component OpenDialog inherits Rectangle {
                 alignment: center;
                 Button {
                     text: "Compare";
-                    enabled: root.left-path-input != "" && root.right-path-input != "";
+                    enabled: root.left-path-input != "" && root.right-path-input != "" && (!root.is-three-way || root.base-path-input != "");
                     clicked => { root.compare(); }
                 }
             }
