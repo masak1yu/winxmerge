@@ -199,14 +199,14 @@ export component DiffView inherits Rectangle {
             Rectangle {
                 if root.context-menu-enabled : ContextMenuArea {
                     Menu {
-                        title: "Context";
-                        MenuItem { title: "Copy to Right →"; enabled: root.current-diff-index >= 0; activated => { root.copy-to-right(root.current-diff-index); } }
-                        MenuItem { title: "← Copy to Left"; enabled: root.current-diff-index >= 0; activated => { root.copy-to-left(root.current-diff-index); } }
+                        title: @tr("Context");
+                        MenuItem { title: @tr("Copy to Right →"); enabled: root.current-diff-index >= 0; activated => { root.copy-to-right(root.current-diff-index); } }
+                        MenuItem { title: @tr("← Copy to Left"); enabled: root.current-diff-index >= 0; activated => { root.copy-to-left(root.current-diff-index); } }
                         MenuSeparator {}
-                        MenuItem { title: "Copy Text"; activated => { root.copy-left-text(); } }
+                        MenuItem { title: @tr("Copy Text"); activated => { root.copy-left-text(); } }
                         MenuSeparator {}
-                        MenuItem { title: "Next Difference"; activated => { root.next-diff(); } }
-                        MenuItem { title: "Previous Difference"; activated => { root.prev-diff(); } }
+                        MenuItem { title: @tr("Next Difference"); activated => { root.next-diff(); } }
+                        MenuItem { title: @tr("Previous Difference"); activated => { root.prev-diff(); } }
                     }
                 }
 
@@ -285,14 +285,14 @@ export component DiffView inherits Rectangle {
             Rectangle {
                 if root.context-menu-enabled : ContextMenuArea {
                     Menu {
-                        title: "Context";
-                        MenuItem { title: "← Copy to Left"; enabled: root.current-diff-index >= 0; activated => { root.copy-to-left(root.current-diff-index); } }
-                        MenuItem { title: "Copy to Right →"; enabled: root.current-diff-index >= 0; activated => { root.copy-to-right(root.current-diff-index); } }
+                        title: @tr("Context");
+                        MenuItem { title: @tr("← Copy to Left"); enabled: root.current-diff-index >= 0; activated => { root.copy-to-left(root.current-diff-index); } }
+                        MenuItem { title: @tr("Copy to Right →"); enabled: root.current-diff-index >= 0; activated => { root.copy-to-right(root.current-diff-index); } }
                         MenuSeparator {}
-                        MenuItem { title: "Copy Text"; activated => { root.copy-right-text(); } }
+                        MenuItem { title: @tr("Copy Text"); activated => { root.copy-right-text(); } }
                         MenuSeparator {}
-                        MenuItem { title: "Next Difference"; activated => { root.next-diff(); } }
-                        MenuItem { title: "Previous Difference"; activated => { root.prev-diff(); } }
+                        MenuItem { title: @tr("Next Difference"); activated => { root.next-diff(); } }
+                        MenuItem { title: @tr("Previous Difference"); activated => { root.prev-diff(); } }
                     }
                 }
 

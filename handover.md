@@ -7,8 +7,8 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 ## 現在の状態
 
-- **バージョン:** 0.7.0
-- **ブランチ:** `feature/v0.7.0`
+- **バージョン:** 0.8.0
+- **ブランチ:** `feature/v0.8.0`
 - **テスト:** 12件すべてパス
 - **ビルド:** `cargo build` 成功
 - **CI:** GitHub Actions（ubuntu / macOS）
@@ -23,7 +23,8 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | v0.4.0 | #4 | Git 連携、オプション画面、コンテキストメニュー、HTML エクスポート、スクロール同期、設定永続化 |
 | v0.5.0 | #5 | 3-way マージ UI 統合、オプション実効化、最近のファイル一覧 |
 | v0.6.0 | #6 | フォルダ比較強化（更新日時、.gitignore、フィルタ）、GitHub Actions CI |
-| v0.7.0 | - | テーマ切替（ライト/ダーク）、ThemeColors グローバルによるカラー一元管理 |
+| v0.7.0 | #7 | テーマ切替（ライト/ダーク）、ThemeColors グローバルによるカラー一元管理 |
+| v0.8.0 | - | 国際化 (i18n)：日本語/英語切替、@tr() マクロ、gettext .po ファイル |
 
 ## 実装済み機能一覧
 
@@ -106,6 +107,14 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | Cmd+W | タブを閉じる |
 | Cmd+N | 新規比較 |
 | Alt+↓/↑ | 次/前の差分 |
+
+### 国際化 (i18n)
+- 日本語 / 英語の UI 切替（オプション画面の Appearance セクション）
+- Slint `@tr()` マクロによる全 UI 文字列の翻訳対応
+- GNU gettext `.po` ファイル形式（`translations/ja/LC_MESSAGES/winxmerge.po`）
+- `slint::select_bundled_translation()` による実行時言語切替
+- メニュー、ツールバー、ダイアログ、ステータスバー、コンテキストメニュー全対応
+- 設定は `~/.config/winxmerge/settings.json` に永続化
 
 ### テーマ切替
 - ライト / ダーク テーマ切替（オプション画面の Appearance セクション）
@@ -199,29 +208,25 @@ AppSettings (永続化)
 
 ---
 
-## 次にやるべき項目 (v0.8.0+)
+## 次にやるべき項目 (v0.9.0+)
 
 ### 優先度高
 
-1. **国際化 (i18n)**
-   - メニュー・ダイアログの日本語/英語切替
-   - Slint の `@tr()` マクロ活用
-
-2. **リリースバイナリの自動ビルド**
+1. **リリースバイナリの自動ビルド**
    - GitHub Actions で macOS / Linux / Windows のクロスコンパイル
    - GitHub Releases への自動アップロード
 
 ### 優先度低
 
-3. **行内（文字レベル）差分**
+2. **行内（文字レベル）差分**
    - `similar` の文字レベル diff で変更位置を計算
    - Slint のリッチテキスト対応を待つか、複数 Text 要素で近似実装
 
-4. **プラグインシステム**
+3. **プラグインシステム**
    - カスタム差分フィルタ（前処理）
    - 外部ツール連携
 
-5. **アクセシビリティ**
+4. **アクセシビリティ**
     - スクリーンリーダー対応
     - キーボードのみでの全操作対応
 

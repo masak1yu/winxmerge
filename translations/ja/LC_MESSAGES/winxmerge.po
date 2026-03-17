@@ -1,0 +1,335 @@
+# Japanese translation for WinXMerge
+# Copyright (C) 2026 WinXMerge
+# This file is distributed under the same license as the winxmerge package.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: winxmerge 0.8.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-03-17 00:00+0000\n"
+"PO-Revision-Date: 2026-03-17 00:00+0000\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+# ConfirmDialog
+msgid "Discard"
+msgstr "破棄"
+
+msgid "Cancel"
+msgstr "キャンセル"
+
+msgid "You have unsaved changes. Discard and continue?"
+msgstr "未保存の変更があります。破棄して続行しますか？"
+
+# MenuBar - File
+msgid "File"
+msgstr "ファイル"
+
+msgid "New Tab"
+msgstr "新規タブ"
+
+msgid "New Compare..."
+msgstr "新規比較..."
+
+msgid "Open Left File..."
+msgstr "左ファイルを開く..."
+
+msgid "Open Right File..."
+msgstr "右ファイルを開く..."
+
+msgid "Open Left Folder..."
+msgstr "左フォルダを開く..."
+
+msgid "Open Right Folder..."
+msgstr "右フォルダを開く..."
+
+msgid "Save Left"
+msgstr "左を保存"
+
+msgid "Save Right"
+msgstr "右を保存"
+
+msgid "Export HTML Report..."
+msgstr "HTMLレポートをエクスポート..."
+
+# MenuBar - Edit
+msgid "Edit"
+msgstr "編集"
+
+msgid "Undo"
+msgstr "元に戻す"
+
+msgid "Redo"
+msgstr "やり直し"
+
+msgid "Find / Replace..."
+msgstr "検索 / 置換..."
+
+msgid "Options..."
+msgstr "オプション..."
+
+# MenuBar - View
+msgid "View"
+msgstr "表示"
+
+msgid "Hide Toolbar"
+msgstr "ツールバーを隠す"
+
+msgid "Show Toolbar"
+msgstr "ツールバーを表示"
+
+msgid "✓ Ignore Whitespace"
+msgstr "✓ 空白を無視"
+
+msgid "  Ignore Whitespace"
+msgstr "  空白を無視"
+
+msgid "✓ Ignore Case"
+msgstr "✓ 大文字小文字を無視"
+
+msgid "  Ignore Case"
+msgstr "  大文字小文字を無視"
+
+# MenuBar - Merge
+msgid "Merge"
+msgstr "マージ"
+
+msgid "Next Difference"
+msgstr "次の差分"
+
+msgid "Previous Difference"
+msgstr "前の差分"
+
+msgid "Copy Left to Right"
+msgstr "左から右へコピー"
+
+msgid "Copy Right to Left"
+msgstr "右から左へコピー"
+
+# Toolbar
+msgid "New..."
+msgstr "新規..."
+
+msgid "< Back"
+msgstr "< 戻る"
+
+msgid "Open Left..."
+msgstr "左を開く..."
+
+msgid "Open Right..."
+msgstr "右を開く..."
+
+msgid "◀ Prev"
+msgstr "◀ 前へ"
+
+msgid "Next ▶"
+msgstr "次へ ▶"
+
+msgid "Copy →"
+msgstr "コピー →"
+
+msgid "← Copy"
+msgstr "← コピー"
+
+msgid "Ignore WS"
+msgstr "空白無視"
+
+msgid "Ignore Case"
+msgstr "大文字小文字無視"
+
+# Search & Replace
+msgid "Find:"
+msgstr "検索:"
+
+msgid "Search text..."
+msgstr "検索テキスト..."
+
+msgid "Replace:"
+msgstr "置換:"
+
+msgid "Replace with..."
+msgstr "置換テキスト..."
+
+msgid "Replace"
+msgstr "置換"
+
+msgid "Replace All"
+msgstr "すべて置換"
+
+# Status bar
+msgid "Select files or folders to compare"
+msgstr "比較するファイルまたはフォルダを選択してください"
+
+msgid "● Modified"
+msgstr "● 変更あり"
+
+# Default titles
+msgid "Left file"
+msgstr "左ファイル"
+
+msgid "Right file"
+msgstr "右ファイル"
+
+msgid "Left (Mine)"
+msgstr "左 (自分)"
+
+msgid "Base"
+msgstr "ベース"
+
+msgid "Right (Theirs)"
+msgstr "右 (相手)"
+
+# Context menu
+msgid "Context"
+msgstr "コンテキスト"
+
+msgid "Copy to Right →"
+msgstr "右へコピー →"
+
+msgid "← Copy to Left"
+msgstr "← 左へコピー"
+
+msgid "Copy Text"
+msgstr "テキストをコピー"
+
+# Folder view
+msgid "Name"
+msgstr "名前"
+
+msgid "Status"
+msgstr "状態"
+
+msgid "Left Size"
+msgstr "左サイズ"
+
+msgid "Right Size"
+msgstr "右サイズ"
+
+msgid "Left Modified"
+msgstr "左更新日時"
+
+msgid "Right Modified"
+msgstr "右更新日時"
+
+msgid "Identical"
+msgstr "同一"
+
+msgid "Different"
+msgstr "異なる"
+
+msgid "Left only"
+msgstr "左のみ"
+
+msgid "Right only"
+msgstr "右のみ"
+
+# Open dialog
+msgid "Select files or folders to compare"
+msgstr "比較するファイルまたはフォルダを選択してください"
+
+msgid "Folder comparison"
+msgstr "フォルダ比較"
+
+msgid "3-way merge"
+msgstr "3-way マージ"
+
+msgid "Left Folder:"
+msgstr "左フォルダ:"
+
+msgid "Left File:"
+msgstr "左ファイル:"
+
+msgid "Select left folder..."
+msgstr "左フォルダを選択..."
+
+msgid "Select left file..."
+msgstr "左ファイルを選択..."
+
+msgid "Base File (common ancestor):"
+msgstr "ベースファイル (共通の祖先):"
+
+msgid "Select base file..."
+msgstr "ベースファイルを選択..."
+
+msgid "Right Folder:"
+msgstr "右フォルダ:"
+
+msgid "Right File:"
+msgstr "右ファイル:"
+
+msgid "Select right folder..."
+msgstr "右フォルダを選択..."
+
+msgid "Select right file..."
+msgstr "右ファイルを選択..."
+
+msgid "Browse..."
+msgstr "参照..."
+
+msgid "Compare"
+msgstr "比較"
+
+msgid "Recent Comparisons"
+msgstr "最近の比較"
+
+# Options dialog
+msgid "Options"
+msgstr "オプション"
+
+msgid "Appearance"
+msgstr "外観"
+
+msgid "Theme:"
+msgstr "テーマ:"
+
+msgid "Language:"
+msgstr "言語:"
+
+msgid "Compare"
+msgstr "比較"
+
+msgid "Ignore whitespace differences"
+msgstr "空白の違いを無視"
+
+msgid "Ignore case differences"
+msgstr "大文字小文字の違いを無視"
+
+msgid "Ignore blank lines"
+msgstr "空行を無視"
+
+msgid "Ignore line ending differences (CR/LF)"
+msgstr "改行コードの違いを無視 (CR/LF)"
+
+msgid "Detect moved lines"
+msgstr "移動した行を検出"
+
+msgid "Editor"
+msgstr "エディタ"
+
+msgid "Show line numbers"
+msgstr "行番号を表示"
+
+msgid "Word wrap"
+msgstr "折り返し"
+
+msgid "Syntax highlighting"
+msgstr "シンタックスハイライト"
+
+msgid "Enable right-click context menu"
+msgstr "右クリックメニューを有効にする"
+
+msgid "Font size:"
+msgstr "フォントサイズ:"
+
+msgid "Tab width:"
+msgstr "タブ幅:"
+
+msgid "Apply"
+msgstr "適用"
+
+# 3-way merge
+msgid "Resolve"
+msgstr "解決"
