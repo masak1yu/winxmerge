@@ -1,4 +1,5 @@
 import { Palette } from "std-widgets.slint";
+import { ThemeColors } from "../theme.slint";
 
 export struct TabData {
     title: string,
@@ -53,7 +54,7 @@ export component TabBar inherits Rectangle {
                     width: tab.has-unsaved ? 8px : 0;
                     text: tab.has-unsaved ? "●" : "";
                     font-size: 8px;
-                    color: #b08800;
+                    color: ThemeColors.unsaved-indicator;
                     vertical-alignment: center;
                 }
 

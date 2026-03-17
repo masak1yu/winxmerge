@@ -43,6 +43,9 @@ fn main() {
         window.set_opt_font_size(s.font_size as i32);
         window.set_opt_tab_width(s.tab_width);
         window.set_opt_enable_context_menu(s.enable_context_menu);
+        let theme_index = if s.theme == "dark" { 1 } else { 0 };
+        window.set_opt_theme(theme_index);
+        window.invoke_set_theme(theme_index);
         let mut app = state.borrow_mut();
         app.current_tab_mut().diff_options.ignore_whitespace = s.ignore_whitespace;
         app.current_tab_mut().diff_options.ignore_case = s.ignore_case;

@@ -1,4 +1,4 @@
-import { Button, CheckBox, SpinBox, Palette } from "std-widgets.slint";
+import { Button, CheckBox, SpinBox, ComboBox, Palette } from "std-widgets.slint";
 
 export component OptionsDialog inherits Rectangle {
     in-out property <bool> visible-flag: false;
@@ -18,6 +18,9 @@ export component OptionsDialog inherits Rectangle {
     in-out property <int> opt-tab-width: 4;
     in-out property <bool> opt-enable-context-menu: true;
 
+    // Theme: 0=Light, 1=Dark
+    in-out property <int> opt-theme: 0;
+
     callback apply();
     callback cancel();
 
@@ -31,7 +34,7 @@ export component OptionsDialog inherits Rectangle {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             width: 500px;
-            height: 480px;
+            height: 540px;
             background: Palette.background;
             border-color: Palette.border;
             border-width: 1px;
@@ -52,6 +55,36 @@ export component OptionsDialog inherits Rectangle {
                 }
 
                 Rectangle { height: 12px; }
+
+                // Appearance section
+                Text {
+                    text: "Appearance";
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: Palette.foreground;
+                }
+                Rectangle {
+                    height: 1px;
+                    background: Palette.border;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Text {
+                        text: "Theme:";
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                    ComboBox {
+                        width: 120px;
+                        model: ["Light", "Dark"];
+                        current-index: root.opt-theme;
+                        selected(val) => { root.opt-theme = self.current-index; }
+                    }
+                }
+
+                Rectangle { height: 8px; }
 
                 // Compare section
                 Text {

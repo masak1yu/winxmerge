@@ -39,6 +39,10 @@ pub struct AppSettings {
     #[serde(default = "default_true")]
     pub enable_context_menu: bool,
 
+    // Theme: "light", "dark"
+    #[serde(default = "default_theme")]
+    pub theme: String,
+
     #[serde(default)]
     pub recent_files: Vec<RecentEntry>,
 }
@@ -65,6 +69,9 @@ fn default_tab_width() -> i32 {
 fn default_true() -> bool {
     true
 }
+fn default_theme() -> String {
+    "light".to_string()
+}
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -83,6 +90,7 @@ impl Default for AppSettings {
             word_wrap: true,
             syntax_highlighting: true,
             enable_context_menu: true,
+            theme: default_theme(),
             recent_files: Vec::new(),
         }
     }
