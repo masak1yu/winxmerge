@@ -105,4 +105,10 @@ winxmerge/
 
 ## ライセンス
 
-MIT
+本プロジェクトは [Slint Royalty-Free Desktop, Mobile, and Web Applications License v2.0](https://slint.dev/terms-and-conditions#royalty-free) の下で配布されます。
+
+Slint UI フレームワークを使用しているため、以下の条件が適用されます:
+
+- デスクトップ / モバイル / Web アプリケーションとしての配布はロイヤリティフリー
+- 組み込みシステムでの使用は対象外
+- Slint の帰属表示（AboutSlint ウィジェットまたは Web バッジ）が必要
