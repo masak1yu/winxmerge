@@ -1,6 +1,7 @@
 mod app;
 mod diff;
 mod encoding;
+mod highlight;
 mod models;
 
 slint::include_modules!();

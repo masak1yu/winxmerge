@@ -9,6 +9,9 @@ export struct DiffLineData {
     status: int,
     is-current-diff: bool,
     diff-index: int, // -1 if not a diff, otherwise the diff block index
+    // Syntax highlight: -1=none, 0=keyword, 1=string, 2=comment, 3=number, 4=function, etc.
+    left-highlight: int,
+    right-highlight: int,
 }
 
 component DiffLineRow inherits Rectangle {
@@ -16,6 +19,7 @@ component DiffLineRow inherits Rectangle {
     in property <string> text;
     in property <int> status;
     in property <bool> is-current;
+    in property <int> highlight-type: -1;
 
     background: is-current ? current-bg : status == 1 ? #e6ffec : status == 2 ? #ffebe9 : status == 3 ? #fff8c5 : status == 4 ? #e0e8ff : Palette.background;
 
@@ -57,6 +61,18 @@ component DiffLineRow inherits Rectangle {
             font-family: "monospace";
             vertical-alignment: center;
             overflow: elide;
+            color: highlight-type == 0 ? #c678dd :  // keyword - purple
+                   highlight-type == 1 ? #98c379 :  // string - green
+                   highlight-type == 2 ? #7f848e :  // comment - gray
+                   highlight-type == 3 ? #d19a66 :  // number - orange
+                   highlight-type == 4 ? #61afef :  // function - blue
+                   highlight-type == 5 ? #61afef :  // function.builtin - blue
+                   highlight-type == 6 ? #e5c07b :  // type - yellow
+                   highlight-type == 7 ? #e5c07b :  // type.builtin
+                   highlight-type == 8 ? #e06c75 :  // variable - red
+                   highlight-type == 9 ? #e06c75 :  // variable.builtin
+                   highlight-type == 10 ? #56b6c2 : // operator - cyan
+                   Palette.foreground;
         }
     }
 }
@@ -159,6 +175,7 @@ export component DiffView inherits Rectangle {
                     text: line.left-text;
                     status: line.status == 1 ? 0 : line.status;
                     is-current: line.is-current-diff;
+                    highlight-type: line.left-highlight;
                 }
             }
 
@@ -224,6 +241,7 @@ export component DiffView inherits Rectangle {
                     text: line.right-text;
                     status: line.status == 2 ? 0 : line.status;
                     is-current: line.is-current-diff;
+                    highlight-type: line.right-highlight;
                 }
             }
 

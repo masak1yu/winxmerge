@@ -6,6 +6,7 @@ use slint::{Model, ModelRc, SharedString, VecModel};
 use crate::diff::engine::{compute_diff_with_options, DiffOptions};
 use crate::diff::folder::compare_folders;
 use crate::encoding::{decode_file, encode_text};
+use crate::highlight::{detect_file_type, highlight_lines};
 use crate::models::diff_line::LineStatus;
 use crate::models::folder_item::FileCompareStatus;
 use crate::{DiffLineData, FolderItemData, MainWindow, TabData};
@@ -222,10 +223,23 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
         .unwrap_or_default();
     tab.title = format!("{} ↔ {}", left_name, right_name);
 
-    recompute_diff_from_text(window, state, &left_text, &right_text);
+    // Compute syntax highlights
+    let left_path_str = left_path.to_string_lossy().to_string();
+    let right_path_str = right_path.to_string_lossy().to_string();
+    let left_highlights = highlight_lines(&left_text, &left_path_str);
+    let right_highlights = highlight_lines(&right_text, &right_path_str);
+
+    recompute_diff_from_text_with_highlights(
+        window, state, &left_text, &right_text, &left_highlights, &right_highlights,
+    );
 
     let tab = state.current_tab();
-    let enc_info = format!(" [{}  |  {}]", tab.left_encoding, tab.right_encoding);
+    let left_type = detect_file_type(&left_path_str);
+    let right_type = detect_file_type(&right_path_str);
+    let enc_info = format!(
+        " [{}  |  {}] ({} / {})",
+        tab.left_encoding, tab.right_encoding, left_type, right_type
+    );
     let current = window.get_status_text().to_string();
     window.set_status_text(SharedString::from(current + &enc_info));
 
@@ -237,6 +251,18 @@ pub fn recompute_diff_from_text(
     state: &mut AppState,
     left_text: &str,
     right_text: &str,
+) {
+    let empty_hl: Vec<i32> = Vec::new();
+    recompute_diff_from_text_with_highlights(window, state, left_text, right_text, &empty_hl, &empty_hl);
+}
+
+pub fn recompute_diff_from_text_with_highlights(
+    window: &MainWindow,
+    state: &mut AppState,
+    left_text: &str,
+    right_text: &str,
+    left_highlights: &[i32],
+    right_highlights: &[i32],
 ) {
     let tab = state.current_tab_mut();
     let result = compute_diff_with_options(left_text, right_text, &tab.diff_options);
@@ -268,6 +294,15 @@ pub fn recompute_diff_from_text(
                 .position(|&pos| pos == i)
                 .map(|idx| idx as i32)
                 .unwrap_or(-1);
+
+            // Map line numbers to highlight indices
+            let left_hl = line.left_line_no
+                .and_then(|n| left_highlights.get((n - 1) as usize).copied())
+                .unwrap_or(-1);
+            let right_hl = line.right_line_no
+                .and_then(|n| right_highlights.get((n - 1) as usize).copied())
+                .unwrap_or(-1);
+
             DiffLineData {
                 left_line_no: line
                     .left_line_no
@@ -282,6 +317,8 @@ pub fn recompute_diff_from_text(
                 status,
                 is_current_diff: diff_index == 0 && !result.diff_positions.is_empty(),
                 diff_index,
+                left_highlight: left_hl,
+                right_highlight: right_hl,
             }
         })
         .collect();
