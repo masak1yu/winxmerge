@@ -1,0 +1,87 @@
+import { Button, HorizontalBox, VerticalBox, Palette } from "std-widgets.slint";
+import { DiffView, DiffLineData } from "widgets/diff-view.slint";
+
+export { DiffLineData }
+
+export component MainWindow inherits Window {
+    title: "WinXMerge";
+    width: 1200px;
+    height: 800px;
+
+    in-out property <[DiffLineData]> diff-lines;
+    in-out property <int> diff-count: 0;
+    in-out property <int> current-diff-index: -1;
+    in-out property <string> left-path: "";
+    in-out property <string> right-path: "";
+    in-out property <string> status-text: "Open two files to compare";
+
+    callback open-left-file();
+    callback open-right-file();
+    callback next-diff();
+    callback prev-diff();
+
+    VerticalLayout {
+        // Toolbar
+        Rectangle {
+            height: 40px;
+            background: Palette.background.darker(0.03);
+            border-color: Palette.border;
+            border-width: 1px;
+
+            HorizontalLayout {
+                padding: 4px;
+                spacing: 4px;
+                alignment: start;
+
+                Button {
+                    text: "Open Left...";
+                    clicked => { root.open-left-file(); }
+                }
+
+                Button {
+                    text: "Open Right...";
+                    clicked => { root.open-right-file(); }
+                }
+
+                Rectangle { width: 16px; }
+
+                Button {
+                    text: "◀ Prev";
+                    enabled: diff-count > 0;
+                    clicked => { root.prev-diff(); }
+                }
+
+                Button {
+                    text: "Next ▶";
+                    enabled: diff-count > 0;
+                    clicked => { root.next-diff(); }
+                }
+            }
+        }
+
+        // Diff view
+        DiffView {
+            diff-lines: root.diff-lines;
+            current-diff-index: root.current-diff-index;
+            left-title: root.left-path != "" ? root.left-path : "Left file";
+            right-title: root.right-path != "" ? root.right-path : "Right file";
+        }
+
+        // Status bar
+        Rectangle {
+            height: 24px;
+            background: Palette.background.darker(0.03);
+            border-color: Palette.border;
+            border-width: 1px;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                Text {
+                    text: root.status-text;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,6 @@
+Hello, World!
+This is a test file.
+Line three is the same.
+This line will be removed.
+Another common line.
+The end.

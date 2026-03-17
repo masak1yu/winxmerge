@@ -1,0 +1,6 @@
+Hello, World!
+This is a modified test file.
+Line three is the same.
+Another common line.
+A new line was added here.
+The end.
