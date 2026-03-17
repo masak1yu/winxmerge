@@ -1,9 +1,10 @@
 import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit } from "std-widgets.slint";
 import { DiffView, DiffLineData } from "widgets/diff-view.slint";
 import { FolderView, FolderItemData } from "widgets/folder-view.slint";
+import { TabBar, TabData } from "widgets/tab-bar.slint";
 import { OpenDialog } from "dialogs/open-dialog.slint";
 
-export { DiffLineData, FolderItemData }
+export { DiffLineData, FolderItemData, TabData }
 
 component ConfirmDialog inherits Rectangle {
     in property <string> message: "";
@@ -105,6 +106,10 @@ export component MainWindow inherits Window {
     in-out property <string> open-right-path-input: "";
     in-out property <bool> open-is-folder-mode: false;
 
+    // Tabs
+    in-out property <[TabData]> tab-list: [{title: "New", is-active: true, has-unsaved: false}];
+    in-out property <int> active-tab-index: 0;
+
     callback open-left-file();
     callback open-right-file();
     callback open-folder-left();
@@ -126,6 +131,9 @@ export component MainWindow inherits Window {
     callback replace-all(/* search */ string, /* replacement */ string);
     callback start-compare(/* left */ string, /* right */ string, /* is-folder */ bool);
     callback discard-and-proceed();
+    callback new-tab();
+    callback close-tab(int);
+    callback switch-tab(int);
 
     // Helper: check unsaved before action
     function request-action(action: int) {
@@ -141,6 +149,7 @@ export component MainWindow inherits Window {
     MenuBar {
         Menu {
             title: "File";
+            MenuItem { title: "New Tab"; activated => { root.new-tab(); } }
             MenuItem { title: "New Compare..."; activated => { root.request-action(5); } }
             MenuSeparator {}
             MenuItem { title: "Open Left File..."; activated => { root.request-action(1); } }
@@ -184,6 +193,15 @@ export component MainWindow inherits Window {
     }
 
     VerticalLayout {
+        // Tab bar
+        TabBar {
+            tabs: root.tab-list;
+            active-index: root.active-tab-index;
+            tab-clicked(idx) => { root.switch-tab(idx); }
+            tab-close(idx) => { root.close-tab(idx); }
+            new-tab => { root.new-tab(); }
+        }
+
         // Toolbar
         if root.show-toolbar && root.view-mode != 2 : Rectangle {
             height: 40px;

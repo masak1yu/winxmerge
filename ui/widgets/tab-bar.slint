@@ -1,0 +1,111 @@
+import { Palette } from "std-widgets.slint";
+
+export struct TabData {
+    title: string,
+    is-active: bool,
+    has-unsaved: bool,
+}
+
+export component TabBar inherits Rectangle {
+    in property <[TabData]> tabs;
+    in property <int> active-index: 0;
+
+    callback tab-clicked(int);
+    callback tab-close(int);
+    callback new-tab();
+
+    height: 32px;
+    background: Palette.background.darker(0.04);
+    border-color: Palette.border;
+    border-width: 1px;
+
+    HorizontalLayout {
+        alignment: start;
+        spacing: 0;
+
+        for tab[idx] in tabs: Rectangle {
+            width: Math.min(200px, Math.max(100px, tab-text.preferred-width + 48px));
+            height: 32px;
+            background: tab.is-active ? Palette.background : Palette.background.darker(0.06);
+            border-color: Palette.border;
+            border-width: 1px;
+            border-radius: 0;
+
+            // Bottom highlight for active tab
+            if tab.is-active : Rectangle {
+                y: parent.height - 2px;
+                height: 2px;
+                background: Palette.accent-background;
+            }
+
+            HorizontalLayout {
+                padding-left: 10px;
+                padding-right: 4px;
+                spacing: 4px;
+
+                // Unsaved indicator
+                Text {
+                    width: tab.has-unsaved ? 8px : 0;
+                    text: tab.has-unsaved ? "●" : "";
+                    font-size: 8px;
+                    color: #b08800;
+                    vertical-alignment: center;
+                }
+
+                // Tab title
+                tab-text := Text {
+                    text: tab.title;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                    color: tab.is-active ? Palette.foreground : Palette.foreground.transparentize(0.3);
+                }
+
+                // Close button
+                Rectangle {
+                    width: 20px;
+                    height: 20px;
+                    border-radius: 3px;
+                    background: close-touch.has-hover ? Palette.background.darker(0.15) : transparent;
+
+                    Text {
+                        text: "✕";
+                        font-size: 10px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: Palette.foreground.transparentize(0.4);
+                    }
+
+                    close-touch := TouchArea {
+                        clicked => { root.tab-close(idx); }
+                    }
+                }
+            }
+
+            // Tab click area (behind close button)
+            TouchArea {
+                clicked => { root.tab-clicked(idx); }
+            }
+        }
+
+        // New tab button
+        Rectangle {
+            width: 32px;
+            height: 32px;
+            background: new-tab-touch.has-hover ? Palette.background.darker(0.08) : transparent;
+
+            Text {
+                text: "+";
+                font-size: 16px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                color: Palette.foreground.transparentize(0.3);
+            }
+
+            new-tab-touch := TouchArea {
+                clicked => { root.new-tab(); }
+            }
+        }
+    }
+}

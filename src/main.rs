@@ -9,10 +9,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use app::{
-    copy_to_left, copy_to_right, discard_and_proceed, navigate_diff, navigate_search,
-    open_file_dialog, open_folder_dialog, open_folder_item, replace_all_text, replace_text,
-    run_folder_compare, save_file, search_text, start_compare, toggle_ignore_case,
-    toggle_ignore_whitespace, AppState,
+    add_tab, close_tab, copy_to_left, copy_to_right, discard_and_proceed, navigate_diff,
+    navigate_search, open_file_dialog, open_folder_dialog, open_folder_item, replace_all_text,
+    replace_text, run_folder_compare, save_file, search_text, start_compare, switch_tab,
+    toggle_ignore_case, toggle_ignore_whitespace, AppState,
 };
 use slint::SharedString;
 
@@ -20,7 +20,38 @@ fn main() {
     let window = MainWindow::new().unwrap();
     let state = Rc::new(RefCell::new(AppState::new()));
 
-    // Open left file (from open dialog browse)
+    // Initialize tab list
+    app::sync_tab_list(&window, &state.borrow());
+
+    // --- Tab management ---
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_new_tab(move || {
+            let window = window_weak.unwrap();
+            add_tab(&window, &mut state.borrow_mut());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_close_tab(move |idx| {
+            let window = window_weak.unwrap();
+            close_tab(&window, &mut state.borrow_mut(), idx);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_switch_tab(move |idx| {
+            let window = window_weak.unwrap();
+            switch_tab(&window, &mut state.borrow_mut(), idx);
+        });
+    }
+
+    // --- File operations ---
     {
         let window_weak = window.as_weak();
         let state = state.clone();
@@ -32,20 +63,19 @@ fn main() {
                     window.set_open_left_path_input(SharedString::from(
                         path.to_string_lossy().to_string(),
                     ));
-                    state.borrow_mut().left_folder = Some(path);
+                    state.borrow_mut().current_tab_mut().left_folder = Some(path);
                 }
             } else {
                 if let Some(path) = open_file_dialog("Select left file") {
                     window.set_open_left_path_input(SharedString::from(
                         path.to_string_lossy().to_string(),
                     ));
-                    state.borrow_mut().left_path = Some(path);
+                    state.borrow_mut().current_tab_mut().left_path = Some(path);
                 }
             }
         });
     }
 
-    // Open right file (from open dialog browse)
     {
         let window_weak = window.as_weak();
         let state = state.clone();
@@ -57,20 +87,19 @@ fn main() {
                     window.set_open_right_path_input(SharedString::from(
                         path.to_string_lossy().to_string(),
                     ));
-                    state.borrow_mut().right_folder = Some(path);
+                    state.borrow_mut().current_tab_mut().right_folder = Some(path);
                 }
             } else {
                 if let Some(path) = open_file_dialog("Select right file") {
                     window.set_open_right_path_input(SharedString::from(
                         path.to_string_lossy().to_string(),
                     ));
-                    state.borrow_mut().right_path = Some(path);
+                    state.borrow_mut().current_tab_mut().right_path = Some(path);
                 }
             }
         });
     }
 
-    // Open left folder (from menu)
     {
         let window_weak = window.as_weak();
         let state = state.clone();
@@ -80,12 +109,11 @@ fn main() {
                 window.set_open_left_path_input(SharedString::from(
                     path.to_string_lossy().to_string(),
                 ));
-                state.borrow_mut().left_folder = Some(path);
+                state.borrow_mut().current_tab_mut().left_folder = Some(path);
             }
         });
     }
 
-    // Open right folder (from menu)
     {
         let window_weak = window.as_weak();
         let state = state.clone();
@@ -95,7 +123,7 @@ fn main() {
                 window.set_open_right_path_input(SharedString::from(
                     path.to_string_lossy().to_string(),
                 ));
-                state.borrow_mut().right_folder = Some(path);
+                state.borrow_mut().current_tab_mut().right_folder = Some(path);
             }
         });
     }
@@ -137,6 +165,7 @@ fn main() {
         window.on_back_to_folder_view(move || {
             let window = window_weak.unwrap();
             let mut s = state.borrow_mut();
+            s.current_tab_mut().view_mode = 1;
             window.set_view_mode(1);
             run_folder_compare(&window, &mut s);
         });
