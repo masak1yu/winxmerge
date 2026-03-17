@@ -13,12 +13,13 @@ use std::rc::Rc;
 
 use app::{
     add_tab, apply_options, close_tab, copy_current_line_text, copy_to_left, copy_to_right,
-    discard_and_proceed, export_html_report, navigate_diff, navigate_search, open_file_dialog,
-    open_folder_dialog, open_folder_item, redo, replace_all_text, replace_text,
-    run_folder_compare, save_file, search_text, select_diff, start_compare, switch_tab,
+    discard_and_proceed, export_html_report, navigate_conflict, navigate_diff, navigate_search,
+    open_file_dialog, open_folder_dialog, open_folder_item, redo, replace_all_text, replace_text,
+    resolve_conflict_use_left, resolve_conflict_use_right, run_folder_compare, save_file,
+    search_text, select_diff, start_compare, start_three_way_compare, switch_tab,
     toggle_ignore_case, toggle_ignore_whitespace, undo, AppState,
 };
-use slint::SharedString;
+use slint::{ModelRc, SharedString, VecModel};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -47,11 +48,22 @@ fn main() {
         app.current_tab_mut().diff_options.ignore_case = s.ignore_case;
     }
 
+    // Load recent entries into UI
+    sync_recent_entries(&window, &settings.borrow());
+
     // Initialize tab list
     app::sync_tab_list(&window, &state.borrow());
 
-    // Handle CLI arguments: winxmerge <left> <right>
-    if args.len() >= 3 {
+    // Handle CLI arguments:
+    //   winxmerge <left> <right>           — 2-way diff
+    //   winxmerge <base> <left> <right>    — 3-way merge
+    if args.len() >= 4 {
+        // 3-way merge
+        let mut s = state.borrow_mut();
+        start_three_way_compare(&window, &mut s, &args[1], &args[2], &args[3]);
+        app::sync_tab_list(&window, &s);
+    } else if args.len() >= 3 {
+        // 2-way diff
         let left = std::path::PathBuf::from(&args[1]);
         let right = std::path::PathBuf::from(&args[2]);
         let mut s = state.borrow_mut();
@@ -178,10 +190,17 @@ fn main() {
         let settings = settings.clone();
         window.on_start_compare(move |left, right, is_folder| {
             let window = window_weak.unwrap();
-            start_compare(&window, &mut state.borrow_mut(), &left, &right, is_folder);
+            let is_three_way = window.get_open_is_three_way();
+            if is_three_way {
+                let base = window.get_open_base_path_input().to_string();
+                start_three_way_compare(&window, &mut state.borrow_mut(), &base, &left, &right);
+            } else {
+                start_compare(&window, &mut state.borrow_mut(), &left, &right, is_folder);
+            }
             let mut s = settings.borrow_mut();
             s.add_recent(&left, &right, is_folder);
             s.save();
+            sync_recent_entries(&window, &s);
         });
     }
 
@@ -418,5 +437,93 @@ fn main() {
         });
     }
 
+    // Browse base file (for 3-way)
+    {
+        let window_weak = window.as_weak();
+        window.on_browse_base(move || {
+            if let Some(path) = open_file_dialog("Select base file") {
+                let window = window_weak.unwrap();
+                window.set_open_base_path_input(SharedString::from(
+                    path.to_string_lossy().to_string(),
+                ));
+            }
+        });
+    }
+
+    // 3-way conflict navigation
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_next_conflict(move || {
+            let window = window_weak.unwrap();
+            navigate_conflict(&window, &mut state.borrow_mut(), true);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_prev_conflict(move || {
+            let window = window_weak.unwrap();
+            navigate_conflict(&window, &mut state.borrow_mut(), false);
+        });
+    }
+
+    // 3-way conflict resolution
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_use_left(move |idx| {
+            let window = window_weak.unwrap();
+            resolve_conflict_use_left(&window, &mut state.borrow_mut(), idx);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_use_right(move |idx| {
+            let window = window_weak.unwrap();
+            resolve_conflict_use_right(&window, &mut state.borrow_mut(), idx);
+        });
+    }
+
+    // Open recent entry
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        let settings = settings.clone();
+        window.on_open_recent(move |idx| {
+            let window = window_weak.unwrap();
+            let s = settings.borrow();
+            if let Some(entry) = s.recent_files.get(idx as usize) {
+                let left = entry.left_path.clone();
+                let right = entry.right_path.clone();
+                let is_folder = entry.is_folder;
+                drop(s);
+                start_compare(
+                    &window,
+                    &mut state.borrow_mut(),
+                    &left,
+                    &right,
+                    is_folder,
+                );
+            }
+        });
+    }
+
     window.run().unwrap();
+}
+
+fn sync_recent_entries(window: &MainWindow, settings: &settings::AppSettings) {
+    let entries: Vec<RecentEntryData> = settings
+        .recent_files
+        .iter()
+        .map(|r| RecentEntryData {
+            left_path: SharedString::from(&r.left_path),
+            right_path: SharedString::from(&r.right_path),
+            is_folder: r.is_folder,
+        })
+        .collect();
+    window.set_recent_entries(ModelRc::new(VecModel::from(entries)));
 }

@@ -4,13 +4,14 @@ use std::path::PathBuf;
 use slint::{Model, ModelRc, SharedString, VecModel};
 
 use crate::diff::engine::{compute_diff_with_options, DiffOptions};
+use crate::diff::three_way::{compute_three_way_diff, ThreeWayStatus};
 use crate::settings::AppSettings;
 use crate::diff::folder::compare_folders;
 use crate::encoding::{decode_file, encode_text};
 use crate::highlight::{detect_file_type, highlight_lines};
 use crate::models::diff_line::LineStatus;
 use crate::models::folder_item::FileCompareStatus;
-use crate::{DiffLineData, FolderItemData, MainWindow, TabData};
+use crate::{DiffLineData, FolderItemData, MainWindow, TabData, ThreeWayLineData};
 
 /// Snapshot for undo/redo
 #[derive(Clone)]
@@ -23,6 +24,9 @@ struct TextSnapshot {
 pub struct TabState {
     pub left_path: Option<PathBuf>,
     pub right_path: Option<PathBuf>,
+    pub base_path: Option<PathBuf>,
+    pub three_way_conflict_positions: Vec<usize>,
+    pub current_conflict: i32,
     pub diff_positions: Vec<usize>,
     pub current_diff: i32,
     pub left_lines: Vec<String>,
@@ -51,6 +55,9 @@ impl TabState {
         Self {
             left_path: None,
             right_path: None,
+            base_path: None,
+            three_way_conflict_positions: Vec::new(),
+            current_conflict: -1,
             diff_positions: Vec::new(),
             current_diff: -1,
             left_lines: Vec::new(),
@@ -245,11 +252,20 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
         .unwrap_or_default();
     tab.title = format!("{} ↔ {}", left_name, right_name);
 
-    // Compute syntax highlights
+    // Compute syntax highlights (if enabled)
     let left_path_str = left_path.to_string_lossy().to_string();
     let right_path_str = right_path.to_string_lossy().to_string();
-    let left_highlights = highlight_lines(&left_text, &left_path_str);
-    let right_highlights = highlight_lines(&right_text, &right_path_str);
+    let syntax_enabled = window.get_opt_syntax_highlighting();
+    let left_highlights = if syntax_enabled {
+        highlight_lines(&left_text, &left_path_str)
+    } else {
+        Vec::new()
+    };
+    let right_highlights = if syntax_enabled {
+        highlight_lines(&right_text, &right_path_str)
+    } else {
+        Vec::new()
+    };
 
     recompute_diff_from_text_with_highlights(
         window, state, &left_text, &right_text, &left_highlights, &right_highlights,
@@ -741,6 +757,9 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
     let tab = state.current_tab_mut();
     tab.diff_options.ignore_whitespace = settings.ignore_whitespace;
     tab.diff_options.ignore_case = settings.ignore_case;
+    tab.diff_options.ignore_blank_lines = settings.ignore_blank_lines;
+    tab.diff_options.ignore_eol = settings.ignore_eol;
+    tab.diff_options.detect_moved_lines = settings.detect_moved_lines;
 
     if tab.left_path.is_some() && tab.right_path.is_some() {
         run_diff(window, state);
@@ -884,6 +903,17 @@ fn case_insensitive_replace(text: &str, search_lower: &str, replacement: &str) -
     }
     result.push_str(&text[last..]);
     result
+}
+
+pub fn start_three_way_compare(window: &MainWindow, state: &mut AppState, base: &str, left: &str, right: &str) {
+    {
+        let tab = state.current_tab_mut();
+        tab.base_path = Some(PathBuf::from(base));
+        tab.left_path = Some(PathBuf::from(left));
+        tab.right_path = Some(PathBuf::from(right));
+        tab.view_mode = 3;
+    }
+    run_three_way_diff(window, state);
 }
 
 pub fn start_compare(window: &MainWindow, state: &mut AppState, left: &str, right: &str, is_folder: bool) {
@@ -1075,6 +1105,193 @@ pub fn open_folder_item(window: &MainWindow, state: &mut AppState, index: i32) {
         window.set_view_mode(0);
         window.set_has_folder_context(true);
         run_diff(window, state);
+    }
+}
+
+// --- 3-way merge ---
+
+pub fn run_three_way_diff(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab();
+    let (base_path, left_path, right_path) = match (&tab.base_path, &tab.left_path, &tab.right_path) {
+        (Some(b), Some(l), Some(r)) => (b.clone(), l.clone(), r.clone()),
+        _ => return,
+    };
+
+    let base_bytes = fs::read(&base_path).unwrap_or_default();
+    let left_bytes = fs::read(&left_path).unwrap_or_default();
+    let right_bytes = fs::read(&right_path).unwrap_or_default();
+
+    let (base_text, _) = decode_file(&base_bytes);
+    let (left_text, _) = decode_file(&left_bytes);
+    let (right_text, _) = decode_file(&right_bytes);
+
+    let result = compute_three_way_diff(&base_text, &left_text, &right_text);
+
+    let line_data: Vec<ThreeWayLineData> = result
+        .lines
+        .iter()
+        .enumerate()
+        .map(|(i, line)| {
+            let status: i32 = match line.status {
+                ThreeWayStatus::Equal => 0,
+                ThreeWayStatus::LeftChanged => 1,
+                ThreeWayStatus::RightChanged => 2,
+                ThreeWayStatus::BothChanged => 3,
+                ThreeWayStatus::Conflict => 4,
+            };
+            let conflict_index = result
+                .conflict_positions
+                .iter()
+                .position(|&pos| pos == i)
+                .map(|idx| idx as i32)
+                .unwrap_or(-1);
+            ThreeWayLineData {
+                base_line_no: line.base_line_no.map(|n| SharedString::from(n.to_string())).unwrap_or_default(),
+                left_line_no: line.left_line_no.map(|n| SharedString::from(n.to_string())).unwrap_or_default(),
+                right_line_no: line.right_line_no.map(|n| SharedString::from(n.to_string())).unwrap_or_default(),
+                base_text: SharedString::from(&line.base_text),
+                left_text: SharedString::from(&line.left_text),
+                right_text: SharedString::from(&line.right_text),
+                status,
+                is_current: conflict_index == 0 && !result.conflict_positions.is_empty(),
+                conflict_index,
+            }
+        })
+        .collect();
+
+    let left_name = left_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let right_name = right_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+
+    let tab = state.current_tab_mut();
+    tab.three_way_conflict_positions = result.conflict_positions.clone();
+    tab.current_conflict = if result.conflict_positions.is_empty() { -1 } else { 0 };
+    tab.view_mode = 3;
+    tab.title = format!("{} ↔ {} (3-way)", left_name, right_name);
+
+    window.set_three_way_lines(ModelRc::new(VecModel::from(line_data)));
+    window.set_conflict_count(result.conflict_count as i32);
+    window.set_current_conflict_index(tab.current_conflict);
+    window.set_view_mode(3);
+    window.set_left_path(SharedString::from(left_path.to_string_lossy().to_string()));
+    window.set_right_path(SharedString::from(right_path.to_string_lossy().to_string()));
+    window.set_base_path(SharedString::from(base_path.to_string_lossy().to_string()));
+    window.set_status_text(SharedString::from(format!(
+        "{} conflicts found",
+        result.conflict_count
+    )));
+
+    sync_tab_list(window, state);
+}
+
+pub fn navigate_conflict(window: &MainWindow, state: &mut AppState, forward: bool) {
+    let tab = state.current_tab_mut();
+    if tab.three_way_conflict_positions.is_empty() {
+        return;
+    }
+
+    let new_index = if forward {
+        if tab.current_conflict < tab.three_way_conflict_positions.len() as i32 - 1 {
+            tab.current_conflict + 1
+        } else {
+            0
+        }
+    } else if tab.current_conflict > 0 {
+        tab.current_conflict - 1
+    } else {
+        tab.three_way_conflict_positions.len() as i32 - 1
+    };
+
+    tab.current_conflict = new_index;
+    let total = tab.three_way_conflict_positions.len();
+    let current_pos = tab.three_way_conflict_positions[new_index as usize];
+
+    window.set_current_conflict_index(new_index);
+
+    let model = window.get_three_way_lines();
+    if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+        for i in 0..vec_model.row_count() {
+            let mut row = vec_model.row_data(i).unwrap();
+            let should = i == current_pos;
+            if row.is_current != should {
+                row.is_current = should;
+                vec_model.set_row_data(i, row);
+            }
+        }
+    }
+
+    window.set_status_text(SharedString::from(format!(
+        "Conflict {} of {}",
+        new_index + 1,
+        total
+    )));
+}
+
+pub fn resolve_conflict_use_left(window: &MainWindow, state: &mut AppState, conflict_index: i32) {
+    let tab = state.current_tab();
+    if conflict_index < 0 || conflict_index as usize >= tab.three_way_conflict_positions.len() {
+        return;
+    }
+
+    let pos = tab.three_way_conflict_positions[conflict_index as usize];
+    let model = window.get_three_way_lines();
+    if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+        if let Some(mut row) = vec_model.row_data(pos) {
+            row.right_text = row.left_text.clone();
+            row.status = 3; // BothChanged (resolved)
+            row.conflict_index = -1;
+            vec_model.set_row_data(pos, row);
+        }
+    }
+
+    // Remove from conflict positions
+    let tab = state.current_tab_mut();
+    tab.three_way_conflict_positions.retain(|&p| p != pos);
+    window.set_conflict_count(tab.three_way_conflict_positions.len() as i32);
+
+    if tab.three_way_conflict_positions.is_empty() {
+        tab.current_conflict = -1;
+        window.set_status_text(SharedString::from("All conflicts resolved"));
+    } else {
+        let new_idx = (conflict_index as usize).min(tab.three_way_conflict_positions.len() - 1);
+        tab.current_conflict = new_idx as i32;
+        window.set_status_text(SharedString::from(format!(
+            "{} conflicts remaining",
+            tab.three_way_conflict_positions.len()
+        )));
+    }
+}
+
+pub fn resolve_conflict_use_right(window: &MainWindow, state: &mut AppState, conflict_index: i32) {
+    let tab = state.current_tab();
+    if conflict_index < 0 || conflict_index as usize >= tab.three_way_conflict_positions.len() {
+        return;
+    }
+
+    let pos = tab.three_way_conflict_positions[conflict_index as usize];
+    let model = window.get_three_way_lines();
+    if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+        if let Some(mut row) = vec_model.row_data(pos) {
+            row.left_text = row.right_text.clone();
+            row.status = 3; // BothChanged (resolved)
+            row.conflict_index = -1;
+            vec_model.set_row_data(pos, row);
+        }
+    }
+
+    let tab = state.current_tab_mut();
+    tab.three_way_conflict_positions.retain(|&p| p != pos);
+    window.set_conflict_count(tab.three_way_conflict_positions.len() as i32);
+
+    if tab.three_way_conflict_positions.is_empty() {
+        tab.current_conflict = -1;
+        window.set_status_text(SharedString::from("All conflicts resolved"));
+    } else {
+        let new_idx = (conflict_index as usize).min(tab.three_way_conflict_positions.len() - 1);
+        tab.current_conflict = new_idx as i32;
+        window.set_status_text(SharedString::from(format!(
+            "{} conflicts remaining",
+            tab.three_way_conflict_positions.len()
+        )));
     }
 }
 

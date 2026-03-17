@@ -9,10 +9,25 @@ const LARGE_FILE_THRESHOLD: usize = 10_000;
 /// Timeout for diff computation
 const DIFF_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct DiffOptions {
     pub ignore_whitespace: bool,
     pub ignore_case: bool,
+    pub ignore_blank_lines: bool,
+    pub ignore_eol: bool,
+    pub detect_moved_lines: bool,
+}
+
+impl Default for DiffOptions {
+    fn default() -> Self {
+        Self {
+            ignore_whitespace: false,
+            ignore_case: false,
+            ignore_blank_lines: false,
+            ignore_eol: false,
+            detect_moved_lines: true,
+        }
+    }
 }
 
 pub fn compute_diff_with_options(
@@ -124,8 +139,10 @@ pub fn compute_diff_with_options(
         }
     }
 
-    // Detect moved lines: a Removed line whose text appears as an Added line elsewhere
-    detect_moved_lines(&mut lines);
+    // Detect moved lines (if enabled)
+    if options.detect_moved_lines {
+        detect_moved_lines(&mut lines);
+    }
 
     // Rebuild diff_positions and diff_count after move detection
     diff_positions.clear();
@@ -182,9 +199,15 @@ fn detect_moved_lines(lines: &mut [DiffLine]) {
 fn normalize_text(text: &str, options: &DiffOptions) -> String {
     let mut result = String::with_capacity(text.len());
     for line in text.lines() {
-        let mut l = line.to_string();
+        let mut l = if options.ignore_eol {
+            line.trim_end_matches(['\r', '\n']).to_string()
+        } else {
+            line.to_string()
+        };
+        if options.ignore_blank_lines && l.trim().is_empty() {
+            continue;
+        }
         if options.ignore_whitespace {
-            // Collapse all whitespace to single space and trim
             l = l.split_whitespace().collect::<Vec<&str>>().join(" ");
         }
         if options.ignore_case {
@@ -232,7 +255,7 @@ mod tests {
     fn test_ignore_whitespace() {
         let opts = DiffOptions {
             ignore_whitespace: true,
-            ignore_case: false,
+            ..Default::default()
         };
         let result =
             compute_diff_with_options("hello   world\n", "hello world\n", &opts);
@@ -242,8 +265,8 @@ mod tests {
     #[test]
     fn test_ignore_case() {
         let opts = DiffOptions {
-            ignore_whitespace: false,
             ignore_case: true,
+            ..Default::default()
         };
         let result = compute_diff_with_options("Hello\n", "hello\n", &opts);
         assert_eq!(result.diff_count, 0);
@@ -254,9 +277,18 @@ mod tests {
         let left = "aaa\nbbb\nccc\n";
         let right = "ccc\nbbb\naaa\n";
         let result = compute_diff_with_options(left, right, &DiffOptions::default());
-        // aaa and ccc are moved (swapped positions), bbb stays
         let moved_count = result.lines.iter().filter(|l| l.status == LineStatus::Moved).count();
         assert!(moved_count > 0, "Should detect moved lines");
+    }
+
+    #[test]
+    fn test_ignore_blank_lines() {
+        let opts = DiffOptions {
+            ignore_blank_lines: true,
+            ..Default::default()
+        };
+        let result = compute_diff_with_options("hello\n\nworld\n", "hello\nworld\n", &opts);
+        assert_eq!(result.diff_count, 0);
     }
 
     #[test]
@@ -264,6 +296,7 @@ mod tests {
         let opts = DiffOptions {
             ignore_whitespace: true,
             ignore_case: true,
+            ..Default::default()
         };
         let result =
             compute_diff_with_options("Hello   World\n", "hello world\n", &opts);

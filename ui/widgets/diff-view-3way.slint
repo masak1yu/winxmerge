@@ -1,0 +1,265 @@
+import { VerticalBox, HorizontalBox, ListView, Palette } from "std-widgets.slint";
+
+export struct ThreeWayLineData {
+    base-line-no: string,
+    left-line-no: string,
+    right-line-no: string,
+    base-text: string,
+    left-text: string,
+    right-text: string,
+    // 0=Equal, 1=LeftChanged, 2=RightChanged, 3=BothChanged, 4=Conflict
+    status: int,
+    is-current: bool,
+    conflict-index: int,
+}
+
+component ThreeWayLineRow inherits Rectangle {
+    in property <string> line-no;
+    in property <string> text;
+    in property <int> status;
+    in property <bool> is-current;
+    in property <bool> show-line-no: true;
+    in property <int> text-font-size: 13;
+
+    background: is-current ? current-bg :
+                status == 1 ? #e0e8ff :   // LeftChanged - blue
+                status == 2 ? #e0ffe0 :   // RightChanged - green
+                status == 3 ? #fff8c5 :   // BothChanged - yellow
+                status == 4 ? #ffcccc :   // Conflict - red
+                Palette.background;
+
+    property <color> current-bg:
+                status == 4 ? #ff9999 :
+                status == 1 ? #c0d0ff :
+                status == 2 ? #c0ffc0 :
+                status == 3 ? #fff2a8 :
+                Palette.background.darker(0.05);
+
+    HorizontalLayout {
+        padding-left: 4px;
+        padding-right: 4px;
+        spacing: 8px;
+
+        if show-line-no : Rectangle {
+            width: 36px;
+            Text {
+                text: line-no;
+                font-size: 11px;
+                color: Palette.foreground.transparentize(0.5);
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                font-family: "monospace";
+            }
+        }
+
+        // Status marker
+        Rectangle {
+            width: 14px;
+            Text {
+                text: status == 1 ? "L" : status == 2 ? "R" : status == 3 ? "=" : status == 4 ? "!" : " ";
+                font-size: 10px;
+                font-family: "monospace";
+                font-weight: 700;
+                color: status == 1 ? #3b5998 : status == 2 ? #22863a : status == 3 ? #b08800 : status == 4 ? #cb2431 : Palette.foreground.transparentize(0.5);
+                vertical-alignment: center;
+                horizontal-alignment: center;
+            }
+        }
+
+        Text {
+            text: text;
+            font-size: text-font-size * 1px;
+            font-family: "monospace";
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+export component DiffView3Way inherits Rectangle {
+    in property <string> base-title: "Base";
+    in property <string> left-title: "Left (Mine)";
+    in property <string> right-title: "Right (Theirs)";
+    in property <[ThreeWayLineData]> lines;
+    in property <int> current-conflict-index: -1;
+    in property <bool> show-line-numbers: true;
+    in property <int> editor-font-size: 13;
+
+    callback next-conflict();
+    callback prev-conflict();
+    callback use-left(int);
+    callback use-right(int);
+
+    border-color: Palette.border;
+    border-width: 1px;
+
+    VerticalLayout {
+        // Header
+        HorizontalLayout {
+            height: 28px;
+
+            Rectangle {
+                background: Palette.background.darker(0.05);
+                border-color: Palette.border;
+                border-width: 1px;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    Text {
+                        text: left-title;
+                        font-size: 12px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            Rectangle {
+                background: Palette.background.darker(0.05);
+                border-color: Palette.border;
+                border-width: 1px;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    Text {
+                        text: base-title;
+                        font-size: 12px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            // Resolve buttons column header
+            Rectangle {
+                width: 60px;
+                background: Palette.background.darker(0.05);
+                border-color: Palette.border;
+                border-width: 1px;
+                Text {
+                    text: "Resolve";
+                    font-size: 11px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            Rectangle {
+                background: Palette.background.darker(0.05);
+                border-color: Palette.border;
+                border-width: 1px;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    Text {
+                        text: right-title;
+                        font-size: 12px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+
+        // Content
+        HorizontalLayout {
+            // Left pane
+            left-list := ListView {
+                for line in lines: ThreeWayLineRow {
+                    height: 24px;
+                    line-no: line.left-line-no;
+                    text: line.left-text;
+                    status: line.status;
+                    is-current: line.is-current;
+                    show-line-no: root.show-line-numbers;
+                    text-font-size: root.editor-font-size;
+                }
+            }
+
+            // Base pane
+            ListView {
+                viewport-y: left-list.viewport-y;
+                for line in lines: ThreeWayLineRow {
+                    height: 24px;
+                    line-no: line.base-line-no;
+                    text: line.base-text;
+                    status: 0; // Base always neutral
+                    is-current: line.is-current;
+                    show-line-no: root.show-line-numbers;
+                    text-font-size: root.editor-font-size;
+                }
+            }
+
+            // Resolve buttons
+            Rectangle {
+                width: 60px;
+                background: Palette.background.darker(0.01);
+                border-color: Palette.border;
+                border-width: 1px;
+
+                ListView {
+                    viewport-y: left-list.viewport-y;
+                    for line in lines: Rectangle {
+                        height: 24px;
+                        if line.status == 4 : HorizontalLayout {
+                            padding: 1px;
+                            spacing: 2px;
+                            alignment: center;
+
+                            Rectangle {
+                                width: 24px;
+                                height: 20px;
+                                background: use-l-touch.has-hover ? #c0d0ff : transparent;
+                                border-radius: 2px;
+                                Text {
+                                    text: "L";
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    color: #3b5998;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                                use-l-touch := TouchArea {
+                                    clicked => { root.use-left(line.conflict-index); }
+                                }
+                            }
+
+                            Rectangle {
+                                width: 24px;
+                                height: 20px;
+                                background: use-r-touch.has-hover ? #c0ffc0 : transparent;
+                                border-radius: 2px;
+                                Text {
+                                    text: "R";
+                                    font-size: 10px;
+                                    font-weight: 700;
+                                    color: #22863a;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                                use-r-touch := TouchArea {
+                                    clicked => { root.use-right(line.conflict-index); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Right pane
+            ListView {
+                viewport-y: left-list.viewport-y;
+                for line in lines: ThreeWayLineRow {
+                    height: 24px;
+                    line-no: line.right-line-no;
+                    text: line.right-text;
+                    status: line.status;
+                    is-current: line.is-current;
+                    show-line-no: root.show-line-numbers;
+                    text-font-size: root.editor-font-size;
+                }
+            }
+        }
+    }
+}
