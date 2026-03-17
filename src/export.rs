@@ -1,4 +1,4 @@
-use crate::models::diff_line::{DiffLine, DiffResult, LineStatus};
+use crate::models::diff_line::{DiffResult, LineStatus};
 
 /// Export diff result as an HTML file
 pub fn export_html(

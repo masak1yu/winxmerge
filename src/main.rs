@@ -55,11 +55,12 @@ fn main() {
         let left = std::path::PathBuf::from(&args[1]);
         let right = std::path::PathBuf::from(&args[2]);
         let mut s = state.borrow_mut();
-        let tab = s.current_tab_mut();
-        tab.left_path = Some(left);
-        tab.right_path = Some(right);
-        tab.view_mode = 0;
-        drop(tab);
+        {
+            let tab = s.current_tab_mut();
+            tab.left_path = Some(left);
+            tab.right_path = Some(right);
+            tab.view_mode = 0;
+        }
         window.set_view_mode(0);
         app::run_diff(&window, &mut s);
         app::sync_tab_list(&window, &s);
