@@ -859,7 +859,10 @@ fn main() {
         let window_weak = window.as_weak();
         window.window().on_close_requested(move || {
             let window = window_weak.unwrap();
-            let size = window.window().size().to_logical(window.window().scale_factor());
+            let size = window
+                .window()
+                .size()
+                .to_logical(window.window().scale_factor());
             let mut s = settings.borrow_mut();
             s.window_width = size.width;
             s.window_height = size.height;
