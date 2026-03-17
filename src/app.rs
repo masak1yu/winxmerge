@@ -617,6 +617,34 @@ fn rebuild_left_after_copy_from_right(vec_model: &VecModel<DiffLineData>) -> Str
     lines.join("\n") + "\n"
 }
 
+pub fn copy_current_line_text(window: &MainWindow, state: &AppState, is_left: bool) {
+    let tab = state.current_tab();
+    if tab.current_diff < 0 || tab.current_diff as usize >= tab.diff_positions.len() {
+        return;
+    }
+
+    let pos = tab.diff_positions[tab.current_diff as usize];
+    let model = window.get_diff_lines();
+    if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        if let Some(row) = vec_model.row_data(pos) {
+            let text = if is_left {
+                row.left_text.to_string()
+            } else {
+                row.right_text.to_string()
+            };
+
+            if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                let _ = clipboard.set_text(&text);
+                let side = if is_left { "Left" } else { "Right" };
+                window.set_status_text(SharedString::from(format!(
+                    "{} text copied to clipboard",
+                    side
+                )));
+            }
+        }
+    }
+}
+
 pub fn export_html_report(window: &MainWindow, state: &AppState) {
     let tab = state.current_tab();
 

@@ -12,10 +12,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use app::{
-    add_tab, close_tab, copy_to_left, copy_to_right, discard_and_proceed, export_html_report,
-    navigate_diff, navigate_search, open_file_dialog, open_folder_dialog, open_folder_item, redo,
-    replace_all_text, replace_text, run_folder_compare, save_file, search_text, select_diff,
-    start_compare, switch_tab, toggle_ignore_case, toggle_ignore_whitespace, undo, AppState,
+    add_tab, close_tab, copy_current_line_text, copy_to_left, copy_to_right,
+    discard_and_proceed, export_html_report, navigate_diff, navigate_search, open_file_dialog,
+    open_folder_dialog, open_folder_item, redo, replace_all_text, replace_text,
+    run_folder_compare, save_file, search_text, select_diff, start_compare, switch_tab,
+    toggle_ignore_case, toggle_ignore_whitespace, undo, AppState,
 };
 use slint::SharedString;
 
@@ -347,6 +348,25 @@ fn main() {
         window.on_redo(move || {
             let window = window_weak.unwrap();
             redo(&window, &mut state.borrow_mut());
+        });
+    }
+
+    // Copy text to clipboard (from context menu)
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_copy_left_text(move || {
+            let window = window_weak.unwrap();
+            copy_current_line_text(&window, &state.borrow(), true);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_copy_right_text(move || {
+            let window = window_weak.unwrap();
+            copy_current_line_text(&window, &state.borrow(), false);
         });
     }
 

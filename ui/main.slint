@@ -146,6 +146,8 @@ export component MainWindow inherits Window {
     callback undo();
     callback redo();
     callback export-html();
+    callback copy-left-text();
+    callback copy-right-text();
 
     // Helper: check unsaved before action
     function request-action(action: int) {
@@ -445,6 +447,10 @@ export component MainWindow inherits Window {
             copy-to-right(idx) => { root.copy-to-right(idx); }
             copy-to-left(idx) => { root.copy-to-left(idx); }
             select-diff(idx) => { root.select-diff(idx); }
+            next-diff => { root.next-diff(); }
+            prev-diff => { root.prev-diff(); }
+            copy-left-text => { root.copy-left-text(); }
+            copy-right-text => { root.copy-right-text(); }
         }
 
         if root.view-mode == 1 : FolderView {
