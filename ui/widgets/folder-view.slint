@@ -1,0 +1,158 @@
+import { ListView, Palette } from "std-widgets.slint";
+
+export struct FolderItemData {
+    relative-path: string,
+    is-directory: bool,
+    // 0=Identical, 1=Different, 2=LeftOnly, 3=RightOnly
+    status: int,
+    left-size: string,
+    right-size: string,
+}
+
+component FolderItemRow inherits Rectangle {
+    in property <FolderItemData> item;
+    in property <bool> selected: false;
+
+    callback double-clicked();
+
+    height: 24px;
+    background: selected ? Palette.accent-background :
+                ta.has-hover ? Palette.background.darker(0.05) : Palette.background;
+
+    ta := TouchArea {
+        double-clicked => { root.double-clicked(); }
+    }
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 8px;
+
+        // Icon
+        Text {
+            width: 16px;
+            text: item.is-directory ? "📁" : "📄";
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+
+        // Path
+        Text {
+            horizontal-stretch: 1;
+            text: item.relative-path;
+            font-size: 12px;
+            font-family: "monospace";
+            vertical-alignment: center;
+            overflow: elide;
+            color: item.status == 2 ? #cb2431 :
+                   item.status == 3 ? #22863a :
+                   item.status == 1 ? #b08800 :
+                   Palette.foreground;
+        }
+
+        // Status
+        Text {
+            width: 80px;
+            text: item.status == 0 ? "Identical" :
+                  item.status == 1 ? "Different" :
+                  item.status == 2 ? "Left only" :
+                  "Right only";
+            font-size: 11px;
+            color: item.status == 0 ? Palette.foreground.transparentize(0.5) :
+                   item.status == 2 ? #cb2431 :
+                   item.status == 3 ? #22863a :
+                   #b08800;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+
+        // Left size
+        Text {
+            width: 70px;
+            text: item.left-size;
+            font-size: 11px;
+            color: Palette.foreground.transparentize(0.3);
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+
+        // Right size
+        Text {
+            width: 70px;
+            text: item.right-size;
+            font-size: 11px;
+            color: Palette.foreground.transparentize(0.3);
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component FolderView inherits Rectangle {
+    in property <[FolderItemData]> items;
+    in property <int> selected-index: -1;
+
+    callback item-double-clicked(int);
+
+    border-color: Palette.border;
+    border-width: 1px;
+
+    VerticalLayout {
+        // Column header
+        Rectangle {
+            height: 28px;
+            background: Palette.background.darker(0.05);
+            border-color: Palette.border;
+            border-width: 1px;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 8px;
+
+                Rectangle { width: 16px; }
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: "Name";
+                    font-size: 12px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Text {
+                    width: 80px;
+                    text: "Status";
+                    font-size: 12px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    width: 70px;
+                    text: "Left Size";
+                    font-size: 12px;
+                    font-weight: 600;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+                Text {
+                    width: 70px;
+                    text: "Right Size";
+                    font-size: 12px;
+                    font-weight: 600;
+                    horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // Items
+        ListView {
+            for item[idx] in items: FolderItemRow {
+                item: item;
+                selected: idx == selected-index;
+                double-clicked => { root.item-double-clicked(idx); }
+            }
+        }
+    }
+}

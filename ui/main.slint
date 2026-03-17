@@ -1,28 +1,102 @@
-import { Button, HorizontalBox, VerticalBox, Palette } from "std-widgets.slint";
+import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit } from "std-widgets.slint";
 import { DiffView, DiffLineData } from "widgets/diff-view.slint";
+import { FolderView, FolderItemData } from "widgets/folder-view.slint";
 
-export { DiffLineData }
+export { DiffLineData, FolderItemData }
 
 export component MainWindow inherits Window {
     title: "WinXMerge";
     width: 1200px;
     height: 800px;
 
+    // File diff properties
     in-out property <[DiffLineData]> diff-lines;
     in-out property <int> diff-count: 0;
     in-out property <int> current-diff-index: -1;
     in-out property <string> left-path: "";
     in-out property <string> right-path: "";
     in-out property <string> status-text: "Open two files to compare";
+    in-out property <bool> has-unsaved-changes: false;
+    in-out property <bool> show-toolbar: true;
+
+    // Folder comparison properties
+    in-out property <[FolderItemData]> folder-items;
+    in-out property <int> folder-selected-index: -1;
+    in-out property <int> view-mode: 0;
+
+    // Diff options
+    in-out property <bool> ignore-whitespace: false;
+    in-out property <bool> ignore-case: false;
+
+    // Search
+    in-out property <bool> show-search: false;
+    in-out property <string> search-query: "";
+    in-out property <int> search-match-count: 0;
 
     callback open-left-file();
     callback open-right-file();
+    callback open-folder-left();
+    callback open-folder-right();
     callback next-diff();
     callback prev-diff();
+    callback copy-to-right(int);
+    callback copy-to-left(int);
+    callback save-left();
+    callback save-right();
+    callback folder-item-double-clicked(int);
+    callback back-to-folder-view();
+    callback toggle-ignore-whitespace();
+    callback toggle-ignore-case();
+    callback search(string);
+    callback search-next();
+    callback search-prev();
+
+    MenuBar {
+        Menu {
+            title: "File";
+            MenuItem { title: "Open Left File..."; activated => { root.open-left-file(); } }
+            MenuItem { title: "Open Right File..."; activated => { root.open-right-file(); } }
+            MenuItem { title: "Open Left Folder..."; activated => { root.open-folder-left(); } }
+            MenuItem { title: "Open Right Folder..."; activated => { root.open-folder-right(); } }
+            MenuSeparator {}
+            MenuItem { title: "Save Left"; enabled: root.has-unsaved-changes; activated => { root.save-left(); } }
+            MenuItem { title: "Save Right"; enabled: root.has-unsaved-changes; activated => { root.save-right(); } }
+        }
+        Menu {
+            title: "Edit";
+            MenuItem {
+                title: "Find...";
+                activated => { root.show-search = !root.show-search; }
+            }
+        }
+        Menu {
+            title: "View";
+            MenuItem {
+                title: root.show-toolbar ? "Hide Toolbar" : "Show Toolbar";
+                activated => { root.show-toolbar = !root.show-toolbar; }
+            }
+            MenuItem {
+                title: root.ignore-whitespace ? "✓ Ignore Whitespace" : "  Ignore Whitespace";
+                activated => { root.toggle-ignore-whitespace(); }
+            }
+            MenuItem {
+                title: root.ignore-case ? "✓ Ignore Case" : "  Ignore Case";
+                activated => { root.toggle-ignore-case(); }
+            }
+        }
+        Menu {
+            title: "Merge";
+            MenuItem { title: "Next Difference"; enabled: root.diff-count > 0; activated => { root.next-diff(); } }
+            MenuItem { title: "Previous Difference"; enabled: root.diff-count > 0; activated => { root.prev-diff(); } }
+            MenuSeparator {}
+            MenuItem { title: "Copy Left to Right"; enabled: root.current-diff-index >= 0; activated => { root.copy-to-right(root.current-diff-index); } }
+            MenuItem { title: "Copy Right to Left"; enabled: root.current-diff-index >= 0; activated => { root.copy-to-left(root.current-diff-index); } }
+        }
+    }
 
     VerticalLayout {
         // Toolbar
-        Rectangle {
+        if root.show-toolbar : Rectangle {
             height: 40px;
             background: Palette.background.darker(0.03);
             border-color: Palette.border;
@@ -43,28 +117,142 @@ export component MainWindow inherits Window {
                     clicked => { root.open-right-file(); }
                 }
 
-                Rectangle { width: 16px; }
+                Rectangle { width: 8px; }
 
-                Button {
+                if root.view-mode == 0 : Button {
+                    text: "Save Left";
+                    enabled: has-unsaved-changes;
+                    clicked => { root.save-left(); }
+                }
+
+                if root.view-mode == 0 : Button {
+                    text: "Save Right";
+                    enabled: has-unsaved-changes;
+                    clicked => { root.save-right(); }
+                }
+
+                if root.view-mode == 0 : Rectangle { width: 8px; }
+
+                if root.view-mode == 0 : Button {
                     text: "◀ Prev";
                     enabled: diff-count > 0;
                     clicked => { root.prev-diff(); }
                 }
 
-                Button {
+                if root.view-mode == 0 : Button {
                     text: "Next ▶";
                     enabled: diff-count > 0;
                     clicked => { root.next-diff(); }
                 }
+
+                if root.view-mode == 0 : Rectangle { width: 8px; }
+
+                if root.view-mode == 0 : Button {
+                    text: "Copy →";
+                    enabled: current-diff-index >= 0;
+                    clicked => { root.copy-to-right(root.current-diff-index); }
+                }
+
+                if root.view-mode == 0 : Button {
+                    text: "← Copy";
+                    enabled: current-diff-index >= 0;
+                    clicked => { root.copy-to-left(root.current-diff-index); }
+                }
+
+                Rectangle { width: 8px; }
+
+                CheckBox {
+                    text: "Ignore WS";
+                    checked: root.ignore-whitespace;
+                    toggled => { root.toggle-ignore-whitespace(); }
+                }
+
+                CheckBox {
+                    text: "Ignore Case";
+                    checked: root.ignore-case;
+                    toggled => { root.toggle-ignore-case(); }
+                }
             }
         }
 
-        // Diff view
-        DiffView {
+        // Search bar
+        if root.show-search : Rectangle {
+            height: 36px;
+            background: Palette.background.darker(0.02);
+            border-color: Palette.border;
+            border-width: 1px;
+
+            HorizontalLayout {
+                padding: 4px;
+                spacing: 4px;
+                alignment: start;
+
+                Text {
+                    text: "Find:";
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+
+                LineEdit {
+                    width: 250px;
+                    text: root.search-query;
+                    placeholder-text: "Search text...";
+                    accepted(text) => {
+                        root.search-query = text;
+                        root.search(text);
+                    }
+                    edited(text) => {
+                        root.search-query = text;
+                        root.search(text);
+                    }
+                }
+
+                Button {
+                    text: "▲";
+                    enabled: search-match-count > 0;
+                    clicked => { root.search-prev(); }
+                }
+
+                Button {
+                    text: "▼";
+                    enabled: search-match-count > 0;
+                    clicked => { root.search-next(); }
+                }
+
+                Text {
+                    text: search-match-count > 0 ? "\{search-match-count} matches" : "";
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    color: Palette.foreground.transparentize(0.3);
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                Button {
+                    text: "✕";
+                    clicked => {
+                        root.show-search = false;
+                        root.search-query = "";
+                        root.search("");
+                    }
+                }
+            }
+        }
+
+        // Content area
+        if root.view-mode == 0 : DiffView {
             diff-lines: root.diff-lines;
             current-diff-index: root.current-diff-index;
             left-title: root.left-path != "" ? root.left-path : "Left file";
             right-title: root.right-path != "" ? root.right-path : "Right file";
+            copy-to-right(idx) => { root.copy-to-right(idx); }
+            copy-to-left(idx) => { root.copy-to-left(idx); }
+        }
+
+        if root.view-mode == 1 : FolderView {
+            items: root.folder-items;
+            selected-index: root.folder-selected-index;
+            item-double-clicked(idx) => { root.folder-item-double-clicked(idx); }
         }
 
         // Status bar
@@ -76,9 +264,18 @@ export component MainWindow inherits Window {
 
             HorizontalLayout {
                 padding-left: 8px;
+                spacing: 16px;
+
                 Text {
                     text: root.status-text;
                     font-size: 12px;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: root.has-unsaved-changes ? "● Modified" : "";
+                    font-size: 12px;
+                    color: #b08800;
                     vertical-alignment: center;
                 }
             }
