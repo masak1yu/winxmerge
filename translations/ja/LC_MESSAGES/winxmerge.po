@@ -454,3 +454,29 @@ msgstr "追加"
 
 msgid "Clear"
 msgstr "クリア"
+
+# Detail pane
+msgid "Left"
+msgstr "左"
+
+msgid "Right"
+msgstr "右"
+
+# Toolbar copy all
+msgid "All →"
+msgstr "全て →"
+
+msgid "← All"
+msgstr "← 全て"
+
+msgid "Copy Left to Right and Advance"
+msgstr "左から右にコピーして次へ"
+
+msgid "Copy Right to Left and Advance"
+msgstr "右から左にコピーして次へ"
+
+msgid "Copy All Left to Right"
+msgstr "すべて左から右にコピー"
+
+msgid "Copy All Right to Left"
+msgstr "すべて右から左にコピー"

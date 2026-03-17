@@ -1,4 +1,4 @@
-import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit } from "std-widgets.slint";
+import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit, ScrollView } from "std-widgets.slint";
 import { DiffView, DiffLineData } from "widgets/diff-view.slint";
 import { DiffView3Way, ThreeWayLineData } from "widgets/diff-view-3way.slint";
 import { FolderView, FolderItemData } from "widgets/folder-view.slint";
@@ -8,6 +8,65 @@ import { OptionsDialog } from "dialogs/options-dialog.slint";
 import { ThemeColors } from "theme.slint";
 
 export { DiffLineData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors }
+
+// Toolbar icon button: fixed 32x32 with image icon + optional overlay text
+component ToolBtn inherits Rectangle {
+    in property <image> icon;
+    in property <string> overlay: "";
+    in property <string> hint: "";
+    in property <bool> btn-enabled: true;
+    in property <bool> active: false;
+    out property <bool> is-hovered: ta.has-hover;
+    callback clicked();
+
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    background: root.active ? Palette.accent-background.transparentize(0.5) :
+                ta.has-hover && root.btn-enabled ? Palette.background.darker(0.12) :
+                ta.pressed && root.btn-enabled ? Palette.background.darker(0.2) :
+                transparent;
+    opacity: root.btn-enabled ? 1.0 : 0.35;
+
+    ta := TouchArea {
+        enabled: root.btn-enabled;
+        clicked => { root.clicked(); }
+    }
+
+    Image {
+        source: root.icon;
+        width: 20px;
+        height: 20px;
+        x: 6px;
+        y: root.overlay != "" ? 2px : 6px;
+        image-fit: contain;
+        colorize: Palette.foreground;
+    }
+
+    if root.overlay != "" : Text {
+        text: root.overlay;
+        font-size: 8px;
+        font-weight: 700;
+        color: Palette.foreground;
+        horizontal-alignment: center;
+        y: 22px;
+        width: 100%;
+    }
+}
+
+// Toolbar separator
+component ToolSep inherits Rectangle {
+    width: 8px;
+    height: 32px;
+
+    Rectangle {
+        x: 3px;
+        y: 4px;
+        width: 1px;
+        height: 24px;
+        background: Palette.border;
+    }
+}
 
 component ConfirmDialog inherits Rectangle {
     in property <string> message: "";
@@ -130,6 +189,13 @@ export component MainWindow inherits Window {
     // Scroll control for diff view (in pixels, negative = scroll down)
     in-out property <length> diff-scroll-y: 0px;
 
+    // Diff detail pane: shows current diff block content
+    in-out property <string> detail-left-text: "";
+    in-out property <string> detail-right-text: "";
+    in-out property <string> detail-left-highlights: ""; // pipe-separated char indices of changed chars
+    in-out property <string> detail-right-highlights: "";
+    in-out property <bool> show-detail-pane: true;
+
     // Bookmarks
     in-out property <string> bookmark-lines: ""; // comma-separated line indices
 
@@ -187,6 +253,12 @@ export component MainWindow inherits Window {
 
     // Plugin execution
     callback run-plugin(/* command */ string);
+
+    // Copy all diffs (merge all)
+    callback copy-right-and-next();
+    callback copy-left-and-next();
+    callback copy-all-diffs-right();
+    callback copy-all-diffs-left();
 
     // Rescan files
     callback rescan();
@@ -352,107 +424,93 @@ export component MainWindow inherits Window {
             new-tab => { root.new-tab(); }
         }
 
-        // Toolbar
+        // Toolbar (single row, image icons)
         if root.show-toolbar && root.view-mode != 2 : Rectangle {
-            height: 40px;
+            height: 36px;
             background: Palette.background.darker(0.03);
             border-color: Palette.border;
             border-width: 1px;
 
+            property <string> toolbar-hint:
+                tb-new.is-hovered ? @tr("New Compare...") :
+                tb-back.is-hovered ? @tr("< Back") :
+                tb-open-l.is-hovered ? @tr("Open Left File...") :
+                tb-open-r.is-hovered ? @tr("Open Right File...") :
+                tb-save-l.is-hovered ? @tr("Save Left") :
+                tb-save-r.is-hovered ? @tr("Save Right") :
+                tb-undo.is-hovered ? @tr("Undo") :
+                tb-redo.is-hovered ? @tr("Redo") :
+                tb-rescan.is-hovered ? @tr("Rescan (F5)") :
+                tb-options.is-hovered ? @tr("Options...") :
+                tb-first.is-hovered ? @tr("First Difference") :
+                tb-prev.is-hovered ? @tr("Previous Difference") :
+                tb-next.is-hovered ? @tr("Next Difference") :
+                tb-last.is-hovered ? @tr("Last Difference") :
+                tb-copy-r.is-hovered ? @tr("Copy Left to Right") :
+                tb-copy-l.is-hovered ? @tr("Copy Right to Left") :
+                tb-copy-r-next.is-hovered ? @tr("Copy Left to Right and Advance") :
+                tb-copy-l-next.is-hovered ? @tr("Copy Right to Left and Advance") :
+                tb-all-r.is-hovered ? @tr("Copy All Left to Right") :
+                tb-all-l.is-hovered ? @tr("Copy All Right to Left") :
+                tb-ws.is-hovered ? @tr("Ignore whitespace differences") :
+                tb-case.is-hovered ? @tr("Ignore case differences") :
+                "";
+
+            changed toolbar-hint => {
+                if self.toolbar-hint != "" {
+                    root.status-text = self.toolbar-hint;
+                }
+            }
+
             HorizontalLayout {
-                padding: 4px;
-                spacing: 4px;
+                padding: 2px;
+                spacing: 0;
                 alignment: start;
 
-                Button {
-                    text: @tr("New...");
-                    clicked => { root.request-action(5); }
-                }
+                tb-new := ToolBtn { icon: @image-url("icons/new.svg"); clicked => { root.request-action(5); } }
 
-                Rectangle { width: 4px; }
+                tb-back := ToolBtn { icon: @image-url("icons/back.svg"); visible: root.view-mode == 0 && root.has-folder-context; clicked => { root.back-to-folder-view(); } }
 
-                if root.view-mode == 0 && root.has-folder-context : Button {
-                    text: @tr("< Back");
-                    clicked => { root.back-to-folder-view(); }
-                }
+                tb-open-l := ToolBtn { icon: @image-url("icons/open.svg"); overlay: "L"; clicked => { root.request-action(1); } }
+                tb-open-r := ToolBtn { icon: @image-url("icons/open.svg"); overlay: "R"; clicked => { root.request-action(2); } }
 
-                Button {
-                    text: @tr("Open Left...");
-                    clicked => { root.request-action(1); }
-                }
+                ToolSep {}
 
-                Button {
-                    text: @tr("Open Right...");
-                    clicked => { root.request-action(2); }
-                }
+                tb-save-l := ToolBtn { icon: @image-url("icons/save.svg"); overlay: "L"; visible: root.view-mode == 0; btn-enabled: root.has-unsaved-changes; clicked => { root.save-left(); } }
+                tb-save-r := ToolBtn { icon: @image-url("icons/save.svg"); overlay: "R"; visible: root.view-mode == 0; btn-enabled: root.has-unsaved-changes; clicked => { root.save-right(); } }
 
-                Rectangle { width: 8px; }
+                sep-save := ToolSep { visible: root.view-mode == 0; }
 
-                if root.view-mode == 0 : Button {
-                    text: @tr("Save Left");
-                    enabled: has-unsaved-changes;
-                    clicked => { root.save-left(); }
-                }
+                tb-undo := ToolBtn { icon: @image-url("icons/undo.svg"); visible: root.view-mode == 0; clicked => { root.undo(); } }
+                tb-redo := ToolBtn { icon: @image-url("icons/redo.svg"); visible: root.view-mode == 0; clicked => { root.redo(); } }
 
-                if root.view-mode == 0 : Button {
-                    text: @tr("Save Right");
-                    enabled: has-unsaved-changes;
-                    clicked => { root.save-right(); }
-                }
+                ToolSep {}
 
-                if root.view-mode == 0 : Rectangle { width: 8px; }
+                tb-rescan := ToolBtn { icon: @image-url("icons/refresh.svg"); clicked => { root.rescan(); } }
+                tb-options := ToolBtn { icon: @image-url("icons/settings.svg"); clicked => { root.show-options-dialog = true; } }
 
-                if root.view-mode == 0 : Button {
-                    text: @tr("⏮ First");
-                    enabled: diff-count > 0;
-                    clicked => { root.first-diff(); }
-                }
+                ToolSep {}
 
-                if root.view-mode == 0 : Button {
-                    text: @tr("◀ Prev");
-                    enabled: diff-count > 0;
-                    clicked => { root.prev-diff(); }
-                }
+                tb-first := ToolBtn { icon: @image-url("icons/first.svg"); visible: root.view-mode == 0; btn-enabled: root.diff-count > 0; clicked => { root.first-diff(); } }
+                tb-prev := ToolBtn { icon: @image-url("icons/prev.svg"); visible: root.view-mode == 0; btn-enabled: root.diff-count > 0; clicked => { root.prev-diff(); } }
+                tb-next := ToolBtn { icon: @image-url("icons/next.svg"); visible: root.view-mode == 0; btn-enabled: root.diff-count > 0; clicked => { root.next-diff(); } }
+                tb-last := ToolBtn { icon: @image-url("icons/last.svg"); visible: root.view-mode == 0; btn-enabled: root.diff-count > 0; clicked => { root.last-diff(); } }
 
-                if root.view-mode == 0 : Button {
-                    text: @tr("Next ▶");
-                    enabled: diff-count > 0;
-                    clicked => { root.next-diff(); }
-                }
+                sep-nav := ToolSep { visible: root.view-mode == 0; }
 
-                if root.view-mode == 0 : Button {
-                    text: @tr("Last ⏭");
-                    enabled: diff-count > 0;
-                    clicked => { root.last-diff(); }
-                }
+                tb-copy-r := ToolBtn { icon: @image-url("icons/copy-right.svg"); visible: root.view-mode == 0; btn-enabled: root.current-diff-index >= 0; clicked => { root.copy-to-right(root.current-diff-index); } }
+                tb-copy-l := ToolBtn { icon: @image-url("icons/copy-left.svg"); visible: root.view-mode == 0; btn-enabled: root.current-diff-index >= 0; clicked => { root.copy-to-left(root.current-diff-index); } }
+                tb-copy-r-next := ToolBtn { icon: @image-url("icons/copy-right-next.svg"); visible: root.view-mode == 0; btn-enabled: root.current-diff-index >= 0; clicked => { root.copy-right-and-next(); } }
+                tb-copy-l-next := ToolBtn { icon: @image-url("icons/copy-left-next.svg"); visible: root.view-mode == 0; btn-enabled: root.current-diff-index >= 0; clicked => { root.copy-left-and-next(); } }
+                tb-all-r := ToolBtn { icon: @image-url("icons/copy-all-right.svg"); visible: root.view-mode == 0; btn-enabled: root.diff-count > 0; clicked => { root.copy-all-diffs-right(); } }
+                tb-all-l := ToolBtn { icon: @image-url("icons/copy-all-left.svg"); visible: root.view-mode == 0; btn-enabled: root.diff-count > 0; clicked => { root.copy-all-diffs-left(); } }
 
-                if root.view-mode == 0 : Rectangle { width: 8px; }
+                ToolSep {}
 
-                if root.view-mode == 0 : Button {
-                    text: @tr("Copy →");
-                    enabled: current-diff-index >= 0;
-                    clicked => { root.copy-to-right(root.current-diff-index); }
-                }
-
-                if root.view-mode == 0 : Button {
-                    text: @tr("← Copy");
-                    enabled: current-diff-index >= 0;
-                    clicked => { root.copy-to-left(root.current-diff-index); }
-                }
-
-                Rectangle { width: 8px; }
-
-                CheckBox {
-                    text: @tr("Ignore WS");
-                    checked: root.ignore-whitespace;
-                    toggled => { root.toggle-ignore-whitespace(); }
-                }
-
-                CheckBox {
-                    text: @tr("Ignore Case");
-                    checked: root.ignore-case;
-                    toggled => { root.toggle-ignore-case(); }
-                }
+                tb-ws := ToolBtn { icon: @image-url("icons/ignore-ws.svg"); active: root.ignore-whitespace;
+                    clicked => { root.toggle-ignore-whitespace(); } }
+                tb-case := ToolBtn { icon: @image-url("icons/ignore-case.svg"); active: root.ignore-case;
+                    clicked => { root.toggle-ignore-case(); } }
             }
         }
 
@@ -631,6 +689,76 @@ export component MainWindow inherits Window {
             prev-conflict => { root.prev-conflict(); }
             use-left(idx) => { root.use-left(idx); }
             use-right(idx) => { root.use-right(idx); }
+        }
+
+        // Diff detail pane (top=left/removed, bottom=right/added)
+        if root.show-detail-pane && root.view-mode == 0 && root.current-diff-index >= 0 : Rectangle {
+            height: 120px;
+            background: Palette.background;
+            border-color: Palette.border;
+            border-width: 1px;
+
+            VerticalLayout {
+                spacing: 0;
+
+                // Top: Left (removed)
+                Rectangle {
+                    vertical-stretch: 1;
+                    background: root.detail-left-text != "" ? ThemeColors.removed-bg : Palette.background;
+                    border-color: Palette.border;
+                    border-width: 1px;
+
+                    ScrollView {
+                        HorizontalLayout {
+                            padding: 4px;
+                            spacing: 4px;
+                            alignment: start;
+                            Text {
+                                text: @tr("Left");
+                                font-size: 10px;
+                                font-weight: 600;
+                                color: Palette.foreground.transparentize(0.4);
+                                vertical-alignment: top;
+                            }
+                            Text {
+                                text: root.detail-left-text;
+                                font-size: 12px;
+                                font-family: "monospace";
+                                color: Palette.foreground;
+                            }
+                        }
+                    }
+                }
+
+                // Bottom: Right (added)
+                Rectangle {
+                    vertical-stretch: 1;
+                    background: root.detail-right-text != "" ? ThemeColors.added-bg : Palette.background;
+                    border-color: Palette.border;
+                    border-width: 1px;
+
+                    ScrollView {
+                        HorizontalLayout {
+                            padding: 4px;
+                            spacing: 4px;
+                            alignment: start;
+                            Text {
+                                text: @tr("Right");
+                                font-size: 10px;
+                                font-weight: 600;
+                                color: Palette.foreground.transparentize(0.4);
+                                vertical-alignment: top;
+                            }
+                            Text {
+                                text: root.detail-right-text;
+                                font-size: 12px;
+                                font-family: "monospace";
+                                color: Palette.foreground;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Status bar

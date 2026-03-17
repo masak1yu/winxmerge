@@ -201,6 +201,10 @@ fn restore_tab(window: &MainWindow, state: &AppState) {
             .unwrap_or_default(),
     ));
 
+    // Update detail pane
+    let model = window.get_diff_lines();
+    update_detail_pane(window, &model, tab.current_diff, tab);
+
     // Restore folder data
     let folder_model = ModelRc::new(VecModel::from(tab.folder_item_data.clone()));
     window.set_folder_items(folder_model);
@@ -459,6 +463,10 @@ pub fn recompute_diff_from_text_with_highlights(
         format!("{} differences found [{}]", result.diff_count, stats)
     };
     window.set_status_text(SharedString::from(status));
+
+    // Update detail pane
+    let model = window.get_diff_lines();
+    update_detail_pane(window, &model, tab.current_diff, tab);
 }
 
 pub fn select_diff(window: &MainWindow, state: &mut AppState, diff_index: i32) {
@@ -648,6 +656,47 @@ fn update_current_diff(window: &MainWindow, state: &mut AppState, new_index: i32
         total,
         stats
     )));
+
+    // Update diff detail pane
+    update_detail_pane(window, &model, new_index, tab);
+}
+
+fn update_detail_pane(
+    window: &MainWindow,
+    model: &ModelRc<DiffLineData>,
+    diff_index: i32,
+    tab: &TabState,
+) {
+    if diff_index < 0 || diff_index as usize >= tab.diff_positions.len() {
+        window.set_detail_left_text(SharedString::default());
+        window.set_detail_right_text(SharedString::default());
+        return;
+    }
+
+    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+
+    // Collect all lines belonging to this diff block
+    let mut left_lines = Vec::new();
+    let mut right_lines = Vec::new();
+    for i in 0..vec_model.row_count() {
+        let row = vec_model.row_data(i).unwrap();
+        if row.diff_index == diff_index {
+            let lt = row.left_text.to_string();
+            let rt = row.right_text.to_string();
+            if !lt.is_empty() {
+                left_lines.push(lt);
+            }
+            if !rt.is_empty() {
+                right_lines.push(rt);
+            }
+        }
+    }
+
+    window.set_detail_left_text(SharedString::from(left_lines.join("\n")));
+    window.set_detail_right_text(SharedString::from(right_lines.join("\n")));
 }
 
 fn push_undo_snapshot(state: &mut AppState, vec_model: &VecModel<DiffLineData>) {
@@ -737,6 +786,18 @@ pub fn copy_to_right(window: &MainWindow, state: &mut AppState, diff_index: i32)
     window.set_can_undo(true);
     window.set_can_redo(false);
     sync_tab_list(window, state);
+}
+
+pub fn copy_right_and_next(window: &MainWindow, state: &mut AppState) {
+    let diff_index = state.current_tab().current_diff;
+    copy_to_right(window, state, diff_index);
+    navigate_diff(window, state, true);
+}
+
+pub fn copy_left_and_next(window: &MainWindow, state: &mut AppState) {
+    let diff_index = state.current_tab().current_diff;
+    copy_to_left(window, state, diff_index);
+    navigate_diff(window, state, true);
 }
 
 pub fn copy_to_left(window: &MainWindow, state: &mut AppState, diff_index: i32) {
@@ -833,6 +894,60 @@ fn rebuild_left_after_copy_from_right(vec_model: &VecModel<DiffLineData>) -> Str
         }
     }
     lines.join("\n") + "\n"
+}
+
+pub fn copy_all_diffs_to_right(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab();
+    if tab.diff_positions.is_empty() {
+        return;
+    }
+
+    let model = window.get_diff_lines();
+    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+
+    push_undo_snapshot(state, vec_model);
+
+    // Copy all left to right: right becomes identical to left
+    let left_text = rebuild_left(vec_model);
+
+    state.current_tab_mut().has_unsaved_changes = true;
+    window.set_has_unsaved_changes(true);
+
+    recompute_diff_from_text(window, state, &left_text, &left_text);
+
+    window.set_can_undo(true);
+    window.set_can_redo(false);
+    sync_tab_list(window, state);
+}
+
+pub fn copy_all_diffs_to_left(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab();
+    if tab.diff_positions.is_empty() {
+        return;
+    }
+
+    let model = window.get_diff_lines();
+    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+
+    push_undo_snapshot(state, vec_model);
+
+    // Left becomes right for all diffs
+    let right_text = rebuild_right(vec_model);
+
+    state.current_tab_mut().has_unsaved_changes = true;
+    window.set_has_unsaved_changes(true);
+
+    recompute_diff_from_text(window, state, &right_text, &right_text);
+
+    window.set_can_undo(true);
+    window.set_can_redo(false);
+    sync_tab_list(window, state);
 }
 
 pub fn copy_all_text(window: &MainWindow, state: &AppState, is_left: bool) {
