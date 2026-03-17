@@ -333,3 +333,48 @@ msgstr "適用"
 # 3-way merge
 msgid "Resolve"
 msgstr "解決"
+
+# Navigation
+msgid "First Difference"
+msgstr "最初の差分"
+
+msgid "Last Difference"
+msgstr "最後の差分"
+
+msgid "Navigate"
+msgstr "ナビゲート"
+
+msgid "Go to Line..."
+msgstr "指定行へ移動..."
+
+msgid "Go to Line"
+msgstr "指定行へ移動"
+
+msgid "Line:"
+msgstr "行:"
+
+msgid "Go"
+msgstr "移動"
+
+msgid "Toggle Bookmark"
+msgstr "ブックマーク切替"
+
+msgid "Next Bookmark"
+msgstr "次のブックマーク"
+
+msgid "Previous Bookmark"
+msgstr "前のブックマーク"
+
+# Toolbar - First/Last
+msgid "⏮ First"
+msgstr "⏮ 最初"
+
+msgid "Last ⏭"
+msgstr "最後 ⏭"
+
+# Folder operations
+msgid "Open"
+msgstr "開く"
+
+msgid "Delete"
+msgstr "削除"

@@ -48,6 +48,8 @@ pub struct TabState {
     pub diff_line_data: Vec<DiffLineData>,
     pub folder_item_data: Vec<FolderItemData>,
     pub title: String,
+    pub bookmarks: Vec<usize>,
+    pub current_bookmark: i32,
 }
 
 impl TabState {
@@ -77,6 +79,8 @@ impl TabState {
             diff_line_data: Vec::new(),
             folder_item_data: Vec::new(),
             title: "New".to_string(),
+            bookmarks: Vec::new(),
+            current_bookmark: -1,
         }
     }
 }
@@ -432,6 +436,117 @@ pub fn navigate_diff(window: &MainWindow, state: &mut AppState, forward: bool) {
     };
 
     update_current_diff(window, state, new_index);
+}
+
+pub fn first_diff(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab();
+    if tab.diff_positions.is_empty() {
+        return;
+    }
+    update_current_diff(window, state, 0);
+}
+
+pub fn last_diff(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab();
+    if tab.diff_positions.is_empty() {
+        return;
+    }
+    let last = tab.diff_positions.len() as i32 - 1;
+    update_current_diff(window, state, last);
+}
+
+pub fn goto_line(window: &MainWindow, state: &AppState, line_number: i32) {
+    if line_number <= 0 {
+        return;
+    }
+    let tab = state.current_tab();
+    // Find the diff line index that corresponds to this line number
+    for (idx, data) in tab.diff_line_data.iter().enumerate() {
+        let left_no: i32 = data.left_line_no.parse().unwrap_or(0);
+        let right_no: i32 = data.right_line_no.parse().unwrap_or(0);
+        if left_no == line_number || right_no == line_number {
+            // Scroll to this position by setting status
+            window.set_status_text(SharedString::from(format!("Line {}", line_number)));
+            // If this line is part of a diff, select it
+            if data.diff_index >= 0 {
+                let model = window.get_diff_lines();
+                if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+                    for i in 0..vec_model.row_count() {
+                        let mut row = vec_model.row_data(i).unwrap();
+                        let should_highlight = i == idx;
+                        if row.is_current_diff != should_highlight {
+                            row.is_current_diff = should_highlight;
+                            vec_model.set_row_data(i, row);
+                        }
+                    }
+                }
+            }
+            return;
+        }
+    }
+    window.set_status_text(SharedString::from(format!(
+        "Line {} not found",
+        line_number
+    )));
+}
+
+pub fn toggle_bookmark(state: &mut AppState, line_index: i32) {
+    let tab = state.current_tab_mut();
+    let idx = if line_index >= 0 {
+        // Use the diff position for this diff index
+        if let Some(&pos) = tab.diff_positions.get(line_index as usize) {
+            pos
+        } else {
+            return;
+        }
+    } else {
+        return;
+    };
+    if let Some(pos) = tab.bookmarks.iter().position(|&b| b == idx) {
+        tab.bookmarks.remove(pos);
+    } else {
+        tab.bookmarks.push(idx);
+        tab.bookmarks.sort();
+    }
+}
+
+pub fn navigate_bookmark(window: &MainWindow, state: &mut AppState, forward: bool) {
+    let (new_index, bookmark_pos, diff_idx_opt, total) = {
+        let tab = state.current_tab_mut();
+        if tab.bookmarks.is_empty() {
+            window.set_status_text(SharedString::from("No bookmarks"));
+            return;
+        }
+
+        let new_index = if forward {
+            if tab.current_bookmark < tab.bookmarks.len() as i32 - 1 {
+                tab.current_bookmark + 1
+            } else {
+                0
+            }
+        } else if tab.current_bookmark > 0 {
+            tab.current_bookmark - 1
+        } else {
+            tab.bookmarks.len() as i32 - 1
+        };
+
+        tab.current_bookmark = new_index;
+        let bookmark_pos = tab.bookmarks[new_index as usize];
+        let diff_idx_opt = tab.diff_positions.iter().position(|&p| p == bookmark_pos);
+        let total = tab.bookmarks.len();
+        (new_index, bookmark_pos, diff_idx_opt, total)
+    };
+
+    if let Some(diff_idx) = diff_idx_opt {
+        update_current_diff(window, state, diff_idx as i32);
+    } else {
+        window.set_status_text(SharedString::from(format!(
+            "Bookmark {} of {} (line {})",
+            new_index + 1,
+            total,
+            bookmark_pos
+        )));
+    }
 }
 
 fn update_current_diff(window: &MainWindow, state: &mut AppState, new_index: i32) {
@@ -1392,6 +1507,102 @@ pub fn resolve_conflict_use_right(window: &MainWindow, state: &mut AppState, con
             "{} conflicts remaining",
             tab.three_way_conflict_positions.len()
         )));
+    }
+}
+
+// --- Folder file operations ---
+
+pub fn folder_copy_to_right(window: &MainWindow, state: &mut AppState, index: i32) {
+    let tab = state.current_tab();
+    if index < 0 || index as usize >= tab.folder_items.len() {
+        return;
+    }
+    let item = &tab.folder_items[index as usize];
+    if let (Some(src), Some(right_folder)) = (&item.left_path, &tab.right_folder) {
+        let dest = right_folder.join(&item.relative_path);
+        if let Some(parent) = dest.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if item.is_directory {
+            copy_dir_recursive(src, &dest);
+        } else {
+            let _ = fs::copy(src, &dest);
+        }
+        window.set_status_text(SharedString::from(format!(
+            "Copied '{}' to right",
+            item.relative_path
+        )));
+        run_folder_compare(window, state);
+    }
+}
+
+pub fn folder_copy_to_left(window: &MainWindow, state: &mut AppState, index: i32) {
+    let tab = state.current_tab();
+    if index < 0 || index as usize >= tab.folder_items.len() {
+        return;
+    }
+    let item = &tab.folder_items[index as usize];
+    if let (Some(src), Some(left_folder)) = (&item.right_path, &tab.left_folder) {
+        let dest = left_folder.join(&item.relative_path);
+        if let Some(parent) = dest.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if item.is_directory {
+            copy_dir_recursive(src, &dest);
+        } else {
+            let _ = fs::copy(src, &dest);
+        }
+        window.set_status_text(SharedString::from(format!(
+            "Copied '{}' to left",
+            item.relative_path
+        )));
+        run_folder_compare(window, state);
+    }
+}
+
+pub fn folder_delete_item(window: &MainWindow, state: &mut AppState, index: i32) {
+    let tab = state.current_tab();
+    if index < 0 || index as usize >= tab.folder_items.len() {
+        return;
+    }
+    let item = &tab.folder_items[index as usize];
+    if let Some(left) = &item.left_path {
+        if left.exists() {
+            if item.is_directory {
+                let _ = fs::remove_dir_all(left);
+            } else {
+                let _ = fs::remove_file(left);
+            }
+        }
+    }
+    if let Some(right) = &item.right_path {
+        if right.exists() {
+            if item.is_directory {
+                let _ = fs::remove_dir_all(right);
+            } else {
+                let _ = fs::remove_file(right);
+            }
+        }
+    }
+    window.set_status_text(SharedString::from(format!(
+        "Deleted '{}'",
+        item.relative_path
+    )));
+    run_folder_compare(window, state);
+}
+
+fn copy_dir_recursive(src: &std::path::Path, dest: &std::path::Path) {
+    let _ = fs::create_dir_all(dest);
+    if let Ok(entries) = fs::read_dir(src) {
+        for entry in entries.flatten() {
+            let src_path = entry.path();
+            let dest_path = dest.join(entry.file_name());
+            if src_path.is_dir() {
+                copy_dir_recursive(&src_path, &dest_path);
+            } else {
+                let _ = fs::copy(&src_path, &dest_path);
+            }
+        }
     }
 }
 
