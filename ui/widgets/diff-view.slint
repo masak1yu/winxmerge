@@ -8,6 +8,7 @@ export struct DiffLineData {
     // 0=Equal, 1=Added, 2=Removed, 3=Modified
     status: int,
     is-current-diff: bool,
+    diff-index: int, // -1 if not a diff, otherwise the diff block index
 }
 
 component DiffLineRow inherits Rectangle {
@@ -60,11 +61,37 @@ component DiffLineRow inherits Rectangle {
     }
 }
 
+// Location pane: minimap showing diff positions
+component LocationPane inherits Rectangle {
+    in property <[DiffLineData]> diff-lines;
+    in property <int> current-diff-index: -1;
+
+    width: 12px;
+    background: Palette.background.darker(0.02);
+    border-color: Palette.border;
+    border-width: 1px;
+
+    for line[idx] in diff-lines: Rectangle {
+        y: diff-lines.length > 0 ? (idx * (parent.height - 2px) / diff-lines.length) : 0;
+        height: diff-lines.length > 0 ? Math.max(2px, (parent.height - 2px) / diff-lines.length) : 0;
+        x: 1px;
+        width: parent.width - 2px;
+        background: line.status == 0 ? transparent :
+                    line.is-current-diff ? #0078d4 :
+                    line.status == 1 ? #22863a :
+                    line.status == 2 ? #cb2431 :
+                    line.status == 3 ? #b08800 : transparent;
+    }
+}
+
 export component DiffView inherits Rectangle {
     in property <string> left-title: "Left";
     in property <string> right-title: "Right";
     in property <[DiffLineData]> diff-lines;
     in property <int> current-diff-index: -1;
+
+    callback copy-to-right(/* diff-index */ int);
+    callback copy-to-left(/* diff-index */ int);
 
     border-color: Palette.border;
     border-width: 1px;
@@ -90,6 +117,14 @@ export component DiffView inherits Rectangle {
                 }
             }
 
+            // Spacer for merge button column
+            Rectangle {
+                width: 32px;
+                background: Palette.background.darker(0.05);
+                border-color: Palette.border;
+                border-width: 1px;
+            }
+
             Rectangle {
                 background: Palette.background.darker(0.05);
                 border-color: Palette.border;
@@ -104,6 +139,12 @@ export component DiffView inherits Rectangle {
                         overflow: elide;
                     }
                 }
+            }
+
+            // Spacer for location pane
+            Rectangle {
+                width: 12px;
+                background: Palette.background.darker(0.05);
             }
         }
 
@@ -120,10 +161,58 @@ export component DiffView inherits Rectangle {
                 }
             }
 
-            // Separator
+            // Merge buttons column
             Rectangle {
-                width: 2px;
-                background: Palette.border;
+                width: 32px;
+                background: Palette.background.darker(0.01);
+                border-color: Palette.border;
+                border-width: 1px;
+
+                ListView {
+                    for line in diff-lines: Rectangle {
+                        height: 24px;
+                        if line.status != 0 : HorizontalLayout {
+                            padding: 1px;
+                            spacing: 1px;
+
+                            // Copy left to right
+                            Rectangle {
+                                width: 14px;
+                                height: 20px;
+                                background: touch-r.has-hover ? Palette.background.darker(0.15) : transparent;
+                                border-radius: 2px;
+                                Text {
+                                    text: "▶";
+                                    font-size: 9px;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                    color: Palette.foreground.transparentize(0.3);
+                                }
+                                touch-r := TouchArea {
+                                    clicked => { root.copy-to-right(line.diff-index); }
+                                }
+                            }
+
+                            // Copy right to left
+                            Rectangle {
+                                width: 14px;
+                                height: 20px;
+                                background: touch-l.has-hover ? Palette.background.darker(0.15) : transparent;
+                                border-radius: 2px;
+                                Text {
+                                    text: "◀";
+                                    font-size: 9px;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                    color: Palette.foreground.transparentize(0.3);
+                                }
+                                touch-l := TouchArea {
+                                    clicked => { root.copy-to-left(line.diff-index); }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // Right pane
@@ -135,6 +224,12 @@ export component DiffView inherits Rectangle {
                     status: line.status == 2 ? 0 : line.status;
                     is-current: line.is-current-diff;
                 }
+            }
+
+            // Location pane (minimap)
+            LocationPane {
+                diff-lines: root.diff-lines;
+                current-diff-index: root.current-diff-index;
             }
         }
     }
