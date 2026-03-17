@@ -13,11 +13,13 @@ use std::rc::Rc;
 
 use app::{
     AppState, add_tab, apply_options, close_tab, copy_current_line_text, copy_to_left,
-    copy_to_right, discard_and_proceed, export_html_report, navigate_conflict, navigate_diff,
-    navigate_search, open_file_dialog, open_folder_dialog, open_folder_item, redo,
-    replace_all_text, replace_text, resolve_conflict_use_left, resolve_conflict_use_right,
-    run_folder_compare, save_file, search_text, select_diff, start_compare,
-    start_three_way_compare, switch_tab, toggle_ignore_case, toggle_ignore_whitespace, undo,
+    copy_to_right, discard_and_proceed, export_html_report, first_diff, folder_copy_to_left,
+    folder_copy_to_right, folder_delete_item, goto_line, last_diff, navigate_bookmark,
+    navigate_conflict, navigate_diff, navigate_search, open_file_dialog, open_folder_dialog,
+    open_folder_item, redo, replace_all_text, replace_text, resolve_conflict_use_left,
+    resolve_conflict_use_right, run_folder_compare, save_file, search_text, select_diff,
+    start_compare, start_three_way_compare, switch_tab, toggle_bookmark, toggle_ignore_case,
+    toggle_ignore_whitespace, undo,
 };
 use slint::{ModelRc, SharedString, VecModel};
 
@@ -401,6 +403,89 @@ fn main() {
         window.on_redo(move || {
             let window = window_weak.unwrap();
             redo(&window, &mut state.borrow_mut());
+        });
+    }
+
+    // First/Last diff
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_first_diff(move || {
+            let window = window_weak.unwrap();
+            first_diff(&window, &mut state.borrow_mut());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_last_diff(move || {
+            let window = window_weak.unwrap();
+            last_diff(&window, &mut state.borrow_mut());
+        });
+    }
+
+    // Go to line
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_goto_line(move |line_no| {
+            let window = window_weak.unwrap();
+            goto_line(&window, &state.borrow(), line_no);
+        });
+    }
+
+    // Bookmarks
+    {
+        let state = state.clone();
+        window.on_toggle_bookmark(move |line_index| {
+            toggle_bookmark(&mut state.borrow_mut(), line_index);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_next_bookmark(move || {
+            let window = window_weak.unwrap();
+            navigate_bookmark(&window, &mut state.borrow_mut(), true);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_prev_bookmark(move || {
+            let window = window_weak.unwrap();
+            navigate_bookmark(&window, &mut state.borrow_mut(), false);
+        });
+    }
+
+    // Folder file operations
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_folder_copy_to_right(move |idx| {
+            let window = window_weak.unwrap();
+            folder_copy_to_right(&window, &mut state.borrow_mut(), idx);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_folder_copy_to_left(move |idx| {
+            let window = window_weak.unwrap();
+            folder_copy_to_left(&window, &mut state.borrow_mut(), idx);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_folder_delete_item(move |idx| {
+            let window = window_weak.unwrap();
+            folder_delete_item(&window, &mut state.borrow_mut(), idx);
         });
     }
 

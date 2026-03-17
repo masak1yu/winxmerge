@@ -123,6 +123,13 @@ export component MainWindow inherits Window {
     in-out property <[TabData]> tab-list: [{title: "New", is-active: true, has-unsaved: false}];
     in-out property <int> active-tab-index: 0;
 
+    // Go to line dialog
+    in-out property <bool> show-goto-dialog: false;
+    in-out property <string> goto-line-input: "";
+
+    // Bookmarks
+    in-out property <string> bookmark-lines: ""; // comma-separated line indices
+
     callback open-left-file();
     callback open-right-file();
     callback open-folder-left();
@@ -130,6 +137,8 @@ export component MainWindow inherits Window {
     callback browse-base();
     callback next-diff();
     callback prev-diff();
+    callback first-diff();
+    callback last-diff();
     callback copy-to-right(int);
     callback copy-to-left(int);
     callback select-diff(int);
@@ -155,6 +164,14 @@ export component MainWindow inherits Window {
     callback copy-left-text();
     callback copy-right-text();
     callback open-recent(int);
+    callback goto-line(int);
+    callback toggle-bookmark(int);
+    callback next-bookmark();
+    callback prev-bookmark();
+    // Folder operations
+    callback folder-copy-to-right(int);
+    callback folder-copy-to-left(int);
+    callback folder-delete-item(int);
 
     in-out property <[RecentEntryData]> recent-entries;
 
@@ -251,11 +268,21 @@ export component MainWindow inherits Window {
         }
         Menu {
             title: @tr("Merge");
-            MenuItem { title: @tr("Next Difference"); enabled: root.diff-count > 0; activated => { root.next-diff(); } }
+            MenuItem { title: @tr("First Difference"); enabled: root.diff-count > 0; activated => { root.first-diff(); } }
             MenuItem { title: @tr("Previous Difference"); enabled: root.diff-count > 0; activated => { root.prev-diff(); } }
+            MenuItem { title: @tr("Next Difference"); enabled: root.diff-count > 0; activated => { root.next-diff(); } }
+            MenuItem { title: @tr("Last Difference"); enabled: root.diff-count > 0; activated => { root.last-diff(); } }
             MenuSeparator {}
             MenuItem { title: @tr("Copy Left to Right"); enabled: root.current-diff-index >= 0; activated => { root.copy-to-right(root.current-diff-index); } }
             MenuItem { title: @tr("Copy Right to Left"); enabled: root.current-diff-index >= 0; activated => { root.copy-to-left(root.current-diff-index); } }
+        }
+        Menu {
+            title: @tr("Navigate");
+            MenuItem { title: @tr("Go to Line..."); activated => { root.show-goto-dialog = true; } }
+            MenuSeparator {}
+            MenuItem { title: @tr("Toggle Bookmark"); activated => { root.toggle-bookmark(root.current-diff-index); } }
+            MenuItem { title: @tr("Next Bookmark"); activated => { root.next-bookmark(); } }
+            MenuItem { title: @tr("Previous Bookmark"); activated => { root.prev-bookmark(); } }
         }
     }
 
@@ -320,6 +347,12 @@ export component MainWindow inherits Window {
                 if root.view-mode == 0 : Rectangle { width: 8px; }
 
                 if root.view-mode == 0 : Button {
+                    text: @tr("⏮ First");
+                    enabled: diff-count > 0;
+                    clicked => { root.first-diff(); }
+                }
+
+                if root.view-mode == 0 : Button {
                     text: @tr("◀ Prev");
                     enabled: diff-count > 0;
                     clicked => { root.prev-diff(); }
@@ -329,6 +362,12 @@ export component MainWindow inherits Window {
                     text: @tr("Next ▶");
                     enabled: diff-count > 0;
                     clicked => { root.next-diff(); }
+                }
+
+                if root.view-mode == 0 : Button {
+                    text: @tr("Last ⏭");
+                    enabled: diff-count > 0;
+                    clicked => { root.last-diff(); }
                 }
 
                 if root.view-mode == 0 : Rectangle { width: 8px; }
@@ -513,7 +552,11 @@ export component MainWindow inherits Window {
         if root.view-mode == 1 : FolderView {
             items: root.folder-items;
             selected-index: root.folder-selected-index;
+            context-menu-enabled: root.opt-enable-context-menu;
             item-double-clicked(idx) => { root.folder-item-double-clicked(idx); }
+            copy-to-right(idx) => { root.folder-copy-to-right(idx); }
+            copy-to-left(idx) => { root.folder-copy-to-left(idx); }
+            delete-item(idx) => { root.folder-delete-item(idx); }
         }
 
         if root.view-mode == 3 : DiffView3Way {
@@ -592,6 +635,14 @@ export component MainWindow inherits Window {
                     root.request-action(5);
                     return accept;
                 }
+                if event.text == "g" {
+                    root.show-goto-dialog = true;
+                    return accept;
+                }
+                if event.text == "m" {
+                    root.toggle-bookmark(root.current-diff-index);
+                    return accept;
+                }
             }
             // Alt + arrow for diff navigation
             if event.modifiers.alt {
@@ -603,6 +654,19 @@ export component MainWindow inherits Window {
                     root.prev-diff();
                     return accept;
                 }
+                if event.text == Key.Home {
+                    root.first-diff();
+                    return accept;
+                }
+                if event.text == Key.End {
+                    root.last-diff();
+                    return accept;
+                }
+            }
+            // F2 for next bookmark
+            if event.text == Key.F2 {
+                root.next-bookmark();
+                return accept;
             }
             return reject;
         }
@@ -633,6 +697,74 @@ export component MainWindow inherits Window {
         }
         cancel => {
             root.show-options-dialog = false;
+        }
+    }
+
+    // Go to Line dialog
+    if root.show-goto-dialog : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000080;
+
+        TouchArea {
+            clicked => { root.show-goto-dialog = false; }
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 300px;
+            height: 130px;
+            background: Palette.background;
+            border-color: Palette.border;
+            border-width: 1px;
+            border-radius: 8px;
+
+            TouchArea {}
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 12px;
+                alignment: center;
+
+                Text {
+                    text: @tr("Go to Line");
+                    font-size: 14px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: center;
+
+                    Text {
+                        text: @tr("Line:");
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+
+                    goto-input := LineEdit {
+                        width: 120px;
+                        text <=> root.goto-line-input;
+                        placeholder-text: "1";
+                        accepted(text) => {
+                            root.goto-line(text.to-float());
+                            root.show-goto-dialog = false;
+                            root.goto-line-input = "";
+                        }
+                    }
+
+                    Button {
+                        text: @tr("Go");
+                        clicked => {
+                            root.goto-line(root.goto-line-input.to-float());
+                            root.show-goto-dialog = false;
+                            root.goto-line-input = "";
+                        }
+                    }
+                }
+            }
         }
     }
 
