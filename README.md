@@ -1,5 +1,7 @@
 # WinXMerge
 
+[![CI](https://github.com/masak1yu/winxmerge/actions/workflows/ci.yml/badge.svg)](https://github.com/masak1yu/winxmerge/actions/workflows/ci.yml)
+
 A cross-platform file diff comparison and merge tool inspired by WinMerge, built with Rust + Slint UI.
 
 ## Features
