@@ -5,7 +5,7 @@ use std::time::SystemTime;
 use slint::{Model, ModelRc, SharedString, VecModel};
 
 use crate::diff::engine::{DiffOptions, compute_diff_with_options};
-use crate::diff::folder::compare_folders;
+use crate::diff::folder::{FolderCompareOptions, compare_folders_with_options};
 use crate::diff::three_way::{ThreeWayStatus, compute_three_way_diff};
 use crate::encoding::{decode_file, encode_text};
 use crate::highlight::{detect_file_type, highlight_lines};
@@ -95,6 +95,7 @@ impl TabState {
 pub struct AppState {
     pub tabs: Vec<TabState>,
     pub active_tab: usize,
+    pub folder_exclude_patterns: Vec<String>,
 }
 
 impl AppState {
@@ -102,6 +103,7 @@ impl AppState {
         Self {
             tabs: vec![TabState::new()],
             active_tab: 0,
+            folder_exclude_patterns: Vec::new(),
         }
     }
 
@@ -435,15 +437,26 @@ pub fn recompute_diff_from_text_with_highlights(
             .unwrap_or_default(),
     ));
 
+    // Compute diff statistics
+    let mut added = 0u32;
+    let mut removed = 0u32;
+    let mut modified = 0u32;
+    for line in &result.lines {
+        match line.status {
+            LineStatus::Added => added += 1,
+            LineStatus::Removed => removed += 1,
+            LineStatus::Modified => modified += 1,
+            _ => {}
+        }
+    }
+    let stats = format!("+{} -{} ~{}", added, removed, modified);
+
     let status = if result.diff_count == 0 {
         "Files are identical".to_string()
     } else if tab.current_diff >= 0 {
-        format!(
-            "Difference 1 of {} ({} total)",
-            result.diff_count, result.diff_count
-        )
+        format!("Difference 1 of {} [{}]", result.diff_count, stats)
     } else {
-        format!("{} differences found", result.diff_count)
+        format!("{} differences found [{}]", result.diff_count, stats)
     };
     window.set_status_text(SharedString::from(status));
 }
@@ -504,7 +517,8 @@ pub fn goto_line(window: &MainWindow, state: &AppState, line_number: i32) {
         let left_no: i32 = data.left_line_no.parse().unwrap_or(0);
         let right_no: i32 = data.right_line_no.parse().unwrap_or(0);
         if left_no == line_number || right_no == line_number {
-            // Scroll to this position by setting status
+            // Scroll to this row
+            window.invoke_scroll_diff_to_row(idx as i32);
             window.set_status_text(SharedString::from(format!("Line {}", line_number)));
             // If this line is part of a diff, select it
             if data.diff_index >= 0 {
@@ -596,6 +610,9 @@ fn update_current_diff(window: &MainWindow, state: &mut AppState, new_index: i32
     let current_pos = tab.diff_positions[new_index as usize];
     let total = tab.diff_positions.len();
 
+    // Scroll to the diff position
+    window.invoke_scroll_diff_to_row(current_pos as i32);
+
     let model = window.get_diff_lines();
     if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
         for i in 0..vec_model.row_count() {
@@ -608,10 +625,28 @@ fn update_current_diff(window: &MainWindow, state: &mut AppState, new_index: i32
         }
     }
 
+    // Compute diff statistics
+    let mut added = 0u32;
+    let mut removed = 0u32;
+    let mut modified = 0u32;
+    if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        for i in 0..vec_model.row_count() {
+            let row = vec_model.row_data(i).unwrap();
+            match row.status {
+                1 => added += 1,
+                2 => removed += 1,
+                3 => modified += 1,
+                _ => {}
+            }
+        }
+    }
+    let stats = format!("+{} -{} ~{}", added, removed, modified);
+
     window.set_status_text(SharedString::from(format!(
-        "Difference {} of {}",
+        "Difference {} of {} [{}]",
         new_index + 1,
-        total
+        total,
+        stats
     )));
 }
 
@@ -800,6 +835,75 @@ fn rebuild_left_after_copy_from_right(vec_model: &VecModel<DiffLineData>) -> Str
     lines.join("\n") + "\n"
 }
 
+pub fn copy_all_text(window: &MainWindow, state: &AppState, is_left: bool) {
+    let tab = state.current_tab();
+    let text = if is_left {
+        tab.left_lines.join("\n")
+    } else {
+        tab.right_lines.join("\n")
+    };
+
+    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+        let _ = clipboard.set_text(&text);
+        let side = if is_left { "Left" } else { "Right" };
+        window.set_status_text(SharedString::from(format!(
+            "{} file text copied to clipboard",
+            side
+        )));
+    }
+}
+
+pub fn edit_line(
+    window: &MainWindow,
+    state: &mut AppState,
+    line_index: i32,
+    new_text: &str,
+    is_left: bool,
+) {
+    let model = window.get_diff_lines();
+    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+
+    if line_index < 0 || line_index as usize >= vec_model.row_count() {
+        return;
+    }
+
+    // Push undo snapshot before edit
+    push_undo_snapshot(state, vec_model);
+
+    let mut row = vec_model.row_data(line_index as usize).unwrap();
+    if is_left {
+        row.left_text = SharedString::from(new_text);
+    } else {
+        row.right_text = SharedString::from(new_text);
+    }
+    vec_model.set_row_data(line_index as usize, row);
+
+    // Update the internal line data
+    let tab = state.current_tab_mut();
+    // Find the actual line number from the diff model to update left_lines/right_lines
+    let data = &vec_model.row_data(line_index as usize).unwrap();
+    if is_left {
+        if let Ok(line_no) = data.left_line_no.parse::<usize>() {
+            if line_no > 0 && line_no <= tab.left_lines.len() {
+                tab.left_lines[line_no - 1] = new_text.to_string();
+            }
+        }
+    } else {
+        if let Ok(line_no) = data.right_line_no.parse::<usize>() {
+            if line_no > 0 && line_no <= tab.right_lines.len() {
+                tab.right_lines[line_no - 1] = new_text.to_string();
+            }
+        }
+    }
+
+    tab.has_unsaved_changes = true;
+    window.set_has_unsaved_changes(true);
+    window.set_can_undo(true);
+}
+
 pub fn copy_current_line_text(window: &MainWindow, state: &AppState, is_left: bool) {
     let tab = state.current_tab();
     if tab.current_diff < 0 || tab.current_diff as usize >= tab.diff_positions.len() {
@@ -860,6 +964,46 @@ pub fn export_html_report(window: &MainWindow, state: &AppState) {
             Ok(_) => {
                 window.set_status_text(SharedString::from(format!(
                     "Exported to {}",
+                    path.to_string_lossy()
+                )));
+            }
+            Err(e) => {
+                window.set_status_text(SharedString::from(format!("Export error: {}", e)));
+            }
+        }
+    }
+}
+
+pub fn export_patch(window: &MainWindow, state: &AppState) {
+    let tab = state.current_tab();
+
+    let left_text = tab.left_lines.join("\n") + "\n";
+    let right_text = tab.right_lines.join("\n") + "\n";
+    let result = compute_diff_with_options(&left_text, &right_text, &tab.diff_options);
+
+    let left_title = tab
+        .left_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Left".to_string());
+    let right_title = tab
+        .right_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Right".to_string());
+
+    let patch = crate::export::export_unified_diff(&result, &left_title, &right_title);
+
+    if let Some(path) = rfd::FileDialog::new()
+        .set_title("Export Patch (Unified Diff)")
+        .set_file_name("diff.patch")
+        .add_filter("Patch", &["patch", "diff"])
+        .save_file()
+    {
+        match fs::write(&path, &patch) {
+            Ok(_) => {
+                window.set_status_text(SharedString::from(format!(
+                    "Exported patch to {}",
                     path.to_string_lossy()
                 )));
             }
@@ -932,9 +1076,20 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
         "en".to_string()
     };
     let lang_code = if settings.language == "ja" { "ja" } else { "" };
-    let _ = slint::select_bundled_translation(lang_code);
+    if let Err(e) = slint::select_bundled_translation(lang_code) {
+        eprintln!("Translation error: {}", e);
+    }
 
     settings.auto_rescan = window.get_opt_auto_rescan();
+
+    // Read folder exclude patterns
+    let folder_exclude_str = window.get_opt_folder_exclude_patterns().to_string();
+    settings.folder_exclude_patterns = folder_exclude_str.clone();
+    state.folder_exclude_patterns = folder_exclude_str
+        .split(';')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
 
     // Read filter settings
     let line_filters_str = window.get_opt_line_filters().to_string();
@@ -954,6 +1109,23 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
         .map(|(p, r)| crate::settings::SubstitutionFilter {
             pattern: p.trim().to_string(),
             replacement: r.trim().to_string(),
+        })
+        .collect();
+
+    // Parse plugin list from UI
+    let plugin_list_str = window.get_plugin_list().to_string();
+    settings.plugins = plugin_list_str
+        .split('|')
+        .filter(|s| !s.trim().is_empty())
+        .filter_map(|entry| {
+            let mut parts = entry.splitn(2, ':');
+            let name = parts.next()?.trim().to_string();
+            let command = parts.next()?.trim().to_string();
+            if name.is_empty() || command.is_empty() {
+                None
+            } else {
+                Some(crate::settings::PluginEntry { name, command })
+            }
         })
         .collect();
 
@@ -1278,7 +1450,11 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
         _ => return,
     };
 
-    let items = compare_folders(&left_folder, &right_folder);
+    let options = FolderCompareOptions {
+        exclude_patterns: state.folder_exclude_patterns.clone(),
+        ..Default::default()
+    };
+    let items = compare_folders_with_options(&left_folder, &right_folder, &options);
 
     let folder_item_data: Vec<FolderItemData> = items
         .iter()
