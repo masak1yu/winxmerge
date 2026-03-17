@@ -3,6 +3,7 @@ import { DiffView, DiffLineData } from "widgets/diff-view.slint";
 import { FolderView, FolderItemData } from "widgets/folder-view.slint";
 import { TabBar, TabData } from "widgets/tab-bar.slint";
 import { OpenDialog } from "dialogs/open-dialog.slint";
+import { OptionsDialog } from "dialogs/options-dialog.slint";
 
 export { DiffLineData, FolderItemData, TabData }
 
@@ -111,6 +112,9 @@ export component MainWindow inherits Window {
     in-out property <string> open-right-path-input: "";
     in-out property <bool> open-is-folder-mode: false;
 
+    // Folder context (show back button when navigated from folder view)
+    in-out property <bool> has-folder-context: false;
+
     // Tabs
     in-out property <[TabData]> tab-list: [{title: "New", is-active: true, has-unsaved: false}];
     in-out property <int> active-tab-index: 0;
@@ -123,6 +127,7 @@ export component MainWindow inherits Window {
     callback prev-diff();
     callback copy-to-right(int);
     callback copy-to-left(int);
+    callback select-diff(int);
     callback save-left();
     callback save-right();
     callback folder-item-double-clicked(int);
@@ -141,6 +146,22 @@ export component MainWindow inherits Window {
     callback switch-tab(int);
     callback undo();
     callback redo();
+    callback export-html();
+    callback copy-left-text();
+    callback copy-right-text();
+    callback apply-options();
+
+    // Options dialog state
+    in-out property <bool> show-options-dialog: false;
+    in-out property <bool> opt-ignore-blank-lines: false;
+    in-out property <bool> opt-ignore-eol: false;
+    in-out property <bool> opt-detect-moved-lines: true;
+    in-out property <bool> opt-show-line-numbers: true;
+    in-out property <bool> opt-word-wrap: true;
+    in-out property <bool> opt-syntax-highlighting: true;
+    in-out property <int> opt-font-size: 13;
+    in-out property <int> opt-tab-width: 4;
+    in-out property <bool> opt-enable-context-menu: true;
 
     // Helper: check unsaved before action
     function request-action(action: int) {
@@ -166,6 +187,8 @@ export component MainWindow inherits Window {
             MenuSeparator {}
             MenuItem { title: "Save Left"; enabled: root.has-unsaved-changes; activated => { root.save-left(); } }
             MenuItem { title: "Save Right"; enabled: root.has-unsaved-changes; activated => { root.save-right(); } }
+            MenuSeparator {}
+            MenuItem { title: "Export HTML Report..."; enabled: root.diff-count > 0; activated => { root.export-html(); } }
         }
         Menu {
             title: "Edit";
@@ -175,6 +198,11 @@ export component MainWindow inherits Window {
             MenuItem {
                 title: "Find / Replace...";
                 activated => { root.show-search = !root.show-search; }
+            }
+            MenuSeparator {}
+            MenuItem {
+                title: "Options...";
+                activated => { root.show-options-dialog = true; }
             }
         }
         Menu {
@@ -230,6 +258,11 @@ export component MainWindow inherits Window {
                 }
 
                 Rectangle { width: 4px; }
+
+                if root.view-mode == 0 && root.has-folder-context : Button {
+                    text: "< Back";
+                    clicked => { root.back-to-folder-view(); }
+                }
 
                 Button {
                     text: "Open Left...";
@@ -430,8 +463,14 @@ export component MainWindow inherits Window {
             current-diff-index: root.current-diff-index;
             left-title: root.left-path != "" ? root.left-path : "Left file";
             right-title: root.right-path != "" ? root.right-path : "Right file";
+            context-menu-enabled: root.opt-enable-context-menu;
             copy-to-right(idx) => { root.copy-to-right(idx); }
             copy-to-left(idx) => { root.copy-to-left(idx); }
+            select-diff(idx) => { root.select-diff(idx); }
+            next-diff => { root.next-diff(); }
+            prev-diff => { root.prev-diff(); }
+            copy-left-text => { root.copy-left-text(); }
+            copy-right-text => { root.copy-right-text(); }
         }
 
         if root.view-mode == 1 : FolderView {
@@ -515,6 +554,31 @@ export component MainWindow inherits Window {
                 }
             }
             return reject;
+        }
+    }
+
+    // Options dialog
+    OptionsDialog {
+        width: 100%;
+        height: 100%;
+        visible-flag: root.show-options-dialog;
+        opt-ignore-whitespace <=> root.ignore-whitespace;
+        opt-ignore-case <=> root.ignore-case;
+        opt-ignore-blank-lines <=> root.opt-ignore-blank-lines;
+        opt-ignore-eol <=> root.opt-ignore-eol;
+        opt-detect-moved-lines <=> root.opt-detect-moved-lines;
+        opt-show-line-numbers <=> root.opt-show-line-numbers;
+        opt-word-wrap <=> root.opt-word-wrap;
+        opt-syntax-highlighting <=> root.opt-syntax-highlighting;
+        opt-font-size <=> root.opt-font-size;
+        opt-tab-width <=> root.opt-tab-width;
+        opt-enable-context-menu <=> root.opt-enable-context-menu;
+        apply => {
+            root.show-options-dialog = false;
+            root.apply-options();
+        }
+        cancel => {
+            root.show-options-dialog = false;
         }
     }
 
