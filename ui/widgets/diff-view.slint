@@ -122,6 +122,8 @@ export component DiffView inherits Rectangle {
     in property <[DiffLineData]> diff-lines;
     in property <int> current-diff-index: -1;
 
+    in property <bool> context-menu-enabled: true;
+
     callback copy-to-right(/* diff-index */ int);
     callback copy-to-left(/* diff-index */ int);
     callback select-diff(/* diff-index */ int);
@@ -189,7 +191,7 @@ export component DiffView inherits Rectangle {
         HorizontalLayout {
             // Left pane
             Rectangle {
-                ContextMenuArea {
+                if root.context-menu-enabled : ContextMenuArea {
                     Menu {
                         title: "Context";
                         MenuItem { title: "Copy to Right →"; enabled: root.current-diff-index >= 0; activated => { root.copy-to-right(root.current-diff-index); } }
@@ -273,7 +275,7 @@ export component DiffView inherits Rectangle {
 
             // Right pane
             Rectangle {
-                ContextMenuArea {
+                if root.context-menu-enabled : ContextMenuArea {
                     Menu {
                         title: "Context";
                         MenuItem { title: "← Copy to Left"; enabled: root.current-diff-index >= 0; activated => { root.copy-to-left(root.current-diff-index); } }

@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use app::{
-    add_tab, close_tab, copy_current_line_text, copy_to_left, copy_to_right,
+    add_tab, apply_options, close_tab, copy_current_line_text, copy_to_left, copy_to_right,
     discard_and_proceed, export_html_report, navigate_diff, navigate_search, open_file_dialog,
     open_folder_dialog, open_folder_item, redo, replace_all_text, replace_text,
     run_folder_compare, save_file, search_text, select_diff, start_compare, switch_tab,
@@ -31,6 +31,15 @@ fn main() {
         window.set_ignore_whitespace(s.ignore_whitespace);
         window.set_ignore_case(s.ignore_case);
         window.set_show_toolbar(s.show_toolbar);
+        window.set_opt_ignore_blank_lines(s.ignore_blank_lines);
+        window.set_opt_ignore_eol(s.ignore_eol);
+        window.set_opt_detect_moved_lines(s.detect_moved_lines);
+        window.set_opt_show_line_numbers(s.show_line_numbers);
+        window.set_opt_word_wrap(s.word_wrap);
+        window.set_opt_syntax_highlighting(s.syntax_highlighting);
+        window.set_opt_font_size(s.font_size as i32);
+        window.set_opt_tab_width(s.tab_width);
+        window.set_opt_enable_context_menu(s.enable_context_menu);
         let mut app = state.borrow_mut();
         app.current_tab_mut().diff_options.ignore_whitespace = s.ignore_whitespace;
         app.current_tab_mut().diff_options.ignore_case = s.ignore_case;
@@ -367,6 +376,17 @@ fn main() {
         window.on_copy_right_text(move || {
             let window = window_weak.unwrap();
             copy_current_line_text(&window, &state.borrow(), false);
+        });
+    }
+
+    // Apply options
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        let settings = settings.clone();
+        window.on_apply_options(move || {
+            let window = window_weak.unwrap();
+            apply_options(&window, &mut state.borrow_mut(), &mut settings.borrow_mut());
         });
     }
 

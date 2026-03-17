@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use slint::{Model, ModelRc, SharedString, VecModel};
 
 use crate::diff::engine::{compute_diff_with_options, DiffOptions};
+use crate::settings::AppSettings;
 use crate::diff::folder::compare_folders;
 use crate::encoding::{decode_file, encode_text};
 use crate::highlight::{detect_file_type, highlight_lines};
@@ -719,6 +720,33 @@ pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
             encoding
         )));
     }
+}
+
+pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut AppSettings) {
+    // Read options from window
+    settings.ignore_whitespace = window.get_ignore_whitespace();
+    settings.ignore_case = window.get_ignore_case();
+    settings.ignore_blank_lines = window.get_opt_ignore_blank_lines();
+    settings.ignore_eol = window.get_opt_ignore_eol();
+    settings.detect_moved_lines = window.get_opt_detect_moved_lines();
+    settings.show_line_numbers = window.get_opt_show_line_numbers();
+    settings.word_wrap = window.get_opt_word_wrap();
+    settings.syntax_highlighting = window.get_opt_syntax_highlighting();
+    settings.enable_context_menu = window.get_opt_enable_context_menu();
+    settings.font_size = window.get_opt_font_size() as f32;
+    settings.tab_width = window.get_opt_tab_width();
+    settings.save();
+
+    // Apply diff options to current tab and re-run
+    let tab = state.current_tab_mut();
+    tab.diff_options.ignore_whitespace = settings.ignore_whitespace;
+    tab.diff_options.ignore_case = settings.ignore_case;
+
+    if tab.left_path.is_some() && tab.right_path.is_some() {
+        run_diff(window, state);
+    }
+
+    window.set_status_text(SharedString::from("Options applied"));
 }
 
 pub fn toggle_ignore_whitespace(window: &MainWindow, state: &mut AppState) {

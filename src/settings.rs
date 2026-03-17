@@ -10,12 +10,35 @@ pub struct AppSettings {
     pub window_width: f32,
     #[serde(default = "default_height")]
     pub window_height: f32,
+
+    // Compare options
     #[serde(default)]
     pub ignore_whitespace: bool,
     #[serde(default)]
     pub ignore_case: bool,
     #[serde(default)]
+    pub ignore_blank_lines: bool,
+    #[serde(default)]
+    pub ignore_eol: bool,
+    #[serde(default)]
+    pub detect_moved_lines: bool,
+
+    // View options
+    #[serde(default)]
     pub show_toolbar: bool,
+    #[serde(default = "default_font_size")]
+    pub font_size: f32,
+    #[serde(default = "default_tab_width")]
+    pub tab_width: i32,
+    #[serde(default = "default_true")]
+    pub show_line_numbers: bool,
+    #[serde(default = "default_true")]
+    pub word_wrap: bool,
+    #[serde(default = "default_true")]
+    pub syntax_highlighting: bool,
+    #[serde(default = "default_true")]
+    pub enable_context_menu: bool,
+
     #[serde(default)]
     pub recent_files: Vec<RecentEntry>,
 }
@@ -33,6 +56,15 @@ fn default_width() -> f32 {
 fn default_height() -> f32 {
     800.0
 }
+fn default_font_size() -> f32 {
+    13.0
+}
+fn default_tab_width() -> i32 {
+    4
+}
+fn default_true() -> bool {
+    true
+}
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -41,7 +73,16 @@ impl Default for AppSettings {
             window_height: default_height(),
             ignore_whitespace: false,
             ignore_case: false,
+            ignore_blank_lines: false,
+            ignore_eol: false,
+            detect_moved_lines: true,
             show_toolbar: true,
+            font_size: default_font_size(),
+            tab_width: default_tab_width(),
+            show_line_numbers: true,
+            word_wrap: true,
+            syntax_highlighting: true,
+            enable_context_menu: true,
             recent_files: Vec::new(),
         }
     }
@@ -80,11 +121,9 @@ impl AppSettings {
     }
 
     pub fn add_recent(&mut self, left: &str, right: &str, is_folder: bool) {
-        // Remove duplicate if exists
         self.recent_files
             .retain(|r| !(r.left_path == left && r.right_path == right));
 
-        // Add to front
         self.recent_files.insert(
             0,
             RecentEntry {
@@ -94,7 +133,6 @@ impl AppSettings {
             },
         );
 
-        // Trim
         self.recent_files.truncate(MAX_RECENT_FILES);
     }
 }
