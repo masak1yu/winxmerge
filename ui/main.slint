@@ -1,4 +1,4 @@
-import { Button, HorizontalBox, VerticalBox, Palette } from "std-widgets.slint";
+import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit } from "std-widgets.slint";
 import { DiffView, DiffLineData } from "widgets/diff-view.slint";
 import { FolderView, FolderItemData } from "widgets/folder-view.slint";
 
@@ -22,8 +22,16 @@ export component MainWindow inherits Window {
     // Folder comparison properties
     in-out property <[FolderItemData]> folder-items;
     in-out property <int> folder-selected-index: -1;
-    // 0=file diff, 1=folder compare
     in-out property <int> view-mode: 0;
+
+    // Diff options
+    in-out property <bool> ignore-whitespace: false;
+    in-out property <bool> ignore-case: false;
+
+    // Search
+    in-out property <bool> show-search: false;
+    in-out property <string> search-query: "";
+    in-out property <int> search-match-count: 0;
 
     callback open-left-file();
     callback open-right-file();
@@ -37,6 +45,11 @@ export component MainWindow inherits Window {
     callback save-right();
     callback folder-item-double-clicked(int);
     callback back-to-folder-view();
+    callback toggle-ignore-whitespace();
+    callback toggle-ignore-case();
+    callback search(string);
+    callback search-next();
+    callback search-prev();
 
     MenuBar {
         Menu {
@@ -50,10 +63,25 @@ export component MainWindow inherits Window {
             MenuItem { title: "Save Right"; enabled: root.has-unsaved-changes; activated => { root.save-right(); } }
         }
         Menu {
+            title: "Edit";
+            MenuItem {
+                title: "Find...";
+                activated => { root.show-search = !root.show-search; }
+            }
+        }
+        Menu {
             title: "View";
             MenuItem {
                 title: root.show-toolbar ? "Hide Toolbar" : "Show Toolbar";
                 activated => { root.show-toolbar = !root.show-toolbar; }
+            }
+            MenuItem {
+                title: root.ignore-whitespace ? "✓ Ignore Whitespace" : "  Ignore Whitespace";
+                activated => { root.toggle-ignore-whitespace(); }
+            }
+            MenuItem {
+                title: root.ignore-case ? "✓ Ignore Case" : "  Ignore Case";
+                activated => { root.toggle-ignore-case(); }
             }
         }
         Menu {
@@ -78,12 +106,6 @@ export component MainWindow inherits Window {
                 padding: 4px;
                 spacing: 4px;
                 alignment: start;
-
-                if root.view-mode == 1 : Button {
-                    text: "← Back";
-                    visible: root.view-mode == 1;
-                    clicked => { /* handled by folder view */ }
-                }
 
                 Button {
                     text: "Open Left...";
@@ -135,6 +157,84 @@ export component MainWindow inherits Window {
                     text: "← Copy";
                     enabled: current-diff-index >= 0;
                     clicked => { root.copy-to-left(root.current-diff-index); }
+                }
+
+                Rectangle { width: 8px; }
+
+                CheckBox {
+                    text: "Ignore WS";
+                    checked: root.ignore-whitespace;
+                    toggled => { root.toggle-ignore-whitespace(); }
+                }
+
+                CheckBox {
+                    text: "Ignore Case";
+                    checked: root.ignore-case;
+                    toggled => { root.toggle-ignore-case(); }
+                }
+            }
+        }
+
+        // Search bar
+        if root.show-search : Rectangle {
+            height: 36px;
+            background: Palette.background.darker(0.02);
+            border-color: Palette.border;
+            border-width: 1px;
+
+            HorizontalLayout {
+                padding: 4px;
+                spacing: 4px;
+                alignment: start;
+
+                Text {
+                    text: "Find:";
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+
+                LineEdit {
+                    width: 250px;
+                    text: root.search-query;
+                    placeholder-text: "Search text...";
+                    accepted(text) => {
+                        root.search-query = text;
+                        root.search(text);
+                    }
+                    edited(text) => {
+                        root.search-query = text;
+                        root.search(text);
+                    }
+                }
+
+                Button {
+                    text: "▲";
+                    enabled: search-match-count > 0;
+                    clicked => { root.search-prev(); }
+                }
+
+                Button {
+                    text: "▼";
+                    enabled: search-match-count > 0;
+                    clicked => { root.search-next(); }
+                }
+
+                Text {
+                    text: search-match-count > 0 ? "\{search-match-count} matches" : "";
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    color: Palette.foreground.transparentize(0.3);
+                }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                Button {
+                    text: "✕";
+                    clicked => {
+                        root.show-search = false;
+                        root.search-query = "";
+                        root.search("");
+                    }
                 }
             }
         }

@@ -3,8 +3,9 @@ use std::path::PathBuf;
 
 use slint::{Model, ModelRc, SharedString, VecModel};
 
-use crate::diff::engine::compute_diff;
+use crate::diff::engine::{compute_diff_with_options, DiffOptions};
 use crate::diff::folder::compare_folders;
+use crate::encoding::{decode_file, encode_text};
 use crate::models::diff_line::LineStatus;
 use crate::models::folder_item::FileCompareStatus;
 use crate::{DiffLineData, FolderItemData, MainWindow};
@@ -17,10 +18,18 @@ pub struct AppState {
     pub left_lines: Vec<String>,
     pub right_lines: Vec<String>,
     pub has_unsaved_changes: bool,
-    // Folder comparison state
+    // Folder comparison
     pub left_folder: Option<PathBuf>,
     pub right_folder: Option<PathBuf>,
     pub folder_items: Vec<crate::models::folder_item::FolderItem>,
+    // Encoding
+    pub left_encoding: String,
+    pub right_encoding: String,
+    // Diff options
+    pub diff_options: DiffOptions,
+    // Search
+    pub search_matches: Vec<usize>,
+    pub current_search_match: i32,
 }
 
 impl AppState {
@@ -36,6 +45,11 @@ impl AppState {
             left_folder: None,
             right_folder: None,
             folder_items: Vec::new(),
+            left_encoding: "UTF-8".to_string(),
+            right_encoding: "UTF-8".to_string(),
+            diff_options: DiffOptions::default(),
+            search_matches: Vec::new(),
+            current_search_match: -1,
         }
     }
 }
@@ -50,14 +64,25 @@ pub fn open_folder_dialog(title: &str) -> Option<PathBuf> {
 
 pub fn run_diff(window: &MainWindow, state: &mut AppState) {
     let (left_path, right_path) = match (&state.left_path, &state.right_path) {
-        (Some(l), Some(r)) => (l, r),
+        (Some(l), Some(r)) => (l.clone(), r.clone()),
         _ => return,
     };
 
-    let left_text = fs::read_to_string(left_path).unwrap_or_default();
-    let right_text = fs::read_to_string(right_path).unwrap_or_default();
+    let left_bytes = fs::read(&left_path).unwrap_or_default();
+    let right_bytes = fs::read(&right_path).unwrap_or_default();
+
+    let (left_text, left_enc) = decode_file(&left_bytes);
+    let (right_text, right_enc) = decode_file(&right_bytes);
+
+    state.left_encoding = left_enc.to_string();
+    state.right_encoding = right_enc.to_string();
 
     recompute_diff_from_text(window, state, &left_text, &right_text);
+
+    // Update encoding display in status
+    let enc_info = format!(" [{}  |  {}]", state.left_encoding, state.right_encoding);
+    let current = window.get_status_text().to_string();
+    window.set_status_text(SharedString::from(current + &enc_info));
 }
 
 pub fn recompute_diff_from_text(
@@ -66,7 +91,7 @@ pub fn recompute_diff_from_text(
     left_text: &str,
     right_text: &str,
 ) {
-    let result = compute_diff(left_text, right_text);
+    let result = compute_diff_with_options(left_text, right_text, &state.diff_options);
 
     state.left_lines = left_text.lines().map(String::from).collect();
     state.right_lines = right_text.lines().map(String::from).collect();
@@ -309,24 +334,117 @@ pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
         None => return,
     };
 
-    let (text, path) = if save_left {
-        (rebuild_left(vec_model), &state.left_path)
+    let (text, path, encoding) = if save_left {
+        (
+            rebuild_left(vec_model),
+            &state.left_path,
+            &state.left_encoding,
+        )
     } else {
-        (rebuild_right(vec_model), &state.right_path)
+        (
+            rebuild_right(vec_model),
+            &state.right_path,
+            &state.right_encoding,
+        )
     };
 
     if let Some(path) = path {
-        if let Err(e) = fs::write(path, &text) {
+        let bytes = encode_text(&text, encoding);
+        if let Err(e) = fs::write(path, &bytes) {
             window.set_status_text(SharedString::from(format!("Error saving: {}", e)));
             return;
         }
         let side = if save_left { "Left" } else { "Right" };
         window.set_status_text(SharedString::from(format!(
-            "{} file saved: {}",
+            "{} file saved: {} ({})",
             side,
-            path.to_string_lossy()
+            path.to_string_lossy(),
+            encoding
         )));
     }
+}
+
+pub fn toggle_ignore_whitespace(window: &MainWindow, state: &mut AppState) {
+    state.diff_options.ignore_whitespace = !state.diff_options.ignore_whitespace;
+    window.set_ignore_whitespace(state.diff_options.ignore_whitespace);
+    rerun_diff(window, state);
+}
+
+pub fn toggle_ignore_case(window: &MainWindow, state: &mut AppState) {
+    state.diff_options.ignore_case = !state.diff_options.ignore_case;
+    window.set_ignore_case(state.diff_options.ignore_case);
+    rerun_diff(window, state);
+}
+
+fn rerun_diff(window: &MainWindow, state: &mut AppState) {
+    if state.left_path.is_some() && state.right_path.is_some() {
+        run_diff(window, state);
+    }
+}
+
+pub fn search_text(window: &MainWindow, state: &mut AppState, query: &str) {
+    state.search_matches.clear();
+    state.current_search_match = -1;
+
+    if query.is_empty() {
+        window.set_search_match_count(0);
+        window.set_status_text(SharedString::from("Search cleared"));
+        return;
+    }
+
+    let query_lower = query.to_lowercase();
+    let model = window.get_diff_lines();
+    if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        for i in 0..vec_model.row_count() {
+            let row = vec_model.row_data(i).unwrap();
+            if row.left_text.to_string().to_lowercase().contains(&query_lower)
+                || row.right_text.to_string().to_lowercase().contains(&query_lower)
+            {
+                state.search_matches.push(i);
+            }
+        }
+    }
+
+    let count = state.search_matches.len();
+    window.set_search_match_count(count as i32);
+
+    if count > 0 {
+        state.current_search_match = 0;
+        window.set_status_text(SharedString::from(format!(
+            "Found {} matches for \"{}\"",
+            count, query
+        )));
+    } else {
+        window.set_status_text(SharedString::from(format!(
+            "No matches found for \"{}\"",
+            query
+        )));
+    }
+}
+
+pub fn navigate_search(window: &MainWindow, state: &mut AppState, forward: bool) {
+    if state.search_matches.is_empty() {
+        return;
+    }
+
+    let new_index = if forward {
+        if state.current_search_match < state.search_matches.len() as i32 - 1 {
+            state.current_search_match + 1
+        } else {
+            0
+        }
+    } else if state.current_search_match > 0 {
+        state.current_search_match - 1
+    } else {
+        state.search_matches.len() as i32 - 1
+    };
+
+    state.current_search_match = new_index;
+    window.set_status_text(SharedString::from(format!(
+        "Match {} of {}",
+        new_index + 1,
+        state.search_matches.len()
+    )));
 }
 
 // --- Folder comparison ---
@@ -390,7 +508,6 @@ pub fn open_folder_item(window: &MainWindow, state: &mut AppState, index: i32) {
         return;
     }
 
-    // Open file diff for this item
     if let (Some(left), Some(right)) = (&item.left_path, &item.right_path) {
         state.left_path = Some(left.clone());
         state.right_path = Some(right.clone());

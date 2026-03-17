@@ -7,6 +7,8 @@ edition = "2024"
 slint = "1.15.1"
 similar = "2.6"
 rfd = "0.15"
+encoding_rs = "0.8"
+chardetng = "0.1"
 
 [build-dependencies]
 slint-build = "1.15.1"

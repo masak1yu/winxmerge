@@ -1,5 +1,6 @@
 mod app;
 mod diff;
+mod encoding;
 mod models;
 
 slint::include_modules!();
@@ -8,8 +9,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use app::{
-    copy_to_left, copy_to_right, navigate_diff, open_file_dialog, open_folder_dialog,
-    open_folder_item, run_diff, run_folder_compare, save_file, AppState,
+    copy_to_left, copy_to_right, navigate_diff, navigate_search, open_file_dialog,
+    open_folder_dialog, open_folder_item, run_diff, run_folder_compare, save_file, search_text,
+    toggle_ignore_case, toggle_ignore_whitespace, AppState,
 };
 
 fn main() {
@@ -85,66 +87,6 @@ fn main() {
         });
     }
 
-    // Next diff
-    {
-        let window_weak = window.as_weak();
-        let state = state.clone();
-        window.on_next_diff(move || {
-            let window = window_weak.unwrap();
-            navigate_diff(&window, &mut state.borrow_mut(), true);
-        });
-    }
-
-    // Prev diff
-    {
-        let window_weak = window.as_weak();
-        let state = state.clone();
-        window.on_prev_diff(move || {
-            let window = window_weak.unwrap();
-            navigate_diff(&window, &mut state.borrow_mut(), false);
-        });
-    }
-
-    // Copy to right
-    {
-        let window_weak = window.as_weak();
-        let state = state.clone();
-        window.on_copy_to_right(move |diff_index| {
-            let window = window_weak.unwrap();
-            copy_to_right(&window, &mut state.borrow_mut(), diff_index);
-        });
-    }
-
-    // Copy to left
-    {
-        let window_weak = window.as_weak();
-        let state = state.clone();
-        window.on_copy_to_left(move |diff_index| {
-            let window = window_weak.unwrap();
-            copy_to_left(&window, &mut state.borrow_mut(), diff_index);
-        });
-    }
-
-    // Save left
-    {
-        let window_weak = window.as_weak();
-        let state = state.clone();
-        window.on_save_left(move || {
-            let window = window_weak.unwrap();
-            save_file(&window, &mut state.borrow_mut(), true);
-        });
-    }
-
-    // Save right
-    {
-        let window_weak = window.as_weak();
-        let state = state.clone();
-        window.on_save_right(move || {
-            let window = window_weak.unwrap();
-            save_file(&window, &mut state.borrow_mut(), false);
-        });
-    }
-
     // Back to folder view
     {
         let window_weak = window.as_weak();
@@ -154,6 +96,110 @@ fn main() {
             let mut s = state.borrow_mut();
             window.set_view_mode(1);
             run_folder_compare(&window, &mut s);
+        });
+    }
+
+    // Navigation
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_next_diff(move || {
+            let window = window_weak.unwrap();
+            navigate_diff(&window, &mut state.borrow_mut(), true);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_prev_diff(move || {
+            let window = window_weak.unwrap();
+            navigate_diff(&window, &mut state.borrow_mut(), false);
+        });
+    }
+
+    // Merge
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_copy_to_right(move |diff_index| {
+            let window = window_weak.unwrap();
+            copy_to_right(&window, &mut state.borrow_mut(), diff_index);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_copy_to_left(move |diff_index| {
+            let window = window_weak.unwrap();
+            copy_to_left(&window, &mut state.borrow_mut(), diff_index);
+        });
+    }
+
+    // Save
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_save_left(move || {
+            let window = window_weak.unwrap();
+            save_file(&window, &mut state.borrow_mut(), true);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_save_right(move || {
+            let window = window_weak.unwrap();
+            save_file(&window, &mut state.borrow_mut(), false);
+        });
+    }
+
+    // Diff options
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_toggle_ignore_whitespace(move || {
+            let window = window_weak.unwrap();
+            toggle_ignore_whitespace(&window, &mut state.borrow_mut());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_toggle_ignore_case(move || {
+            let window = window_weak.unwrap();
+            toggle_ignore_case(&window, &mut state.borrow_mut());
+        });
+    }
+
+    // Search
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_search(move |query| {
+            let window = window_weak.unwrap();
+            search_text(&window, &mut state.borrow_mut(), &query);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_search_next(move || {
+            let window = window_weak.unwrap();
+            navigate_search(&window, &mut state.borrow_mut(), true);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_search_prev(move || {
+            let window = window_weak.unwrap();
+            navigate_search(&window, &mut state.borrow_mut(), false);
         });
     }
 
