@@ -7,6 +7,8 @@ export struct FolderItemData {
     status: int,
     left-size: string,
     right-size: string,
+    left-modified: string,
+    right-modified: string,
 }
 
 component FolderItemRow inherits Rectangle {
@@ -85,6 +87,26 @@ component FolderItemRow inherits Rectangle {
             horizontal-alignment: right;
             vertical-alignment: center;
         }
+
+        // Left modified
+        Text {
+            width: 110px;
+            text: item.left-modified;
+            font-size: 10px;
+            color: Palette.foreground.transparentize(0.4);
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        // Right modified
+        Text {
+            width: 110px;
+            text: item.right-modified;
+            font-size: 10px;
+            color: Palette.foreground.transparentize(0.4);
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
     }
 }
 
@@ -141,6 +163,22 @@ export component FolderView inherits Rectangle {
                     font-size: 12px;
                     font-weight: 600;
                     horizontal-alignment: right;
+                    vertical-alignment: center;
+                }
+                Text {
+                    width: 110px;
+                    text: "Left Modified";
+                    font-size: 12px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                Text {
+                    width: 110px;
+                    text: "Right Modified";
+                    font-size: 12px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
                     vertical-alignment: center;
                 }
             }

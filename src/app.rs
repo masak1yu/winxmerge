@@ -1053,6 +1053,16 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
                     .right_size
                     .map(|s| SharedString::from(format_size(s)))
                     .unwrap_or_default(),
+                left_modified: item
+                    .left_modified
+                    .as_ref()
+                    .map(|s| SharedString::from(s.as_str()))
+                    .unwrap_or_default(),
+                right_modified: item
+                    .right_modified
+                    .as_ref()
+                    .map(|s| SharedString::from(s.as_str()))
+                    .unwrap_or_default(),
             }
         })
         .collect();

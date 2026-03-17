@@ -17,4 +17,6 @@ pub struct FolderItem {
     pub right_path: Option<PathBuf>,
     pub left_size: Option<u64>,
     pub right_size: Option<u64>,
+    pub left_modified: Option<String>,
+    pub right_modified: Option<String>,
 }
