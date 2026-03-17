@@ -894,6 +894,28 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
     };
     let lang_code = if settings.language == "ja" { "ja" } else { "" };
     let _ = slint::select_bundled_translation(lang_code);
+
+    // Read filter settings
+    let line_filters_str = window.get_opt_line_filters().to_string();
+    settings.line_filters = line_filters_str
+        .split('|')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let sub_patterns_str = window.get_opt_substitution_patterns().to_string();
+    let sub_replacements_str = window.get_opt_substitution_replacements().to_string();
+    let patterns: Vec<&str> = sub_patterns_str.split('|').collect();
+    let replacements: Vec<&str> = sub_replacements_str.split('|').collect();
+    settings.substitution_filters = patterns
+        .iter()
+        .zip(replacements.iter())
+        .filter(|(p, _)| !p.trim().is_empty())
+        .map(|(p, r)| crate::settings::SubstitutionFilter {
+            pattern: p.trim().to_string(),
+            replacement: r.trim().to_string(),
+        })
+        .collect();
+
     settings.save();
 
     // Apply diff options to current tab and re-run
@@ -903,6 +925,12 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
     tab.diff_options.ignore_blank_lines = settings.ignore_blank_lines;
     tab.diff_options.ignore_eol = settings.ignore_eol;
     tab.diff_options.detect_moved_lines = settings.detect_moved_lines;
+    tab.diff_options.line_filters = settings.line_filters.clone();
+    tab.diff_options.substitution_filters = settings
+        .substitution_filters
+        .iter()
+        .map(|f| (f.pattern.clone(), f.replacement.clone()))
+        .collect();
 
     if tab.left_path.is_some() && tab.right_path.is_some() {
         run_diff(window, state);

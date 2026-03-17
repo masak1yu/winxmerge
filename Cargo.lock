@@ -6167,12 +6167,13 @@ dependencies = [
 
 [[package]]
 name = "winxmerge"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "arboard",
  "chardetng",
  "dirs",
  "encoding_rs",
+ "regex",
  "rfd",
  "serde",
  "serde_json",

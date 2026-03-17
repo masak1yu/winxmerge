@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use regex::Regex;
 use similar::{Algorithm, ChangeTag, TextDiff};
 
 use crate::models::diff_line::{DiffLine, DiffResult, LineStatus};
@@ -16,6 +17,10 @@ pub struct DiffOptions {
     pub ignore_blank_lines: bool,
     pub ignore_eol: bool,
     pub detect_moved_lines: bool,
+    /// Line filter: regex patterns to exclude matching lines from comparison
+    pub line_filters: Vec<String>,
+    /// Substitution filters: (pattern, replacement) pairs applied before comparison
+    pub substitution_filters: Vec<(String, String)>,
 }
 
 impl Default for DiffOptions {
@@ -26,6 +31,8 @@ impl Default for DiffOptions {
             ignore_blank_lines: false,
             ignore_eol: false,
             detect_moved_lines: true,
+            line_filters: Vec::new(),
+            substitution_filters: Vec::new(),
         }
     }
 }
@@ -196,7 +203,36 @@ fn detect_moved_lines(lines: &mut [DiffLine]) {
     }
 }
 
+fn compile_line_filters(patterns: &[String]) -> Vec<Regex> {
+    patterns
+        .iter()
+        .filter_map(|p| {
+            if p.trim().is_empty() {
+                None
+            } else {
+                Regex::new(p).ok()
+            }
+        })
+        .collect()
+}
+
+fn compile_substitution_filters(filters: &[(String, String)]) -> Vec<(Regex, String)> {
+    filters
+        .iter()
+        .filter_map(|(p, r)| {
+            if p.trim().is_empty() {
+                None
+            } else {
+                Regex::new(p).ok().map(|re| (re, r.clone()))
+            }
+        })
+        .collect()
+}
+
 fn normalize_text(text: &str, options: &DiffOptions) -> String {
+    let line_filters = compile_line_filters(&options.line_filters);
+    let sub_filters = compile_substitution_filters(&options.substitution_filters);
+
     let mut result = String::with_capacity(text.len());
     for line in text.lines() {
         let mut l = if options.ignore_eol {
@@ -206,6 +242,14 @@ fn normalize_text(text: &str, options: &DiffOptions) -> String {
         };
         if options.ignore_blank_lines && l.trim().is_empty() {
             continue;
+        }
+        // Line filter: skip lines matching any filter pattern
+        if line_filters.iter().any(|re| re.is_match(&l)) {
+            continue;
+        }
+        // Substitution filters: apply regex replacements
+        for (re, replacement) in &sub_filters {
+            l = re.replace_all(&l, replacement.as_str()).to_string();
         }
         if options.ignore_whitespace {
             l = l.split_whitespace().collect::<Vec<&str>>().join(" ");
@@ -306,5 +350,49 @@ mod tests {
         };
         let result = compute_diff_with_options("Hello   World\n", "hello world\n", &opts);
         assert_eq!(result.diff_count, 0);
+    }
+
+    #[test]
+    fn test_line_filter() {
+        let opts = DiffOptions {
+            line_filters: vec![r"^//.*".to_string()],
+            ..Default::default()
+        };
+        let left = "code\n// comment v1\n";
+        let right = "code\n// comment v2\n";
+        let result = compute_diff_with_options(left, right, &opts);
+        assert_eq!(result.diff_count, 0, "Comment lines should be filtered out");
+    }
+
+    #[test]
+    fn test_substitution_filter() {
+        let opts = DiffOptions {
+            substitution_filters: vec![(r"\d{4}-\d{2}-\d{2}".to_string(), "DATE".to_string())],
+            ..Default::default()
+        };
+        let left = "created: 2024-01-01\n";
+        let right = "created: 2025-06-15\n";
+        let result = compute_diff_with_options(left, right, &opts);
+        assert_eq!(result.diff_count, 0, "Date differences should be ignored");
+    }
+
+    #[test]
+    fn test_line_filter_empty_pattern() {
+        let opts = DiffOptions {
+            line_filters: vec!["".to_string(), "  ".to_string()],
+            ..Default::default()
+        };
+        let result = compute_diff_with_options("hello\n", "world\n", &opts);
+        assert_eq!(result.diff_count, 1, "Empty filters should be ignored");
+    }
+
+    #[test]
+    fn test_substitution_filter_invalid_regex() {
+        let opts = DiffOptions {
+            substitution_filters: vec![("[invalid".to_string(), "x".to_string())],
+            ..Default::default()
+        };
+        let result = compute_diff_with_options("hello\n", "hello\n", &opts);
+        assert_eq!(result.diff_count, 0, "Invalid regex should be skipped");
     }
 }

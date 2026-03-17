@@ -47,8 +47,20 @@ pub struct AppSettings {
     #[serde(default = "default_language")]
     pub language: String,
 
+    // Filters
+    #[serde(default)]
+    pub line_filters: Vec<String>,
+    #[serde(default)]
+    pub substitution_filters: Vec<SubstitutionFilter>,
+
     #[serde(default)]
     pub recent_files: Vec<RecentEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubstitutionFilter {
+    pub pattern: String,
+    pub replacement: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,6 +111,8 @@ impl Default for AppSettings {
             enable_context_menu: true,
             theme: default_theme(),
             language: default_language(),
+            line_filters: Vec::new(),
+            substitution_filters: Vec::new(),
             recent_files: Vec::new(),
         }
     }
