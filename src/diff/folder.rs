@@ -12,10 +12,8 @@ pub struct FolderCompareOptions {
     pub extension_filter: Vec<String>,
     /// Whether to respect .gitignore files
     pub respect_gitignore: bool,
-}
-
-pub fn compare_folders(left_dir: &Path, right_dir: &Path) -> Vec<FolderItem> {
-    compare_folders_with_options(left_dir, right_dir, &FolderCompareOptions::default())
+    /// Exclude patterns (e.g., ["*.log", "build/", "node_modules"])
+    pub exclude_patterns: Vec<String>,
 }
 
 pub fn compare_folders_with_options(
@@ -137,6 +135,11 @@ fn collect_entries(
                 continue;
             }
 
+            // Check exclude patterns
+            if should_ignore(&rel, &options.exclude_patterns) {
+                continue;
+            }
+
             let metadata = entry.metadata();
             let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
             let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
@@ -208,23 +211,31 @@ fn load_gitignore_patterns(dir: &Path) -> Vec<String> {
 }
 
 fn should_ignore(rel_path: &str, patterns: &[String]) -> bool {
+    let filename = rel_path.rsplit('/').next().unwrap_or(rel_path);
     for pattern in patterns {
         let pat = pattern.trim_start_matches('/');
+        if pat.is_empty() {
+            continue;
+        }
         // Simple glob matching: exact match, prefix match, or extension match
         if rel_path == pat || rel_path.starts_with(&format!("{}/", pat)) {
             return true;
         }
-        // *.ext pattern
+        // *.ext pattern — match against filename
         if let Some(ext) = pat.strip_prefix("*.") {
-            if rel_path.ends_with(&format!(".{}", ext)) {
+            if filename.ends_with(&format!(".{}", ext)) {
                 return true;
             }
         }
         // dir/ pattern
         if let Some(dir) = pat.strip_suffix('/') {
-            if rel_path == dir || rel_path.starts_with(&format!("{}/", dir)) {
+            if rel_path == dir || rel_path.starts_with(&format!("{}/", dir)) || filename == dir {
                 return true;
             }
+        }
+        // Exact filename match
+        if filename == pat {
+            return true;
         }
     }
     false

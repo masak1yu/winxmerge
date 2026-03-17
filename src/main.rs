@@ -12,14 +12,15 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use app::{
-    AppState, add_tab, apply_options, check_files_changed, close_tab, copy_current_line_text,
-    copy_to_left, copy_to_right, discard_and_proceed, export_html_report, first_diff,
-    folder_copy_to_left, folder_copy_to_right, folder_delete_item, goto_line, last_diff,
-    navigate_bookmark, navigate_conflict, navigate_diff, navigate_search, open_file_dialog,
-    open_folder_dialog, open_folder_item, open_in_editor, redo, replace_all_text, replace_text,
-    rescan, resolve_conflict_use_left, resolve_conflict_use_right, run_folder_compare, run_plugin,
-    save_file, search_text, select_diff, start_compare, start_three_way_compare, switch_tab,
-    toggle_bookmark, toggle_ignore_case, toggle_ignore_whitespace, undo,
+    AppState, add_tab, apply_options, check_files_changed, close_tab, copy_all_text,
+    copy_current_line_text, copy_to_left, copy_to_right, discard_and_proceed, edit_line,
+    export_html_report, export_patch, first_diff, folder_copy_to_left, folder_copy_to_right,
+    folder_delete_item, goto_line, last_diff, navigate_bookmark, navigate_conflict, navigate_diff,
+    navigate_search, open_file_dialog, open_folder_dialog, open_folder_item, open_in_editor, redo,
+    replace_all_text, replace_text, rescan, resolve_conflict_use_left, resolve_conflict_use_right,
+    run_folder_compare, run_plugin, save_file, search_text, select_diff, start_compare,
+    start_three_way_compare, switch_tab, toggle_bookmark, toggle_ignore_case,
+    toggle_ignore_whitespace, undo,
 };
 use slint::{ModelRc, SharedString, VecModel};
 
@@ -51,7 +52,9 @@ fn main() {
         let lang_index = if s.language == "ja" { 1 } else { 0 };
         window.set_opt_language(lang_index);
         let lang_code = if s.language == "ja" { "ja" } else { "" };
-        let _ = slint::select_bundled_translation(lang_code);
+        if let Err(e) = slint::select_bundled_translation(lang_code) {
+            eprintln!("Translation init error: {}", e);
+        }
         // Load filter settings into UI
         window.set_opt_line_filters(SharedString::from(s.line_filters.join("|")));
         let sub_patterns: Vec<&str> = s
@@ -67,6 +70,7 @@ fn main() {
         window.set_opt_substitution_patterns(SharedString::from(sub_patterns.join("|")));
         window.set_opt_substitution_replacements(SharedString::from(sub_replacements.join("|")));
         window.set_opt_auto_rescan(s.auto_rescan);
+        window.set_opt_folder_exclude_patterns(SharedString::from(&s.folder_exclude_patterns));
         // Load plugin list as pipe-separated "name:command" pairs
         let plugin_str: Vec<String> = s
             .plugins
@@ -85,6 +89,12 @@ fn main() {
             .iter()
             .map(|f| (f.pattern.clone(), f.replacement.clone()))
             .collect();
+        app.folder_exclude_patterns = s
+            .folder_exclude_patterns
+            .split(';')
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty())
+            .collect();
     }
 
     // Load recent entries into UI
@@ -93,18 +103,65 @@ fn main() {
     // Initialize tab list
     app::sync_tab_list(&window, &state.borrow());
 
-    // Handle CLI arguments:
+    // Parse CLI flags and positional arguments
+    let mut positional: Vec<String> = Vec::new();
+    let mut cli_ignore_whitespace = false;
+    let mut cli_ignore_case = false;
+    let mut cli_ignore_blank_lines = false;
+    {
+        let mut i = 1;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--ignore-whitespace" | "-w" => cli_ignore_whitespace = true,
+                "--ignore-case" | "-i" => cli_ignore_case = true,
+                "--ignore-blank-lines" | "-B" => cli_ignore_blank_lines = true,
+                _ => positional.push(args[i].clone()),
+            }
+            i += 1;
+        }
+    }
+
+    // Apply CLI flags to initial tab's diff options
+    if cli_ignore_whitespace || cli_ignore_case || cli_ignore_blank_lines {
+        let mut s = state.borrow_mut();
+        let tab = s.current_tab_mut();
+        if cli_ignore_whitespace {
+            tab.diff_options.ignore_whitespace = true;
+        }
+        if cli_ignore_case {
+            tab.diff_options.ignore_case = true;
+        }
+        if cli_ignore_blank_lines {
+            tab.diff_options.ignore_blank_lines = true;
+        }
+        // Sync UI toggles
+        drop(s);
+        if cli_ignore_whitespace {
+            window.set_ignore_whitespace(true);
+        }
+        if cli_ignore_case {
+            window.set_ignore_case(true);
+        }
+    }
+
+    // Handle positional arguments:
     //   winxmerge <left> <right>           — 2-way diff
     //   winxmerge <base> <left> <right>    — 3-way merge
-    if args.len() >= 4 {
+    if positional.len() >= 3 {
         // 3-way merge
         let mut s = state.borrow_mut();
-        start_three_way_compare(&window, &mut s, &args[1], &args[2], &args[3]);
+        start_three_way_compare(
+            &window,
+            &mut s,
+            &positional[0],
+            &positional[1],
+            &positional[2],
+        );
         app::sync_tab_list(&window, &s);
-    } else if args.len() >= 3 {
+    } else if positional.len() >= 2 {
         // 2-way diff
-        let left = std::path::PathBuf::from(&args[1]);
-        let right = std::path::PathBuf::from(&args[2]);
+        let left = std::path::PathBuf::from(&positional[0]);
+        let right = std::path::PathBuf::from(&positional[1]);
         let mut s = state.borrow_mut();
         {
             let tab = s.current_tab_mut();
@@ -538,6 +595,42 @@ fn main() {
         });
     }
 
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_copy_all_left(move || {
+            let window = window_weak.unwrap();
+            copy_all_text(&window, &state.borrow(), true);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_copy_all_right(move || {
+            let window = window_weak.unwrap();
+            copy_all_text(&window, &state.borrow(), false);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_edit_left_line(move |idx, text| {
+            let window = window_weak.unwrap();
+            edit_line(&window, &mut state.borrow_mut(), idx, &text, true);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_edit_right_line(move |idx, text| {
+            let window = window_weak.unwrap();
+            edit_line(&window, &mut state.borrow_mut(), idx, &text, false);
+        });
+    }
+
     // Apply options
     {
         let window_weak = window.as_weak();
@@ -556,6 +649,15 @@ fn main() {
         window.on_export_html(move || {
             let window = window_weak.unwrap();
             export_html_report(&window, &state.borrow());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_export_patch(move || {
+            let window = window_weak.unwrap();
+            export_patch(&window, &state.borrow());
         });
     }
 

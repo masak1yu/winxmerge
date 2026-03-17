@@ -21,17 +21,19 @@ export struct DiffLineData {
 
 component DiffLineRow inherits Rectangle {
     in property <string> line-no;
-    in property <string> text;
+    in-out property <string> text;
     in property <int> status;
     in property <bool> is-current;
     in property <int> highlight-type: -1;
     in property <int> diff-idx: -1;
     in property <bool> show-line-no: true;
     in property <int> text-font-size: 13;
+    in property <bool> editable: false;
     // Word diff: shows only the changed characters (for Modified lines)
     in property <string> word-diff: "";
 
     callback line-clicked(int);
+    callback text-edited(string);
 
     background: is-current ? current-bg : status == 1 ? ThemeColors.added-bg : status == 2 ? ThemeColors.removed-bg : status == 3 ? ThemeColors.modified-bg : status == 4 ? ThemeColors.moved-bg : Palette.background;
 
@@ -81,13 +83,8 @@ component DiffLineRow inherits Rectangle {
         // Text content with word-level diff indicator
         VerticalLayout {
             spacing: 0;
-            Text {
-                text: text;
-                font-size: text-font-size * 1px;
-                font-family: "monospace";
-                vertical-alignment: center;
-                overflow: elide;
-                color: highlight-type == 0 ? ThemeColors.hl-keyword :
+
+            property <color> text-color: highlight-type == 0 ? ThemeColors.hl-keyword :
                        highlight-type == 1 ? ThemeColors.hl-string :
                        highlight-type == 2 ? ThemeColors.hl-comment :
                        highlight-type == 3 ? ThemeColors.hl-number :
@@ -99,7 +96,26 @@ component DiffLineRow inherits Rectangle {
                        highlight-type == 9 ? ThemeColors.hl-variable :
                        highlight-type == 10 ? ThemeColors.hl-operator :
                        Palette.foreground;
+
+            if !root.editable : Text {
+                text: root.text;
+                font-size: root.text-font-size * 1px;
+                font-family: "monospace";
+                vertical-alignment: center;
+                overflow: elide;
+                color: parent.text-color;
             }
+            if root.editable : TextInput {
+                text: root.text;
+                font-size: root.text-font-size * 1px;
+                font-family: "monospace";
+                vertical-alignment: center;
+                color: parent.text-color;
+                edited => {
+                    root.text-edited(self.text);
+                }
+            }
+
             // Word diff underline: shows changed characters with highlighting
             if word-diff != "" : Text {
                 text: word-diff;
@@ -147,13 +163,19 @@ export component DiffView inherits Rectangle {
     in property <bool> show-line-numbers: true;
     in property <int> editor-font-size: 13;
     in property <int> editor-tab-width: 4;
+    in property <bool> inline-edit-enabled: false;
 
     accessible-role: list;
     accessible-label: "File difference view";
 
+    // Expose viewport-y for external scroll control
+    in-out property <length> scroll-y <=> left-list.viewport-y;
+
     callback copy-to-right(/* diff-index */ int);
     callback copy-to-left(/* diff-index */ int);
     callback select-diff(/* diff-index */ int);
+    callback edit-left-line(/* line-index */ int, /* new-text */ string);
+    callback edit-right-line(/* line-index */ int, /* new-text */ string);
     callback next-diff();
     callback prev-diff();
     callback copy-left-text();
@@ -162,12 +184,22 @@ export component DiffView inherits Rectangle {
     border-color: Palette.border;
     border-width: 1px;
 
+    // Splitter ratio (0.0 to 1.0)
+    in-out property <float> split-ratio: 0.5;
+
+    // Computed widths
+    property <length> merge-col-width: 32px;
+    property <length> location-pane-width: root.diff-lines.length > 0 ? 14px : 0px;
+    property <length> available-pane-width: root.width - 2px - merge-col-width - location-pane-width;
+    property <length> left-pane-width: Math.max(80px, Math.min(available-pane-width - 80px, available-pane-width * root.split-ratio));
+
     VerticalLayout {
         // Header
         HorizontalLayout {
             height: 28px;
 
             Rectangle {
+                width: root.left-pane-width;
                 background: Palette.background.darker(0.05);
                 border-color: Palette.border;
                 border-width: 1px;
@@ -183,12 +215,32 @@ export component DiffView inherits Rectangle {
                 }
             }
 
-            // Spacer for merge button column
+            // Merge column header (drag handle for splitter)
             Rectangle {
-                width: 32px;
-                background: Palette.background.darker(0.05);
+                width: root.merge-col-width;
+                background: splitter-header-drag.has-hover ? Palette.background.darker(0.12) : Palette.background.darker(0.05);
                 border-color: Palette.border;
                 border-width: 1px;
+
+                // Drag grip indicator
+                Text {
+                    text: "⋮";
+                    font-size: 14px;
+                    color: Palette.foreground.transparentize(0.5);
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                splitter-header-drag := TouchArea {
+                    mouse-cursor: col-resize;
+                    moved => {
+                        if self.pressed {
+                            root.split-ratio = Math.max(0.1, Math.min(0.9,
+                                (root.left-pane-width + self.mouse-x - self.pressed-x) / root.available-pane-width
+                            ));
+                        }
+                    }
+                }
             }
 
             Rectangle {
@@ -209,8 +261,10 @@ export component DiffView inherits Rectangle {
 
             // Spacer for location pane
             if root.diff-lines.length > 0 : Rectangle {
-                width: 12px;
+                width: root.location-pane-width;
                 background: Palette.background.darker(0.05);
+                border-color: Palette.border;
+                border-width: 1px;
             }
         }
 
@@ -218,6 +272,8 @@ export component DiffView inherits Rectangle {
         HorizontalLayout {
             // Left pane
             Rectangle {
+                width: root.left-pane-width;
+
                 if root.context-menu-enabled : ContextMenuArea {
                     Menu {
                         title: @tr("Context");
@@ -232,7 +288,7 @@ export component DiffView inherits Rectangle {
                 }
 
                 left-list := ListView {
-                    for line in diff-lines: DiffLineRow {
+                    for line[idx] in diff-lines: DiffLineRow {
                         height: line.left-word-diff != "" ? 36px : 24px;
                         line-no: line.left-line-no;
                         text: line.left-text;
@@ -243,14 +299,16 @@ export component DiffView inherits Rectangle {
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
                         word-diff: line.left-word-diff;
-                        line-clicked(idx) => { root.select-diff(idx); }
+                        editable: root.inline-edit-enabled && line.left-line-no != "";
+                        line-clicked(didx) => { root.select-diff(didx); }
+                        text-edited(new-text) => { root.edit-left-line(idx, new-text); }
                     }
                 }
             }
 
             // Merge buttons column
             Rectangle {
-                width: 32px;
+                width: root.merge-col-width;
                 background: Palette.background.darker(0.01);
                 border-color: Palette.border;
                 border-width: 1px;
@@ -320,7 +378,7 @@ export component DiffView inherits Rectangle {
 
                 right-list := ListView {
                     viewport-y: left-list.viewport-y;
-                    for line in diff-lines: DiffLineRow {
+                    for line[idx] in diff-lines: DiffLineRow {
                         height: line.right-word-diff != "" ? 36px : 24px;
                         line-no: line.right-line-no;
                         text: line.right-text;
@@ -331,7 +389,9 @@ export component DiffView inherits Rectangle {
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
                         word-diff: line.right-word-diff;
-                        line-clicked(idx) => { root.select-diff(idx); }
+                        editable: root.inline-edit-enabled && line.right-line-no != "";
+                        line-clicked(didx) => { root.select-diff(didx); }
+                        text-edited(new-text) => { root.edit-right-line(idx, new-text); }
                     }
                 }
             }
