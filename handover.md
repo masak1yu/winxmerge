@@ -7,9 +7,9 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 ## 現在の状態
 
-- **バージョン:** 0.9.0
-- **ブランチ:** `feature/v0.9.0`
-- **テスト:** 12件すべてパス
+- **バージョン:** 0.10.0
+- **ブランチ:** `feature/v0.10.0`
+- **テスト:** 16件すべてパス
 - **ビルド:** `cargo build` 成功
 - **CI:** GitHub Actions（ubuntu / macOS）
 
@@ -25,7 +25,8 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | v0.6.0 | #6 | フォルダ比較強化（更新日時、.gitignore、フィルタ）、GitHub Actions CI |
 | v0.7.0 | #7 | テーマ切替（ライト/ダーク）、ThemeColors グローバルによるカラー一元管理 |
 | v0.8.0 | #8 | 国際化 (i18n)：日本語/英語切替、@tr() マクロ、gettext .po ファイル |
-| v0.9.0 | - | First/Last diff、Go to Line、ブックマーク、フォルダ操作、リリースCI、Windows CI |
+| v0.9.0 | #9 | First/Last diff、Go to Line、ブックマーク、フォルダ操作、リリースCI、Windows CI |
+| v0.10.0 | - | 行フィルタ、置換フィルタ（正規表現）、オプション画面拡張 |
 
 ## 実装済み機能一覧
 
@@ -110,6 +111,13 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 - GitHub Actions でタグ push 時に自動ビルド
 - Linux (x86_64), macOS (x86_64 + aarch64), Windows (x86_64)
 - GitHub Releases への自動アップロード
+
+### 行フィルタ / 置換フィルタ
+- 行フィルタ: 正規表現でマッチする行を比較から除外（`|` 区切りで複数指定可）
+- 置換フィルタ: 正規表現で比較前にテキスト置換（タイムスタンプ、バージョン番号等の無視に有用）
+- オプション画面の Filters セクションで設定
+- `regex` クレート使用、無効な正規表現は安全にスキップ
+- 設定は `settings.json` に永続化
 
 ### CI 拡張
 - Windows をビルド・テストマトリクスに追加
@@ -230,25 +238,21 @@ AppSettings (永続化)
 
 ---
 
-## 次にやるべき項目 (v0.10.0+)
+## 次にやるべき項目 (v0.11.0+)
 
 ### 優先度高
 
-1. **行フィルタ / 置換フィルタ**
-   - 正規表現で特定行を比較から除外
-   - 比較前の文字列置換（タイムスタンプ等を無視）
-
-2. **ワードレベル差分**
+1. **ワードレベル差分**
    - `similar` の文字レベル diff で変更位置を計算
    - Slint のリッチテキスト対応を待つか、複数 Text 要素で近似実装
 
 ### 優先度低
 
-3. **プラグインシステム**
+2. **プラグインシステム**
    - カスタム差分フィルタ（前処理）
    - 外部ツール連携
 
-4. **アクセシビリティ**
+3. **アクセシビリティ**
     - スクリーンリーダー対応
     - キーボードのみでの全操作対応
 
@@ -257,7 +261,7 @@ AppSettings (永続化)
 ```bash
 asdf install                             # Rust 1.94.0 をインストール
 cargo build                              # ビルド
-cargo test                               # 12件のテスト実行
+cargo test                               # 16件のテスト実行
 cargo run                                # アプリ起動（選択ダイアログ）
 cargo run -- file1.txt file2.txt         # 2-way 比較
 cargo run -- base.txt left.txt right.txt # 3-way マージ

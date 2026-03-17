@@ -55,6 +55,12 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Ignore line ending differences
 - Toggle moved line detection
 
+### Filters
+- **Line filters**: Exclude lines matching regex patterns from comparison (e.g., comments, timestamps)
+- **Substitution filters**: Apply regex find/replace before comparison (e.g., normalize dates, version numbers)
+- Configured via Edit → Options... → Filters
+- Settings persisted across sessions
+
 ### Encoding
 - Automatic character encoding detection (UTF-8, UTF-16, Shift_JIS, etc.)
 - BOM support

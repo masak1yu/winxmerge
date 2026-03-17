@@ -52,9 +52,31 @@ fn main() {
         window.set_opt_language(lang_index);
         let lang_code = if s.language == "ja" { "ja" } else { "" };
         let _ = slint::select_bundled_translation(lang_code);
+        // Load filter settings into UI
+        window.set_opt_line_filters(SharedString::from(s.line_filters.join("|")));
+        let sub_patterns: Vec<&str> = s
+            .substitution_filters
+            .iter()
+            .map(|f| f.pattern.as_str())
+            .collect();
+        let sub_replacements: Vec<&str> = s
+            .substitution_filters
+            .iter()
+            .map(|f| f.replacement.as_str())
+            .collect();
+        window.set_opt_substitution_patterns(SharedString::from(sub_patterns.join("|")));
+        window.set_opt_substitution_replacements(SharedString::from(sub_replacements.join("|")));
+
         let mut app = state.borrow_mut();
-        app.current_tab_mut().diff_options.ignore_whitespace = s.ignore_whitespace;
-        app.current_tab_mut().diff_options.ignore_case = s.ignore_case;
+        let tab = app.current_tab_mut();
+        tab.diff_options.ignore_whitespace = s.ignore_whitespace;
+        tab.diff_options.ignore_case = s.ignore_case;
+        tab.diff_options.line_filters = s.line_filters.clone();
+        tab.diff_options.substitution_filters = s
+            .substitution_filters
+            .iter()
+            .map(|f| (f.pattern.clone(), f.replacement.clone()))
+            .collect();
     }
 
     // Load recent entries into UI
