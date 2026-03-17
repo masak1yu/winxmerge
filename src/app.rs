@@ -772,6 +772,13 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
     } else {
         "light".to_string()
     };
+    settings.language = if window.get_opt_language() == 1 {
+        "ja".to_string()
+    } else {
+        "en".to_string()
+    };
+    let lang_code = if settings.language == "ja" { "ja" } else { "" };
+    let _ = slint::select_bundled_translation(lang_code);
     settings.save();
 
     // Apply diff options to current tab and re-run

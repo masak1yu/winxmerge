@@ -46,6 +46,10 @@ fn main() {
         let theme_index = if s.theme == "dark" { 1 } else { 0 };
         window.set_opt_theme(theme_index);
         window.invoke_set_theme(theme_index);
+        let lang_index = if s.language == "ja" { 1 } else { 0 };
+        window.set_opt_language(lang_index);
+        let lang_code = if s.language == "ja" { "ja" } else { "" };
+        let _ = slint::select_bundled_translation(lang_code);
         let mut app = state.borrow_mut();
         app.current_tab_mut().diff_options.ignore_whitespace = s.ignore_whitespace;
         app.current_tab_mut().diff_options.ignore_case = s.ignore_case;

@@ -1,149 +1,153 @@
 # WinXMerge
 
-WinMerge にインスパイアされた、Rust + Slint UI によるクロスプラットフォームのファイル差分比較・マージツール。
+A cross-platform file diff comparison and merge tool inspired by WinMerge, built with Rust + Slint UI.
 
-## 機能
+## Features
 
-### ファイル比較 (2-way)
-- 行単位の差分表示（追加/削除/変更/移動を色分け）
-- 差分ナビゲーション（次/前の差分へジャンプ）
-- マージ操作（左→右 / 右→左のブロック単位コピー）
-- インライン差分マーカー付き2ペイン表示
-- ロケーションペイン（差分位置のミニマップ）
-- 行移動の自動検出（青色ハイライト）
-- 左右スクロール同期
-- 行番号クリックで差分選択
+### File Comparison (2-way)
+- Line-level diff display (additions/deletions/changes/moves with color coding)
+- Diff navigation (jump to next/previous diff)
+- Merge operations (block-level copy: left→right / right→left)
+- Two-pane display with inline diff markers
+- Location pane (minimap of diff positions)
+- Automatic detection of moved lines (blue highlight)
+- Synchronized left/right scrolling
+- Click line numbers to select diff blocks
 
-### 3-way マージ
-- 3ペイン表示（Left / Base / Right）
-- ベースファイルからの変更を自動検出
-- 衝突行のハイライト（赤色）と L/R ボタンによる衝突解決
-- 衝突ナビゲーション（次/前）
-- 自動マージ（両側が同じ変更の場合）
+### 3-way Merge
+- Three-pane display (Left / Base / Right)
+- Automatic detection of changes from base file
+- Conflict highlighting (red) with L/R buttons for conflict resolution
+- Conflict navigation (next/previous)
+- Auto-merge when both sides have identical changes
 
-### フォルダ比較
-- ディレクトリの再帰比較
-- ファイル状態表示（同一/異なる/片方のみ）
-- 左右の更新日時を表示
-- .gitignore パターンの自動読み込み（.git ディレクトリは自動除外）
-- ファイル拡張子フィルタ
-- ダブルクリックでファイル差分ビューを開く
-- 「< Back」ボタンでフォルダビューに戻る
+### Folder Comparison
+- Recursive directory comparison
+- File status display (identical / different / one-side only)
+- Left/right modification timestamps
+- Automatic .gitignore pattern loading (.git directories auto-excluded)
+- File extension filter
+- Double-click to open file diff view
+- "< Back" button to return to folder view
 
-### タブ
-- 複数の比較をタブで管理
-- 各タブが独立した状態を保持
-- Cmd+T で新規タブ、Cmd+W で閉じる
+### Tabs
+- Manage multiple comparisons with tabs
+- Each tab maintains independent state
+- Cmd+T to create new tab, Cmd+W to close
 
-### シンタックスハイライト
-- tree-sitter による行レベルのハイライト
-- 対応言語: Rust, JavaScript, Python, JSON, C, C++, Go, TypeScript, TSX, Ruby
-- ファイルタイプの自動検出
-- オプションでオン/オフ切替
+### Syntax Highlighting
+- Line-level highlighting via tree-sitter
+- Supported languages: Rust, JavaScript, Python, JSON, C, C++, Go, TypeScript, TSX, Ruby
+- Automatic file type detection
+- Toggle on/off in options
 
 ### Undo / Redo
-- マージ操作の取り消し・やり直し
+- Undo and redo merge operations
 - Cmd+Z / Cmd+Shift+Z
 
-### 差分オプション
-- 空白の無視
-- 大文字小文字の無視
-- 空行の無視
-- 行末の違いを無視
-- 行移動検出のオン/オフ
+### Diff Options
+- Ignore whitespace
+- Ignore case
+- Ignore blank lines
+- Ignore line ending differences
+- Toggle moved line detection
 
-### エンコーディング
-- 文字エンコーディング自動検出（UTF-8, UTF-16, Shift_JIS 等）
-- BOM 対応
-- 保存時に元のエンコーディングを維持
+### Encoding
+- Automatic character encoding detection (UTF-8, UTF-16, Shift_JIS, etc.)
+- BOM support
+- Preserves original encoding when saving
 
-### 検索・置換
-- テキスト検索（マッチ数表示、前/次ナビゲーション）
-- 置換 / 全置換
+### Search & Replace
+- Text search (match count display, previous/next navigation)
+- Replace / Replace All
 
-### キーボードショートカット
+### Keyboard Shortcuts
 
-| ショートカット | 動作 |
-|---------------|------|
-| Cmd+S | 左ファイル保存 |
-| Cmd+F | 検索・置換の表示切替 |
+| Shortcut | Action |
+|----------|--------|
+| Cmd+S | Save left file |
+| Cmd+F | Toggle search & replace |
 | Cmd+Z | Undo |
 | Cmd+Shift+Z | Redo |
-| Cmd+T | 新規タブ |
-| Cmd+W | タブを閉じる |
-| Cmd+N | 新規比較 |
-| Alt+↓ | 次の差分 |
-| Alt+↑ | 前の差分 |
+| Cmd+T | New tab |
+| Cmd+W | Close tab |
+| Cmd+N | New comparison |
+| Alt+↓ | Next diff |
+| Alt+↑ | Previous diff |
 
-### テーマ切替
-- ライト / ダーク テーマの切替（Edit → Options... → Appearance）
-- Slint Palette 連動で全ウィジェットが自動的にテーマに追従
-- 差分カラー・シンタックスハイライト色もテーマに最適化
-- 設定は永続化され、次回起動時にも反映
+### Internationalization (i18n)
+- Japanese / English UI switching (Edit → Options... → Appearance → Language)
+- Full translation support for menus, toolbar, dialogs, and status bar
 
-### その他
-- WinMerge 風の初期選択ダイアログ（最近のファイル一覧付き）
-- WinMerge 風のオプション設定画面（Edit → Options...）
-- 右クリックコンテキストメニュー（コピー、マージ、ナビゲーション）
-- 未保存変更の確認ダイアログ
-- HTML 差分レポートエクスポート（File → Export HTML Report...）
-- ネイティブメニューバー（macOS / Windows）
-- 設定の永続化（~/.config/winxmerge/settings.json）
-- 大きなファイル向けパフォーマンス最適化
-- GitHub Actions CI（ubuntu / macOS でビルド・テスト・lint）
+### Theme Switching
+- Light / Dark theme switching (Edit → Options... → Appearance)
+- All widgets automatically follow theme via Slint Palette integration
+- Diff colors and syntax highlighting colors optimized per theme
+- Settings persisted across sessions
 
-## 技術スタック
+### Other
+- WinMerge-style initial file selection dialog (with recent files list)
+- WinMerge-style options dialog (Edit → Options...)
+- Right-click context menu (copy, merge, navigation)
+- Unsaved changes confirmation dialog
+- HTML diff report export (File → Export HTML Report...)
+- Native menu bar (macOS / Windows)
+- Settings persistence (~/.config/winxmerge/settings.json)
+- Performance optimizations for large files
+- GitHub Actions CI (build, test, lint on Ubuntu / macOS)
 
-| 項目 | 技術 |
-|------|------|
-| 言語 | Rust 1.94.0 |
-| UI フレームワーク | [Slint](https://slint.dev/) 1.15 |
-| 差分アルゴリズム | [similar](https://crates.io/crates/similar) |
-| シンタックスハイライト | [tree-sitter](https://crates.io/crates/tree-sitter) |
-| ファイルダイアログ | [rfd](https://crates.io/crates/rfd) |
-| エンコーディング検出 | [chardetng](https://crates.io/crates/chardetng) + [encoding_rs](https://crates.io/crates/encoding_rs) |
-| クリップボード | [arboard](https://crates.io/crates/arboard) |
-| 設定永続化 | [serde](https://crates.io/crates/serde) + [serde_json](https://crates.io/crates/serde_json) |
+## Tech Stack
 
-## 環境構築
+| Component | Technology |
+|-----------|-----------|
+| Language | Rust 1.94.0 |
+| UI Framework | [Slint](https://slint.dev/) 1.15 |
+| Diff Algorithm | [similar](https://crates.io/crates/similar) |
+| Syntax Highlighting | [tree-sitter](https://crates.io/crates/tree-sitter) |
+| File Dialog | [rfd](https://crates.io/crates/rfd) |
+| Encoding Detection | [chardetng](https://crates.io/crates/chardetng) + [encoding_rs](https://crates.io/crates/encoding_rs) |
+| Clipboard | [arboard](https://crates.io/crates/arboard) |
+| Settings Persistence | [serde](https://crates.io/crates/serde) + [serde_json](https://crates.io/crates/serde_json) |
 
-### 前提条件
+## Setup
 
-- [asdf](https://asdf-vm.com/) がインストールされていること
-- macOS / Linux / Windows（WSL）
+### Prerequisites
 
-### セットアップ
+- [asdf](https://asdf-vm.com/) installed
+- macOS / Linux / Windows (WSL)
+
+### Getting Started
 
 ```bash
-# リポジトリをクローン
+# Clone the repository
 git clone git@github.com:masak1yu/winxmerge.git
 cd winxmerge
 
-# asdf で Rust をインストール
+# Install Rust via asdf
 asdf plugin add rust
 asdf install
 
-# ビルド
+# Build
 cargo build
 
-# テスト実行
+# Run tests
 cargo test
 
-# アプリ起動
+# Launch the app
 cargo run
 
-# 2-way 比較
+# 2-way comparison
 cargo run -- file1.txt file2.txt
 
-# 3-way マージ
+# 3-way merge
 cargo run -- base.txt left.txt right.txt
 ```
 
-## Git 連携
+## Git Integration
 
-WinXMerge を `git difftool` / `git mergetool` として使用できます。
+WinXMerge can be used as a `git difftool` / `git mergetool`.
 
-### difftool セットアップ
+### difftool Setup
 
 ```bash
 cargo build --release
@@ -154,7 +158,7 @@ git config --global difftool.winxmerge.cmd 'winxmerge "$LOCAL" "$REMOTE"'
 git config --global difftool.prompt false
 ```
 
-### mergetool セットアップ（3-way マージ）
+### mergetool Setup (3-way merge)
 
 ```bash
 git config --global merge.tool winxmerge
@@ -162,77 +166,79 @@ git config --global mergetool.winxmerge.cmd 'winxmerge "$BASE" "$LOCAL" "$REMOTE
 git config --global mergetool.winxmerge.trustExitCode true
 ```
 
-### 使い方
+### Usage
 
 ```bash
-# ワーキングツリーの変更を確認
+# View working tree changes
 git difftool
 
-# 特定のファイルの差分を確認
+# Diff a specific file
 git difftool -- path/to/file.rs
 
-# ブランチ間の差分を確認
+# Diff between branches
 git difftool main..feature-branch
 
-# マージ衝突の解決
+# Resolve merge conflicts
 git mergetool
 ```
 
-## プロジェクト構成
+## Project Structure
 
 ```
 winxmerge/
 ├── Cargo.toml
-├── build.rs                    # Slint コンパイル設定
-├── .tool-versions              # asdf バージョン管理
+├── build.rs                    # Slint build configuration
+├── .tool-versions              # asdf version management
 ├── ui/
-│   ├── main.slint              # メインウィンドウ
-│   ├── theme.slint             # テーマカラー定義（ライト/ダーク対応）
+│   ├── main.slint              # Main window
+│   ├── theme.slint             # Theme color definitions (light/dark)
 │   ├── dialogs/
-│   │   ├── open-dialog.slint   # ファイル/フォルダ選択ダイアログ
-│   │   └── options-dialog.slint # オプション設定ダイアログ
+│   │   ├── open-dialog.slint   # File/folder selection dialog
+│   │   └── options-dialog.slint # Options dialog
 │   └── widgets/
-│       ├── diff-view.slint     # 2-way 差分表示ウィジェット
-│       ├── diff-view-3way.slint # 3-way マージ表示ウィジェット
-│       ├── folder-view.slint   # フォルダ比較ウィジェット
-│       └── tab-bar.slint       # タブバーウィジェット
+│       ├── diff-view.slint     # 2-way diff display widget
+│       ├── diff-view-3way.slint # 3-way merge display widget
+│       ├── folder-view.slint   # Folder comparison widget
+│       └── tab-bar.slint       # Tab bar widget
 ├── src/
-│   ├── main.rs                 # エントリーポイント、CLI 引数処理
-│   ├── app.rs                  # アプリケーション状態管理（タブ対応）
-│   ├── encoding.rs             # エンコーディング検出・変換
-│   ├── export.rs               # HTML レポートエクスポート
-│   ├── highlight.rs            # シンタックスハイライト（10言語対応）
-│   ├── settings.rs             # 設定永続化
+│   ├── main.rs                 # Entry point, CLI argument handling
+│   ├── app.rs                  # Application state management (tab support)
+│   ├── encoding.rs             # Encoding detection and conversion
+│   ├── export.rs               # HTML report export
+│   ├── highlight.rs            # Syntax highlighting (10 languages)
+│   ├── settings.rs             # Settings persistence
 │   ├── diff/
-│   │   ├── engine.rs           # 2-way 差分計算エンジン
-│   │   ├── three_way.rs        # 3-way マージエンジン
-│   │   └── folder.rs           # フォルダ再帰比較
+│   │   ├── engine.rs           # 2-way diff engine
+│   │   ├── three_way.rs        # 3-way merge engine
+│   │   └── folder.rs           # Recursive folder comparison
 │   └── models/
-│       ├── diff_line.rs        # 差分行データモデル
-│       └── folder_item.rs      # フォルダ比較アイテムモデル
-└── testdata/                   # テスト用サンプルファイル
+│       ├── diff_line.rs        # Diff line data model
+│       └── folder_item.rs      # Folder comparison item model
+├── translations/               # Translation files (gettext .po)
+│   └── ja/LC_MESSAGES/         # Japanese translations
+└── testdata/                   # Test sample files
 ```
 
-## 使い方
+## Usage
 
-1. `cargo run` でアプリを起動
-2. 初期画面で左右のファイル/フォルダパスを入力し「Compare」
-   - 3-way マージ: 「3-way merge」をチェックしてベースファイルも指定
-   - 最近のファイル一覧からワンクリックで再オープン
-3. **差分ナビゲーション:** ツールバーの ◀ Prev / Next ▶ または Alt+↓/↑
-4. **マージ:** Copy → / ← Copy ボタン、または差分行間の ▶ / ◀ ボタン
-5. **3-way 衝突解決:** 赤い行の L / R ボタンで左右どちらを採用するか選択
-6. **Undo:** Cmd+Z で操作を元に戻す
-7. **検索:** Cmd+F で検索・置換バーを表示
-8. **タブ:** Cmd+T で新規タブ、複数の比較を並行管理
-9. **オプション:** Edit → Options... で各種設定を変更
+1. Launch the app with `cargo run`
+2. Enter left/right file or folder paths in the initial dialog and click "Compare"
+   - For 3-way merge: check "3-way merge" and specify a base file
+   - Re-open recent files from the list with one click
+3. **Diff navigation:** Use ◀ Prev / Next ▶ toolbar buttons or Alt+↓/↑
+4. **Merge:** Use Copy → / ← Copy buttons, or inline ▶ / ◀ buttons between diff lines
+5. **3-way conflict resolution:** Click L / R buttons on red (conflict) lines to choose left or right
+6. **Undo:** Cmd+Z to undo operations
+7. **Search:** Cmd+F to show the search & replace bar
+8. **Tabs:** Cmd+T for a new tab, manage multiple comparisons in parallel
+9. **Options:** Edit → Options... to configure settings
 
-## ライセンス
+## License
 
-本プロジェクトは [Slint Royalty-Free Desktop, Mobile, and Web Applications License v2.0](https://slint.dev/terms-and-conditions#royalty-free) の下で配布されます。
+This project is distributed under the [Slint Royalty-Free Desktop, Mobile, and Web Applications License v2.0](https://slint.dev/terms-and-conditions#royalty-free).
 
-Slint UI フレームワークを使用しているため、以下の条件が適用されます:
+Since this project uses the Slint UI framework, the following conditions apply:
 
-- デスクトップ / モバイル / Web アプリケーションとしての配布はロイヤリティフリー
-- 組み込みシステムでの使用は対象外
-- Slint の帰属表示（AboutSlint ウィジェットまたは Web バッジ）が必要
+- Distribution as desktop / mobile / web applications is royalty-free
+- Embedded system use is not covered
+- Slint attribution (AboutSlint widget or web badge) is required

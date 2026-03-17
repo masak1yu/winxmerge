@@ -41,7 +41,7 @@ export component OpenDialog inherits Rectangle {
             }
 
             Text {
-                text: "Select files or folders to compare";
+                text: @tr("Select files or folders to compare");
                 font-size: 14px;
                 horizontal-alignment: center;
                 color: Palette.foreground.transparentize(0.4);
@@ -54,7 +54,7 @@ export component OpenDialog inherits Rectangle {
                 alignment: center;
                 spacing: 16px;
                 CheckBox {
-                    text: "Folder comparison";
+                    text: @tr("Folder comparison");
                     checked: root.is-folder-mode;
                     toggled => {
                         root.is-folder-mode = self.checked;
@@ -62,7 +62,7 @@ export component OpenDialog inherits Rectangle {
                     }
                 }
                 CheckBox {
-                    text: "3-way merge";
+                    text: @tr("3-way merge");
                     checked: root.is-three-way;
                     enabled: !root.is-folder-mode;
                     toggled => { root.is-three-way = self.checked; }
@@ -77,7 +77,7 @@ export component OpenDialog inherits Rectangle {
                 HorizontalLayout {
                     alignment: start;
                     Text {
-                        text: root.is-folder-mode ? "Left Folder:" : "Left File:";
+                        text: root.is-folder-mode ? @tr("Left Folder:") : @tr("Left File:");
                         font-size: 13px;
                         font-weight: 600;
                         vertical-alignment: center;
@@ -88,11 +88,11 @@ export component OpenDialog inherits Rectangle {
                     LineEdit {
                         horizontal-stretch: 1;
                         text: root.left-path-input;
-                        placeholder-text: root.is-folder-mode ? "Select left folder..." : "Select left file...";
+                        placeholder-text: root.is-folder-mode ? @tr("Select left folder...") : @tr("Select left file...");
                         edited(text) => { root.left-path-input = text; }
                     }
                     Button {
-                        text: "Browse...";
+                        text: @tr("Browse...");
                         clicked => { root.browse-left(); }
                     }
                 }
@@ -104,7 +104,7 @@ export component OpenDialog inherits Rectangle {
                 HorizontalLayout {
                     alignment: start;
                     Text {
-                        text: "Base File (common ancestor):";
+                        text: @tr("Base File (common ancestor):");
                         font-size: 13px;
                         font-weight: 600;
                         vertical-alignment: center;
@@ -115,11 +115,11 @@ export component OpenDialog inherits Rectangle {
                     LineEdit {
                         horizontal-stretch: 1;
                         text: root.base-path-input;
-                        placeholder-text: "Select base file...";
+                        placeholder-text: @tr("Select base file...");
                         edited(text) => { root.base-path-input = text; }
                     }
                     Button {
-                        text: "Browse...";
+                        text: @tr("Browse...");
                         clicked => { root.browse-base(); }
                     }
                 }
@@ -131,7 +131,7 @@ export component OpenDialog inherits Rectangle {
                 HorizontalLayout {
                     alignment: start;
                     Text {
-                        text: root.is-folder-mode ? "Right Folder:" : "Right File:";
+                        text: root.is-folder-mode ? @tr("Right Folder:") : @tr("Right File:");
                         font-size: 13px;
                         font-weight: 600;
                         vertical-alignment: center;
@@ -142,11 +142,11 @@ export component OpenDialog inherits Rectangle {
                     LineEdit {
                         horizontal-stretch: 1;
                         text: root.right-path-input;
-                        placeholder-text: root.is-folder-mode ? "Select right folder..." : "Select right file...";
+                        placeholder-text: root.is-folder-mode ? @tr("Select right folder...") : @tr("Select right file...");
                         edited(text) => { root.right-path-input = text; }
                     }
                     Button {
-                        text: "Browse...";
+                        text: @tr("Browse...");
                         clicked => { root.browse-right(); }
                     }
                 }
@@ -158,7 +158,7 @@ export component OpenDialog inherits Rectangle {
             HorizontalLayout {
                 alignment: center;
                 Button {
-                    text: "Compare";
+                    text: @tr("Compare");
                     enabled: root.left-path-input != "" && root.right-path-input != "" && (!root.is-three-way || root.base-path-input != "");
                     clicked => { root.compare(); }
                 }
@@ -171,7 +171,7 @@ export component OpenDialog inherits Rectangle {
                 Rectangle { height: 8px; }
 
                 Text {
-                    text: "Recent Comparisons";
+                    text: @tr("Recent Comparisons");
                     font-size: 13px;
                     font-weight: 600;
                     color: Palette.foreground.transparentize(0.3);

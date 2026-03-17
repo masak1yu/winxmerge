@@ -56,10 +56,10 @@ component FolderItemRow inherits Rectangle {
         // Status
         Text {
             width: 80px;
-            text: item.status == 0 ? "Identical" :
-                  item.status == 1 ? "Different" :
-                  item.status == 2 ? "Left only" :
-                  "Right only";
+            text: item.status == 0 ? @tr("Identical") :
+                  item.status == 1 ? @tr("Different") :
+                  item.status == 2 ? @tr("Left only") :
+                  @tr("Right only");
             font-size: 11px;
             color: item.status == 0 ? Palette.foreground.transparentize(0.5) :
                    item.status == 2 ? ThemeColors.removed-fg :
@@ -137,14 +137,14 @@ export component FolderView inherits Rectangle {
 
                 Text {
                     horizontal-stretch: 1;
-                    text: "Name";
+                    text: @tr("Name");
                     font-size: 12px;
                     font-weight: 600;
                     vertical-alignment: center;
                 }
                 Text {
                     width: 80px;
-                    text: "Status";
+                    text: @tr("Status");
                     font-size: 12px;
                     font-weight: 600;
                     vertical-alignment: center;
@@ -152,7 +152,7 @@ export component FolderView inherits Rectangle {
                 }
                 Text {
                     width: 70px;
-                    text: "Left Size";
+                    text: @tr("Left Size");
                     font-size: 12px;
                     font-weight: 600;
                     horizontal-alignment: right;
@@ -160,7 +160,7 @@ export component FolderView inherits Rectangle {
                 }
                 Text {
                     width: 70px;
-                    text: "Right Size";
+                    text: @tr("Right Size");
                     font-size: 12px;
                     font-weight: 600;
                     horizontal-alignment: right;
@@ -168,7 +168,7 @@ export component FolderView inherits Rectangle {
                 }
                 Text {
                     width: 110px;
-                    text: "Left Modified";
+                    text: @tr("Left Modified");
                     font-size: 12px;
                     font-weight: 600;
                     horizontal-alignment: center;
@@ -176,7 +176,7 @@ export component FolderView inherits Rectangle {
                 }
                 Text {
                     width: 110px;
-                    text: "Right Modified";
+                    text: @tr("Right Modified");
                     font-size: 12px;
                     font-weight: 600;
                     horizontal-alignment: center;
