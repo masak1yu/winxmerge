@@ -288,6 +288,14 @@ pub fn recompute_diff_from_text_with_highlights(
         0
     };
 
+    // Build position→index lookup for O(1) access
+    let pos_to_idx: std::collections::HashMap<usize, i32> = result
+        .diff_positions
+        .iter()
+        .enumerate()
+        .map(|(idx, &pos)| (pos, idx as i32))
+        .collect();
+
     let diff_line_data: Vec<DiffLineData> = result
         .lines
         .iter()
@@ -300,12 +308,7 @@ pub fn recompute_diff_from_text_with_highlights(
                 LineStatus::Modified => 3,
                 LineStatus::Moved => 4,
             };
-            let diff_index = result
-                .diff_positions
-                .iter()
-                .position(|&pos| pos == i)
-                .map(|idx| idx as i32)
-                .unwrap_or(-1);
+            let diff_index = pos_to_idx.get(&i).copied().unwrap_or(-1);
 
             // Map line numbers to highlight indices
             let left_hl = line.left_line_no

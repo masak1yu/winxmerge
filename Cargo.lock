@@ -6020,7 +6020,7 @@ dependencies = [
 
 [[package]]
 name = "winxmerge"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "chardetng",
  "encoding_rs",
