@@ -14,11 +14,16 @@ export component MainWindow inherits Window {
     in-out property <string> left-path: "";
     in-out property <string> right-path: "";
     in-out property <string> status-text: "Open two files to compare";
+    in-out property <bool> has-unsaved-changes: false;
 
     callback open-left-file();
     callback open-right-file();
     callback next-diff();
     callback prev-diff();
+    callback copy-to-right(int);
+    callback copy-to-left(int);
+    callback save-left();
+    callback save-right();
 
     VerticalLayout {
         // Toolbar
@@ -43,7 +48,21 @@ export component MainWindow inherits Window {
                     clicked => { root.open-right-file(); }
                 }
 
-                Rectangle { width: 16px; }
+                Rectangle { width: 8px; }
+
+                Button {
+                    text: "Save Left";
+                    enabled: has-unsaved-changes;
+                    clicked => { root.save-left(); }
+                }
+
+                Button {
+                    text: "Save Right";
+                    enabled: has-unsaved-changes;
+                    clicked => { root.save-right(); }
+                }
+
+                Rectangle { width: 8px; }
 
                 Button {
                     text: "◀ Prev";
@@ -56,6 +75,20 @@ export component MainWindow inherits Window {
                     enabled: diff-count > 0;
                     clicked => { root.next-diff(); }
                 }
+
+                Rectangle { width: 8px; }
+
+                Button {
+                    text: "Copy →";
+                    enabled: current-diff-index >= 0;
+                    clicked => { root.copy-to-right(root.current-diff-index); }
+                }
+
+                Button {
+                    text: "← Copy";
+                    enabled: current-diff-index >= 0;
+                    clicked => { root.copy-to-left(root.current-diff-index); }
+                }
             }
         }
 
@@ -65,6 +98,8 @@ export component MainWindow inherits Window {
             current-diff-index: root.current-diff-index;
             left-title: root.left-path != "" ? root.left-path : "Left file";
             right-title: root.right-path != "" ? root.right-path : "Right file";
+            copy-to-right(idx) => { root.copy-to-right(idx); }
+            copy-to-left(idx) => { root.copy-to-left(idx); }
         }
 
         // Status bar
@@ -76,9 +111,18 @@ export component MainWindow inherits Window {
 
             HorizontalLayout {
                 padding-left: 8px;
+                spacing: 16px;
+
                 Text {
                     text: root.status-text;
                     font-size: 12px;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: root.has-unsaved-changes ? "● Modified" : "";
+                    font-size: 12px;
+                    color: #b08800;
                     vertical-alignment: center;
                 }
             }
