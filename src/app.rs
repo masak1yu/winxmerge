@@ -767,7 +767,11 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
     settings.enable_context_menu = window.get_opt_enable_context_menu();
     settings.font_size = window.get_opt_font_size() as f32;
     settings.tab_width = window.get_opt_tab_width();
-    settings.theme = if window.get_opt_theme() == 1 { "dark".to_string() } else { "light".to_string() };
+    settings.theme = if window.get_opt_theme() == 1 {
+        "dark".to_string()
+    } else {
+        "light".to_string()
+    };
     settings.save();
 
     // Apply diff options to current tab and re-run
