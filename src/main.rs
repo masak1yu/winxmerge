@@ -18,7 +18,7 @@ use app::{
     run_folder_compare, save_file, search_text, select_diff, start_compare, switch_tab,
     toggle_ignore_case, toggle_ignore_whitespace, undo, AppState,
 };
-use slint::SharedString;
+use slint::{ModelRc, SharedString, VecModel};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -46,6 +46,9 @@ fn main() {
         app.current_tab_mut().diff_options.ignore_whitespace = s.ignore_whitespace;
         app.current_tab_mut().diff_options.ignore_case = s.ignore_case;
     }
+
+    // Load recent entries into UI
+    sync_recent_entries(&window, &settings.borrow());
 
     // Initialize tab list
     app::sync_tab_list(&window, &state.borrow());
@@ -182,6 +185,7 @@ fn main() {
             let mut s = settings.borrow_mut();
             s.add_recent(&left, &right, is_folder);
             s.save();
+            sync_recent_entries(&window, &s);
         });
     }
 
@@ -418,5 +422,42 @@ fn main() {
         });
     }
 
+    // Open recent entry
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        let settings = settings.clone();
+        window.on_open_recent(move |idx| {
+            let window = window_weak.unwrap();
+            let s = settings.borrow();
+            if let Some(entry) = s.recent_files.get(idx as usize) {
+                let left = entry.left_path.clone();
+                let right = entry.right_path.clone();
+                let is_folder = entry.is_folder;
+                drop(s);
+                start_compare(
+                    &window,
+                    &mut state.borrow_mut(),
+                    &left,
+                    &right,
+                    is_folder,
+                );
+            }
+        });
+    }
+
     window.run().unwrap();
+}
+
+fn sync_recent_entries(window: &MainWindow, settings: &settings::AppSettings) {
+    let entries: Vec<RecentEntryData> = settings
+        .recent_files
+        .iter()
+        .map(|r| RecentEntryData {
+            left_path: SharedString::from(&r.left_path),
+            right_path: SharedString::from(&r.right_path),
+            is_folder: r.is_folder,
+        })
+        .collect();
+    window.set_recent_entries(ModelRc::new(VecModel::from(entries)));
 }

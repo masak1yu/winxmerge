@@ -2,10 +2,10 @@ import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit } from 
 import { DiffView, DiffLineData } from "widgets/diff-view.slint";
 import { FolderView, FolderItemData } from "widgets/folder-view.slint";
 import { TabBar, TabData } from "widgets/tab-bar.slint";
-import { OpenDialog } from "dialogs/open-dialog.slint";
+import { OpenDialog, RecentEntryData } from "dialogs/open-dialog.slint";
 import { OptionsDialog } from "dialogs/options-dialog.slint";
 
-export { DiffLineData, FolderItemData, TabData }
+export { DiffLineData, FolderItemData, TabData, RecentEntryData }
 
 component ConfirmDialog inherits Rectangle {
     in property <string> message: "";
@@ -149,6 +149,9 @@ export component MainWindow inherits Window {
     callback export-html();
     callback copy-left-text();
     callback copy-right-text();
+    callback open-recent(int);
+
+    in-out property <[RecentEntryData]> recent-entries;
     callback apply-options();
 
     // Options dialog state
@@ -439,6 +442,8 @@ export component MainWindow inherits Window {
             left-path-input <=> root.open-left-path-input;
             right-path-input <=> root.open-right-path-input;
             is-folder-mode <=> root.open-is-folder-mode;
+            recent-entries: root.recent-entries;
+            open-recent(idx) => { root.open-recent(idx); }
             browse-left => {
                 if root.open-is-folder-mode {
                     root.open-folder-left();

@@ -1,13 +1,21 @@
-import { Button, LineEdit, Palette, CheckBox } from "std-widgets.slint";
+import { Button, LineEdit, Palette, CheckBox, ListView } from "std-widgets.slint";
+
+export struct RecentEntryData {
+    left-path: string,
+    right-path: string,
+    is-folder: bool,
+}
 
 export component OpenDialog inherits Rectangle {
     in-out property <string> left-path-input: "";
     in-out property <string> right-path-input: "";
     in-out property <bool> is-folder-mode: false;
+    in property <[RecentEntryData]> recent-entries;
 
     callback browse-left();
     callback browse-right();
     callback compare();
+    callback open-recent(int);
 
     vertical-stretch: 1;
     horizontal-stretch: 1;
@@ -113,6 +121,76 @@ export component OpenDialog inherits Rectangle {
                     text: "Compare";
                     enabled: root.left-path-input != "" && root.right-path-input != "";
                     clicked => { root.compare(); }
+                }
+            }
+
+            // Recent files
+            if recent-entries.length > 0 : VerticalLayout {
+                spacing: 4px;
+
+                Rectangle { height: 8px; }
+
+                Text {
+                    text: "Recent Comparisons";
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: Palette.foreground.transparentize(0.3);
+                }
+
+                Rectangle {
+                    height: 1px;
+                    background: Palette.border;
+                }
+
+                ListView {
+                    height: Math.min(150px, recent-entries.length * 36px);
+
+                    for entry[idx] in recent-entries: Rectangle {
+                        height: 36px;
+                        background: recent-touch.has-hover ? Palette.background.darker(0.05) : transparent;
+                        border-radius: 4px;
+
+                        recent-touch := TouchArea {
+                            clicked => { root.open-recent(idx); }
+                        }
+
+                        VerticalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            alignment: center;
+                            spacing: 2px;
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text {
+                                    text: entry.is-folder ? "📁" : "📄";
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: entry.left-path;
+                                    font-size: 11px;
+                                    font-family: "monospace";
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                    color: Palette.foreground.transparentize(0.2);
+                                }
+                                Text {
+                                    text: "↔";
+                                    font-size: 11px;
+                                    color: Palette.foreground.transparentize(0.4);
+                                }
+                                Text {
+                                    text: entry.right-path;
+                                    font-size: 11px;
+                                    font-family: "monospace";
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                    color: Palette.foreground.transparentize(0.2);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
