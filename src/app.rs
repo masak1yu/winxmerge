@@ -112,6 +112,7 @@ pub fn recompute_diff_from_text(
                 LineStatus::Added => 1,
                 LineStatus::Removed => 2,
                 LineStatus::Modified => 3,
+                LineStatus::Moved => 4,
             };
             let diff_index = result
                 .diff_positions
