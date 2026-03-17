@@ -1,11 +1,12 @@
 import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit } from "std-widgets.slint";
 import { DiffView, DiffLineData } from "widgets/diff-view.slint";
+import { DiffView3Way, ThreeWayLineData } from "widgets/diff-view-3way.slint";
 import { FolderView, FolderItemData } from "widgets/folder-view.slint";
 import { TabBar, TabData } from "widgets/tab-bar.slint";
-import { OpenDialog } from "dialogs/open-dialog.slint";
+import { OpenDialog, RecentEntryData } from "dialogs/open-dialog.slint";
 import { OptionsDialog } from "dialogs/options-dialog.slint";
 
-export { DiffLineData, FolderItemData, TabData }
+export { DiffLineData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData }
 
 component ConfirmDialog inherits Rectangle {
     in property <string> message: "";
@@ -111,6 +112,8 @@ export component MainWindow inherits Window {
     in-out property <string> open-left-path-input: "";
     in-out property <string> open-right-path-input: "";
     in-out property <bool> open-is-folder-mode: false;
+    in-out property <bool> open-is-three-way: false;
+    in-out property <string> open-base-path-input: "";
 
     // Folder context (show back button when navigated from folder view)
     in-out property <bool> has-folder-context: false;
@@ -123,6 +126,7 @@ export component MainWindow inherits Window {
     callback open-right-file();
     callback open-folder-left();
     callback open-folder-right();
+    callback browse-base();
     callback next-diff();
     callback prev-diff();
     callback copy-to-right(int);
@@ -149,6 +153,19 @@ export component MainWindow inherits Window {
     callback export-html();
     callback copy-left-text();
     callback copy-right-text();
+    callback open-recent(int);
+
+    in-out property <[RecentEntryData]> recent-entries;
+
+    // 3-way merge
+    in-out property <[ThreeWayLineData]> three-way-lines;
+    in-out property <int> conflict-count: 0;
+    in-out property <int> current-conflict-index: -1;
+    in-out property <string> base-path: "";
+    callback next-conflict();
+    callback prev-conflict();
+    callback use-left(int);
+    callback use-right(int);
     callback apply-options();
 
     // Options dialog state
@@ -439,6 +456,11 @@ export component MainWindow inherits Window {
             left-path-input <=> root.open-left-path-input;
             right-path-input <=> root.open-right-path-input;
             is-folder-mode <=> root.open-is-folder-mode;
+            is-three-way <=> root.open-is-three-way;
+            base-path-input <=> root.open-base-path-input;
+            recent-entries: root.recent-entries;
+            open-recent(idx) => { root.open-recent(idx); }
+            browse-base => { root.browse-base(); }
             browse-left => {
                 if root.open-is-folder-mode {
                     root.open-folder-left();
@@ -464,6 +486,9 @@ export component MainWindow inherits Window {
             left-title: root.left-path != "" ? root.left-path : "Left file";
             right-title: root.right-path != "" ? root.right-path : "Right file";
             context-menu-enabled: root.opt-enable-context-menu;
+            show-line-numbers: root.opt-show-line-numbers;
+            editor-font-size: root.opt-font-size;
+            editor-tab-width: root.opt-tab-width;
             copy-to-right(idx) => { root.copy-to-right(idx); }
             copy-to-left(idx) => { root.copy-to-left(idx); }
             select-diff(idx) => { root.select-diff(idx); }
@@ -477,6 +502,20 @@ export component MainWindow inherits Window {
             items: root.folder-items;
             selected-index: root.folder-selected-index;
             item-double-clicked(idx) => { root.folder-item-double-clicked(idx); }
+        }
+
+        if root.view-mode == 3 : DiffView3Way {
+            lines: root.three-way-lines;
+            current-conflict-index: root.current-conflict-index;
+            left-title: root.left-path != "" ? root.left-path : "Left (Mine)";
+            base-title: root.base-path != "" ? root.base-path : "Base";
+            right-title: root.right-path != "" ? root.right-path : "Right (Theirs)";
+            show-line-numbers: root.opt-show-line-numbers;
+            editor-font-size: root.opt-font-size;
+            next-conflict => { root.next-conflict(); }
+            prev-conflict => { root.prev-conflict(); }
+            use-left(idx) => { root.use-left(idx); }
+            use-right(idx) => { root.use-right(idx); }
         }
 
         // Status bar

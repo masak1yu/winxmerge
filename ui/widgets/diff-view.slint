@@ -21,6 +21,8 @@ component DiffLineRow inherits Rectangle {
     in property <bool> is-current;
     in property <int> highlight-type: -1;
     in property <int> diff-idx: -1;
+    in property <bool> show-line-no: true;
+    in property <int> text-font-size: 13;
 
     callback line-clicked(int);
 
@@ -34,7 +36,7 @@ component DiffLineRow inherits Rectangle {
         spacing: 8px;
 
         // Line number (clickable for diff selection)
-        Rectangle {
+        if show-line-no : Rectangle {
             width: 40px;
             background: line-no-touch.has-hover && diff-idx >= 0 ? Palette.background.darker(0.08) : transparent;
 
@@ -72,7 +74,7 @@ component DiffLineRow inherits Rectangle {
         // Text content
         Text {
             text: text;
-            font-size: 13px;
+            font-size: text-font-size * 1px;
             font-family: "monospace";
             vertical-alignment: center;
             overflow: elide;
@@ -123,6 +125,9 @@ export component DiffView inherits Rectangle {
     in property <int> current-diff-index: -1;
 
     in property <bool> context-menu-enabled: true;
+    in property <bool> show-line-numbers: true;
+    in property <int> editor-font-size: 13;
+    in property <int> editor-tab-width: 4;
 
     callback copy-to-right(/* diff-index */ int);
     callback copy-to-left(/* diff-index */ int);
@@ -213,6 +218,8 @@ export component DiffView inherits Rectangle {
                         is-current: line.is-current-diff;
                         highlight-type: line.left-highlight;
                         diff-idx: line.diff-index;
+                        show-line-no: root.show-line-numbers;
+                        text-font-size: root.editor-font-size;
                         line-clicked(idx) => { root.select-diff(idx); }
                     }
                 }
@@ -298,6 +305,8 @@ export component DiffView inherits Rectangle {
                         is-current: line.is-current-diff;
                         highlight-type: line.right-highlight;
                         diff-idx: line.diff-index;
+                        show-line-no: root.show-line-numbers;
+                        text-font-size: root.editor-font-size;
                         line-clicked(idx) => { root.select-diff(idx); }
                     }
                 }

@@ -1,13 +1,24 @@
-import { Button, LineEdit, Palette, CheckBox } from "std-widgets.slint";
+import { Button, LineEdit, Palette, CheckBox, ListView } from "std-widgets.slint";
+
+export struct RecentEntryData {
+    left-path: string,
+    right-path: string,
+    is-folder: bool,
+}
 
 export component OpenDialog inherits Rectangle {
     in-out property <string> left-path-input: "";
     in-out property <string> right-path-input: "";
+    in-out property <string> base-path-input: "";
     in-out property <bool> is-folder-mode: false;
+    in-out property <bool> is-three-way: false;
+    in property <[RecentEntryData]> recent-entries;
 
     callback browse-left();
     callback browse-right();
+    callback browse-base();
     callback compare();
+    callback open-recent(int);
 
     vertical-stretch: 1;
     horizontal-stretch: 1;
@@ -38,13 +49,23 @@ export component OpenDialog inherits Rectangle {
 
             Rectangle { height: 16px; }
 
-            // Mode toggle
+            // Mode toggles
             HorizontalLayout {
                 alignment: center;
+                spacing: 16px;
                 CheckBox {
                     text: "Folder comparison";
                     checked: root.is-folder-mode;
-                    toggled => { root.is-folder-mode = self.checked; }
+                    toggled => {
+                        root.is-folder-mode = self.checked;
+                        if self.checked { root.is-three-way = false; }
+                    }
+                }
+                CheckBox {
+                    text: "3-way merge";
+                    checked: root.is-three-way;
+                    enabled: !root.is-folder-mode;
+                    toggled => { root.is-three-way = self.checked; }
                 }
             }
 
@@ -73,6 +94,33 @@ export component OpenDialog inherits Rectangle {
                     Button {
                         text: "Browse...";
                         clicked => { root.browse-left(); }
+                    }
+                }
+            }
+
+            // Base path (only for 3-way)
+            if root.is-three-way : VerticalLayout {
+                spacing: 4px;
+                HorizontalLayout {
+                    alignment: start;
+                    Text {
+                        text: "Base File (common ancestor):";
+                        font-size: 13px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    LineEdit {
+                        horizontal-stretch: 1;
+                        text: root.base-path-input;
+                        placeholder-text: "Select base file...";
+                        edited(text) => { root.base-path-input = text; }
+                    }
+                    Button {
+                        text: "Browse...";
+                        clicked => { root.browse-base(); }
                     }
                 }
             }
@@ -111,8 +159,78 @@ export component OpenDialog inherits Rectangle {
                 alignment: center;
                 Button {
                     text: "Compare";
-                    enabled: root.left-path-input != "" && root.right-path-input != "";
+                    enabled: root.left-path-input != "" && root.right-path-input != "" && (!root.is-three-way || root.base-path-input != "");
                     clicked => { root.compare(); }
+                }
+            }
+
+            // Recent files
+            if recent-entries.length > 0 : VerticalLayout {
+                spacing: 4px;
+
+                Rectangle { height: 8px; }
+
+                Text {
+                    text: "Recent Comparisons";
+                    font-size: 13px;
+                    font-weight: 600;
+                    color: Palette.foreground.transparentize(0.3);
+                }
+
+                Rectangle {
+                    height: 1px;
+                    background: Palette.border;
+                }
+
+                ListView {
+                    height: Math.min(150px, recent-entries.length * 36px);
+
+                    for entry[idx] in recent-entries: Rectangle {
+                        height: 36px;
+                        background: recent-touch.has-hover ? Palette.background.darker(0.05) : transparent;
+                        border-radius: 4px;
+
+                        recent-touch := TouchArea {
+                            clicked => { root.open-recent(idx); }
+                        }
+
+                        VerticalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            alignment: center;
+                            spacing: 2px;
+
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Text {
+                                    text: entry.is-folder ? "📁" : "📄";
+                                    font-size: 11px;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: entry.left-path;
+                                    font-size: 11px;
+                                    font-family: "monospace";
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                    color: Palette.foreground.transparentize(0.2);
+                                }
+                                Text {
+                                    text: "↔";
+                                    font-size: 11px;
+                                    color: Palette.foreground.transparentize(0.4);
+                                }
+                                Text {
+                                    text: entry.right-path;
+                                    font-size: 11px;
+                                    font-family: "monospace";
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                    color: Palette.foreground.transparentize(0.2);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
