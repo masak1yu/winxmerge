@@ -1,8 +1,70 @@
 import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit } from "std-widgets.slint";
 import { DiffView, DiffLineData } from "widgets/diff-view.slint";
 import { FolderView, FolderItemData } from "widgets/folder-view.slint";
+import { TabBar, TabData } from "widgets/tab-bar.slint";
+import { OpenDialog } from "dialogs/open-dialog.slint";
 
-export { DiffLineData, FolderItemData }
+export { DiffLineData, FolderItemData, TabData }
+
+component ConfirmDialog inherits Rectangle {
+    in property <string> message: "";
+    in property <bool> visible-flag: false;
+
+    callback confirmed();
+    callback cancelled();
+
+    if visible-flag : Rectangle {
+        // Overlay
+        background: #00000080;
+
+        TouchArea {
+            clicked => { root.cancelled(); }
+        }
+
+        // Dialog box
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: 400px;
+            height: 160px;
+            background: Palette.background;
+            border-color: Palette.border;
+            border-width: 1px;
+            border-radius: 8px;
+
+            // Block clicks on dialog from propagating to overlay
+            TouchArea {}
+
+            VerticalLayout {
+                padding: 20px;
+                spacing: 16px;
+                alignment: center;
+
+                Text {
+                    text: root.message;
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 12px;
+
+                    Button {
+                        text: "Discard";
+                        clicked => { root.confirmed(); }
+                    }
+
+                    Button {
+                        text: "Cancel";
+                        clicked => { root.cancelled(); }
+                    }
+                }
+            }
+        }
+    }
+}
 
 export component MainWindow inherits Window {
     title: "WinXMerge";
@@ -15,23 +77,38 @@ export component MainWindow inherits Window {
     in-out property <int> current-diff-index: -1;
     in-out property <string> left-path: "";
     in-out property <string> right-path: "";
-    in-out property <string> status-text: "Open two files to compare";
+    in-out property <string> status-text: "Select files or folders to compare";
     in-out property <bool> has-unsaved-changes: false;
     in-out property <bool> show-toolbar: true;
 
     // Folder comparison properties
     in-out property <[FolderItemData]> folder-items;
     in-out property <int> folder-selected-index: -1;
-    in-out property <int> view-mode: 0;
+    // 0=file diff, 1=folder compare, 2=open dialog
+    in-out property <int> view-mode: 2;
 
     // Diff options
     in-out property <bool> ignore-whitespace: false;
     in-out property <bool> ignore-case: false;
 
-    // Search
+    // Search & Replace
     in-out property <bool> show-search: false;
     in-out property <string> search-query: "";
     in-out property <int> search-match-count: 0;
+
+    // Unsaved changes dialog
+    in-out property <bool> show-confirm-dialog: false;
+    // 0=none, 1=open-left, 2=open-right, 3=open-folder-left, 4=open-folder-right, 5=new-compare
+    in-out property <int> pending-action: 0;
+
+    // Open dialog
+    in-out property <string> open-left-path-input: "";
+    in-out property <string> open-right-path-input: "";
+    in-out property <bool> open-is-folder-mode: false;
+
+    // Tabs
+    in-out property <[TabData]> tab-list: [{title: "New", is-active: true, has-unsaved: false}];
+    in-out property <int> active-tab-index: 0;
 
     callback open-left-file();
     callback open-right-file();
@@ -50,14 +127,35 @@ export component MainWindow inherits Window {
     callback search(string);
     callback search-next();
     callback search-prev();
+    callback replace(/* search */ string, /* replacement */ string);
+    callback replace-all(/* search */ string, /* replacement */ string);
+    callback start-compare(/* left */ string, /* right */ string, /* is-folder */ bool);
+    callback discard-and-proceed();
+    callback new-tab();
+    callback close-tab(int);
+    callback switch-tab(int);
+
+    // Helper: check unsaved before action
+    function request-action(action: int) {
+        if root.has-unsaved-changes {
+            root.pending-action = action;
+            root.show-confirm-dialog = true;
+        } else {
+            root.pending-action = action;
+            root.discard-and-proceed();
+        }
+    }
 
     MenuBar {
         Menu {
             title: "File";
-            MenuItem { title: "Open Left File..."; activated => { root.open-left-file(); } }
-            MenuItem { title: "Open Right File..."; activated => { root.open-right-file(); } }
-            MenuItem { title: "Open Left Folder..."; activated => { root.open-folder-left(); } }
-            MenuItem { title: "Open Right Folder..."; activated => { root.open-folder-right(); } }
+            MenuItem { title: "New Tab"; activated => { root.new-tab(); } }
+            MenuItem { title: "New Compare..."; activated => { root.request-action(5); } }
+            MenuSeparator {}
+            MenuItem { title: "Open Left File..."; activated => { root.request-action(1); } }
+            MenuItem { title: "Open Right File..."; activated => { root.request-action(2); } }
+            MenuItem { title: "Open Left Folder..."; activated => { root.request-action(3); } }
+            MenuItem { title: "Open Right Folder..."; activated => { root.request-action(4); } }
             MenuSeparator {}
             MenuItem { title: "Save Left"; enabled: root.has-unsaved-changes; activated => { root.save-left(); } }
             MenuItem { title: "Save Right"; enabled: root.has-unsaved-changes; activated => { root.save-right(); } }
@@ -65,7 +163,7 @@ export component MainWindow inherits Window {
         Menu {
             title: "Edit";
             MenuItem {
-                title: "Find...";
+                title: "Find / Replace...";
                 activated => { root.show-search = !root.show-search; }
             }
         }
@@ -95,8 +193,17 @@ export component MainWindow inherits Window {
     }
 
     VerticalLayout {
+        // Tab bar
+        TabBar {
+            tabs: root.tab-list;
+            active-index: root.active-tab-index;
+            tab-clicked(idx) => { root.switch-tab(idx); }
+            tab-close(idx) => { root.close-tab(idx); }
+            new-tab => { root.new-tab(); }
+        }
+
         // Toolbar
-        if root.show-toolbar : Rectangle {
+        if root.show-toolbar && root.view-mode != 2 : Rectangle {
             height: 40px;
             background: Palette.background.darker(0.03);
             border-color: Palette.border;
@@ -108,13 +215,20 @@ export component MainWindow inherits Window {
                 alignment: start;
 
                 Button {
+                    text: "New...";
+                    clicked => { root.request-action(5); }
+                }
+
+                Rectangle { width: 4px; }
+
+                Button {
                     text: "Open Left...";
-                    clicked => { root.open-left-file(); }
+                    clicked => { root.request-action(1); }
                 }
 
                 Button {
                     text: "Open Right...";
-                    clicked => { root.open-right-file(); }
+                    clicked => { root.request-action(2); }
                 }
 
                 Rectangle { width: 8px; }
@@ -175,71 +289,132 @@ export component MainWindow inherits Window {
             }
         }
 
-        // Search bar
-        if root.show-search : Rectangle {
-            height: 36px;
+        // Search & Replace bar
+        if root.show-search && root.view-mode == 0 : Rectangle {
+            height: 72px;
             background: Palette.background.darker(0.02);
             border-color: Palette.border;
             border-width: 1px;
 
-            HorizontalLayout {
+            VerticalLayout {
                 padding: 4px;
                 spacing: 4px;
-                alignment: start;
 
-                Text {
-                    text: "Find:";
-                    font-size: 12px;
-                    vertical-alignment: center;
-                }
+                // Search row
+                HorizontalLayout {
+                    spacing: 4px;
+                    alignment: start;
 
-                LineEdit {
-                    width: 250px;
-                    text: root.search-query;
-                    placeholder-text: "Search text...";
-                    accepted(text) => {
-                        root.search-query = text;
-                        root.search(text);
+                    Text {
+                        width: 60px;
+                        text: "Find:";
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
                     }
-                    edited(text) => {
-                        root.search-query = text;
-                        root.search(text);
+
+                    search-input := LineEdit {
+                        width: 250px;
+                        text: root.search-query;
+                        placeholder-text: "Search text...";
+                        accepted(text) => {
+                            root.search-query = text;
+                            root.search(text);
+                        }
+                        edited(text) => {
+                            root.search-query = text;
+                            root.search(text);
+                        }
+                    }
+
+                    Button {
+                        text: "▲";
+                        enabled: search-match-count > 0;
+                        clicked => { root.search-prev(); }
+                    }
+
+                    Button {
+                        text: "▼";
+                        enabled: search-match-count > 0;
+                        clicked => { root.search-next(); }
+                    }
+
+                    Text {
+                        text: search-match-count > 0 ? "\{search-match-count} matches" : "";
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        color: Palette.foreground.transparentize(0.3);
+                    }
+
+                    Rectangle { horizontal-stretch: 1; }
+
+                    Button {
+                        text: "✕";
+                        clicked => {
+                            root.show-search = false;
+                            root.search-query = "";
+                            root.search("");
+                        }
                     }
                 }
 
-                Button {
-                    text: "▲";
-                    enabled: search-match-count > 0;
-                    clicked => { root.search-prev(); }
-                }
+                // Replace row
+                HorizontalLayout {
+                    spacing: 4px;
+                    alignment: start;
 
-                Button {
-                    text: "▼";
-                    enabled: search-match-count > 0;
-                    clicked => { root.search-next(); }
-                }
+                    Text {
+                        width: 60px;
+                        text: "Replace:";
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                    }
 
-                Text {
-                    text: search-match-count > 0 ? "\{search-match-count} matches" : "";
-                    font-size: 12px;
-                    vertical-alignment: center;
-                    color: Palette.foreground.transparentize(0.3);
-                }
+                    replace-input := LineEdit {
+                        width: 250px;
+                        placeholder-text: "Replace with...";
+                    }
 
-                Rectangle { horizontal-stretch: 1; }
+                    Button {
+                        text: "Replace";
+                        enabled: search-match-count > 0;
+                        clicked => { root.replace(root.search-query, replace-input.text); }
+                    }
 
-                Button {
-                    text: "✕";
-                    clicked => {
-                        root.show-search = false;
-                        root.search-query = "";
-                        root.search("");
+                    Button {
+                        text: "Replace All";
+                        enabled: search-match-count > 0;
+                        clicked => { root.replace-all(root.search-query, replace-input.text); }
                     }
                 }
             }
         }
 
         // Content area
+        if root.view-mode == 2 : OpenDialog {
+            left-path-input <=> root.open-left-path-input;
+            right-path-input <=> root.open-right-path-input;
+            is-folder-mode <=> root.open-is-folder-mode;
+            browse-left => {
+                if root.open-is-folder-mode {
+                    root.open-folder-left();
+                } else {
+                    root.open-left-file();
+                }
+            }
+            browse-right => {
+                if root.open-is-folder-mode {
+                    root.open-folder-right();
+                } else {
+                    root.open-right-file();
+                }
+            }
+            compare => {
+                root.start-compare(root.open-left-path-input, root.open-right-path-input, root.open-is-folder-mode);
+            }
+        }
+
         if root.view-mode == 0 : DiffView {
             diff-lines: root.diff-lines;
             current-diff-index: root.current-diff-index;
@@ -279,6 +454,23 @@ export component MainWindow inherits Window {
                     vertical-alignment: center;
                 }
             }
+        }
+    }
+
+    // Unsaved changes confirmation overlay
+    ConfirmDialog {
+        width: 100%;
+        height: 100%;
+        visible-flag: root.show-confirm-dialog;
+        message: "You have unsaved changes. Discard and continue?";
+        confirmed => {
+            root.show-confirm-dialog = false;
+            root.has-unsaved-changes = false;
+            root.discard-and-proceed();
+        }
+        cancelled => {
+            root.show-confirm-dialog = false;
+            root.pending-action = 0;
         }
     }
 }

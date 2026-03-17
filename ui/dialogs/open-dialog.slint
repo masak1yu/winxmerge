@@ -1,0 +1,120 @@
+import { Button, LineEdit, Palette, CheckBox } from "std-widgets.slint";
+
+export component OpenDialog inherits Rectangle {
+    in-out property <string> left-path-input: "";
+    in-out property <string> right-path-input: "";
+    in-out property <bool> is-folder-mode: false;
+
+    callback browse-left();
+    callback browse-right();
+    callback compare();
+
+    vertical-stretch: 1;
+    horizontal-stretch: 1;
+
+    Rectangle {
+        background: Palette.background;
+
+        VerticalLayout {
+            alignment: center;
+            padding: 40px;
+            spacing: 16px;
+
+            // Title
+            Text {
+                text: "WinXMerge";
+                font-size: 28px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                color: Palette.foreground;
+            }
+
+            Text {
+                text: "Select files or folders to compare";
+                font-size: 14px;
+                horizontal-alignment: center;
+                color: Palette.foreground.transparentize(0.4);
+            }
+
+            Rectangle { height: 16px; }
+
+            // Mode toggle
+            HorizontalLayout {
+                alignment: center;
+                CheckBox {
+                    text: "Folder comparison";
+                    checked: root.is-folder-mode;
+                    toggled => { root.is-folder-mode = self.checked; }
+                }
+            }
+
+            Rectangle { height: 8px; }
+
+            // Left path
+            VerticalLayout {
+                spacing: 4px;
+                HorizontalLayout {
+                    alignment: start;
+                    Text {
+                        text: root.is-folder-mode ? "Left Folder:" : "Left File:";
+                        font-size: 13px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    LineEdit {
+                        horizontal-stretch: 1;
+                        text: root.left-path-input;
+                        placeholder-text: root.is-folder-mode ? "Select left folder..." : "Select left file...";
+                        edited(text) => { root.left-path-input = text; }
+                    }
+                    Button {
+                        text: "Browse...";
+                        clicked => { root.browse-left(); }
+                    }
+                }
+            }
+
+            // Right path
+            VerticalLayout {
+                spacing: 4px;
+                HorizontalLayout {
+                    alignment: start;
+                    Text {
+                        text: root.is-folder-mode ? "Right Folder:" : "Right File:";
+                        font-size: 13px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    LineEdit {
+                        horizontal-stretch: 1;
+                        text: root.right-path-input;
+                        placeholder-text: root.is-folder-mode ? "Select right folder..." : "Select right file...";
+                        edited(text) => { root.right-path-input = text; }
+                    }
+                    Button {
+                        text: "Browse...";
+                        clicked => { root.browse-right(); }
+                    }
+                }
+            }
+
+            Rectangle { height: 16px; }
+
+            // Compare button
+            HorizontalLayout {
+                alignment: center;
+                Button {
+                    text: "Compare";
+                    enabled: root.left-path-input != "" && root.right-path-input != "";
+                    clicked => { root.compare(); }
+                }
+            }
+        }
+    }
+}

@@ -23,7 +23,6 @@ pub fn compute_diff_with_options(
     let diff = TextDiff::from_lines(&left_normalized, &right_normalized);
     let mut lines = Vec::new();
     let mut diff_positions = Vec::new();
-    let mut diff_count: u32 = 0;
     let mut left_line_no: u32 = 0;
     let mut right_line_no: u32 = 0;
 
@@ -65,8 +64,6 @@ pub fn compute_diff_with_options(
                         .to_string();
                     left_line_no += 1;
                     right_line_no += 1;
-                    diff_positions.push(lines.len());
-                    diff_count += 1;
                     lines.push(DiffLine {
                         left_line_no: Some(left_line_no),
                         right_line_no: Some(right_line_no),
@@ -81,8 +78,6 @@ pub fn compute_diff_with_options(
                         .unwrap_or(&"")
                         .to_string();
                     left_line_no += 1;
-                    diff_positions.push(lines.len());
-                    diff_count += 1;
                     lines.push(DiffLine {
                         left_line_no: Some(left_line_no),
                         right_line_no: None,
@@ -99,8 +94,6 @@ pub fn compute_diff_with_options(
                     .unwrap_or(&"")
                     .to_string();
                 right_line_no += 1;
-                diff_positions.push(lines.len());
-                diff_count += 1;
                 lines.push(DiffLine {
                     left_line_no: None,
                     right_line_no: Some(right_line_no),
@@ -113,10 +106,58 @@ pub fn compute_diff_with_options(
         }
     }
 
+    // Detect moved lines: a Removed line whose text appears as an Added line elsewhere
+    detect_moved_lines(&mut lines);
+
+    // Rebuild diff_positions and diff_count after move detection
+    diff_positions.clear();
+    let mut diff_count: u32 = 0;
+    for (idx, line) in lines.iter().enumerate() {
+        if line.status != LineStatus::Equal {
+            diff_positions.push(idx);
+            diff_count += 1;
+        }
+    }
+
     DiffResult {
         lines,
         diff_count,
         diff_positions,
+    }
+}
+
+fn detect_moved_lines(lines: &mut [DiffLine]) {
+    use std::collections::HashMap;
+
+    // Collect all Added lines' text -> indices
+    let mut added_texts: HashMap<String, Vec<usize>> = HashMap::new();
+    for (i, line) in lines.iter().enumerate() {
+        if line.status == LineStatus::Added {
+            let text = line.right_text.trim().to_string();
+            if !text.is_empty() {
+                added_texts.entry(text).or_default().push(i);
+            }
+        }
+    }
+
+    // Check each Removed line against Added lines
+    for i in 0..lines.len() {
+        if lines[i].status != LineStatus::Removed {
+            continue;
+        }
+        let text = lines[i].left_text.trim().to_string();
+        if text.is_empty() {
+            continue;
+        }
+        if let Some(added_indices) = added_texts.get_mut(&text) {
+            if let Some(added_idx) = added_indices.pop() {
+                lines[i].status = LineStatus::Moved;
+                lines[added_idx].status = LineStatus::Moved;
+                // Copy text across for display
+                lines[i].right_text = lines[added_idx].right_text.clone();
+                lines[added_idx].left_text = lines[i].left_text.clone();
+            }
+        }
     }
 }
 
@@ -188,6 +229,16 @@ mod tests {
         };
         let result = compute_diff_with_options("Hello\n", "hello\n", &opts);
         assert_eq!(result.diff_count, 0);
+    }
+
+    #[test]
+    fn test_moved_line() {
+        let left = "aaa\nbbb\nccc\n";
+        let right = "ccc\nbbb\naaa\n";
+        let result = compute_diff_with_options(left, right, &DiffOptions::default());
+        // aaa and ccc are moved (swapped positions), bbb stays
+        let moved_count = result.lines.iter().filter(|l| l.status == LineStatus::Moved).count();
+        assert!(moved_count > 0, "Should detect moved lines");
     }
 
     #[test]
