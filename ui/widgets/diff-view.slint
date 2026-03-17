@@ -159,7 +159,7 @@ export component DiffView inherits Rectangle {
             }
 
             // Spacer for location pane
-            Rectangle {
+            if root.diff-lines.length > 0 : Rectangle {
                 width: 12px;
                 background: Palette.background.darker(0.05);
             }
@@ -245,8 +245,8 @@ export component DiffView inherits Rectangle {
                 }
             }
 
-            // Location pane (minimap)
-            LocationPane {
+            // Location pane (minimap) - only show when there are lines
+            if root.diff-lines.length > 0 : LocationPane {
                 diff-lines: root.diff-lines;
                 current-diff-index: root.current-diff-index;
             }
