@@ -1,4 +1,4 @@
-import { Button, CheckBox, SpinBox, ComboBox, Palette } from "std-widgets.slint";
+import { Button, CheckBox, SpinBox, ComboBox, Palette, LineEdit, ScrollView } from "std-widgets.slint";
 
 export component OptionsDialog inherits Rectangle {
     in-out property <bool> visible-flag: false;
@@ -24,6 +24,11 @@ export component OptionsDialog inherits Rectangle {
     // Language: 0=English, 1=Japanese
     in-out property <int> opt-language: 0;
 
+    // Filters (newline-separated)
+    in-out property <string> opt-line-filters: "";
+    in-out property <string> opt-substitution-patterns: "";
+    in-out property <string> opt-substitution-replacements: "";
+
     callback apply();
     callback cancel();
 
@@ -37,7 +42,7 @@ export component OptionsDialog inherits Rectangle {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             width: 500px;
-            height: 580px;
+            height: 700px;
             background: Palette.background;
             border-color: Palette.border;
             border-width: 1px;
@@ -141,6 +146,56 @@ export component OptionsDialog inherits Rectangle {
                     text: @tr("Detect moved lines");
                     checked: root.opt-detect-moved-lines;
                     toggled => { root.opt-detect-moved-lines = self.checked; }
+                }
+
+                Rectangle { height: 8px; }
+
+                // Filters section
+                Text {
+                    text: @tr("Filters");
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: Palette.foreground;
+                }
+                Rectangle {
+                    height: 1px;
+                    background: Palette.border;
+                }
+
+                Text {
+                    text: @tr("Line filters (regex, one per line — matching lines are excluded):");
+                    font-size: 12px;
+                    color: Palette.foreground.transparentize(0.3);
+                    wrap: word-wrap;
+                }
+                LineEdit {
+                    text <=> root.opt-line-filters;
+                    placeholder-text: @tr("e.g. ^//.*|^#.*");
+                }
+
+                Text {
+                    text: @tr("Substitution filters (regex → replacement, applied before comparison):");
+                    font-size: 12px;
+                    color: Palette.foreground.transparentize(0.3);
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 4px;
+                    LineEdit {
+                        text <=> root.opt-substitution-patterns;
+                        placeholder-text: @tr("Pattern regex");
+                        horizontal-stretch: 1;
+                    }
+                    Text {
+                        text: "→";
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        text <=> root.opt-substitution-replacements;
+                        placeholder-text: @tr("Replacement text");
+                        horizontal-stretch: 1;
+                    }
                 }
 
                 Rectangle { height: 8px; }

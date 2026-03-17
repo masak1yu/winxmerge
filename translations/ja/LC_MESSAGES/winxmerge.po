@@ -378,3 +378,22 @@ msgstr "開く"
 
 msgid "Delete"
 msgstr "削除"
+
+# Filters
+msgid "Filters"
+msgstr "フィルタ"
+
+msgid "Line filters (regex, one per line — matching lines are excluded):"
+msgstr "行フィルタ (正規表現、| 区切り — マッチする行を除外):"
+
+msgid "e.g. ^//.*|^#.*"
+msgstr "例: ^//.*|^#.*"
+
+msgid "Substitution filters (regex → replacement, applied before comparison):"
+msgstr "置換フィルタ (正規表現 → 置換文字列、比較前に適用):"
+
+msgid "Pattern regex"
+msgstr "パターン (正規表現)"
+
+msgid "Replacement text"
+msgstr "置換文字列"

@@ -198,6 +198,11 @@ export component MainWindow inherits Window {
     in-out property <int> opt-tab-width: 4;
     in-out property <bool> opt-enable-context-menu: true;
 
+    // Filters
+    in-out property <string> opt-line-filters: "";
+    in-out property <string> opt-substitution-patterns: "";
+    in-out property <string> opt-substitution-replacements: "";
+
     // Theme: 0=Light, 1=Dark
     in-out property <int> opt-theme: 0;
 
@@ -690,6 +695,9 @@ export component MainWindow inherits Window {
         opt-enable-context-menu <=> root.opt-enable-context-menu;
         opt-theme <=> root.opt-theme;
         opt-language <=> root.opt-language;
+        opt-line-filters <=> root.opt-line-filters;
+        opt-substitution-patterns <=> root.opt-substitution-patterns;
+        opt-substitution-replacements <=> root.opt-substitution-replacements;
         apply => {
             root.show-options-dialog = false;
             root.set-theme(root.opt-theme);
