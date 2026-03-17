@@ -422,6 +422,147 @@ pub fn search_text(window: &MainWindow, state: &mut AppState, query: &str) {
     }
 }
 
+pub fn replace_text(window: &MainWindow, state: &mut AppState, search: &str, replacement: &str) {
+    if search.is_empty() || state.search_matches.is_empty() || state.current_search_match < 0 {
+        return;
+    }
+
+    let model = window.get_diff_lines();
+    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+
+    let match_idx = state.search_matches[state.current_search_match as usize];
+    let mut row = vec_model.row_data(match_idx).unwrap();
+
+    let search_lower = search.to_lowercase();
+    // Replace in both sides
+    let left = row.left_text.to_string();
+    let right = row.right_text.to_string();
+    row.left_text = SharedString::from(case_insensitive_replace(&left, &search_lower, search, replacement));
+    row.right_text = SharedString::from(case_insensitive_replace(&right, &search_lower, search, replacement));
+    vec_model.set_row_data(match_idx, row);
+
+    state.has_unsaved_changes = true;
+    window.set_has_unsaved_changes(true);
+
+    // Re-search to update matches
+    search_text(window, state, search);
+}
+
+pub fn replace_all_text(window: &MainWindow, state: &mut AppState, search: &str, replacement: &str) {
+    if search.is_empty() || state.search_matches.is_empty() {
+        return;
+    }
+
+    let model = window.get_diff_lines();
+    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+
+    let search_lower = search.to_lowercase();
+    for &match_idx in &state.search_matches {
+        let mut row = vec_model.row_data(match_idx).unwrap();
+        let left = row.left_text.to_string();
+        let right = row.right_text.to_string();
+        row.left_text = SharedString::from(case_insensitive_replace(&left, &search_lower, search, replacement));
+        row.right_text = SharedString::from(case_insensitive_replace(&right, &search_lower, search, replacement));
+        vec_model.set_row_data(match_idx, row);
+    }
+
+    let count = state.search_matches.len();
+    state.has_unsaved_changes = true;
+    window.set_has_unsaved_changes(true);
+
+    // Re-search (should find 0 matches now)
+    search_text(window, state, search);
+    window.set_status_text(SharedString::from(format!(
+        "Replaced {} occurrences",
+        count
+    )));
+}
+
+fn case_insensitive_replace(text: &str, search_lower: &str, _search: &str, replacement: &str) -> String {
+    let text_lower = text.to_lowercase();
+    let mut result = String::new();
+    let mut last = 0;
+    for (idx, _) in text_lower.match_indices(search_lower) {
+        result.push_str(&text[last..idx]);
+        result.push_str(replacement);
+        last = idx + search_lower.len();
+    }
+    result.push_str(&text[last..]);
+    result
+}
+
+pub fn start_compare(window: &MainWindow, state: &mut AppState, left: &str, right: &str, is_folder: bool) {
+    let left_path = PathBuf::from(left);
+    let right_path = PathBuf::from(right);
+
+    if is_folder {
+        state.left_folder = Some(left_path);
+        state.right_folder = Some(right_path);
+        run_folder_compare(window, state);
+    } else {
+        state.left_path = Some(left_path);
+        state.right_path = Some(right_path);
+        window.set_view_mode(0);
+        run_diff(window, state);
+    }
+}
+
+pub fn discard_and_proceed(window: &MainWindow, state: &mut AppState) {
+    state.has_unsaved_changes = false;
+    window.set_has_unsaved_changes(false);
+
+    let action = window.get_pending_action();
+    window.set_pending_action(0);
+
+    match action {
+        1 => {
+            // Open left file
+            if let Some(path) = open_file_dialog("Select left file") {
+                state.left_path = Some(path.clone());
+                window.set_open_left_path_input(SharedString::from(path.to_string_lossy().to_string()));
+                window.set_view_mode(0);
+                run_diff(window, state);
+            }
+        }
+        2 => {
+            // Open right file
+            if let Some(path) = open_file_dialog("Select right file") {
+                state.right_path = Some(path.clone());
+                window.set_open_right_path_input(SharedString::from(path.to_string_lossy().to_string()));
+                window.set_view_mode(0);
+                run_diff(window, state);
+            }
+        }
+        3 => {
+            // Open left folder
+            if let Some(path) = open_folder_dialog("Select left folder") {
+                state.left_folder = Some(path.clone());
+                window.set_open_left_path_input(SharedString::from(path.to_string_lossy().to_string()));
+                run_folder_compare(window, state);
+            }
+        }
+        4 => {
+            // Open right folder
+            if let Some(path) = open_folder_dialog("Select right folder") {
+                state.right_folder = Some(path.clone());
+                window.set_open_right_path_input(SharedString::from(path.to_string_lossy().to_string()));
+                run_folder_compare(window, state);
+            }
+        }
+        5 => {
+            // New compare (go to open dialog)
+            window.set_view_mode(2);
+        }
+        _ => {}
+    }
+}
+
 pub fn navigate_search(window: &MainWindow, state: &mut AppState, forward: bool) {
     if state.search_matches.is_empty() {
         return;

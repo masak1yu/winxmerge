@@ -9,70 +9,114 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use app::{
-    copy_to_left, copy_to_right, navigate_diff, navigate_search, open_file_dialog,
-    open_folder_dialog, open_folder_item, run_diff, run_folder_compare, save_file, search_text,
-    toggle_ignore_case, toggle_ignore_whitespace, AppState,
+    copy_to_left, copy_to_right, discard_and_proceed, navigate_diff, navigate_search,
+    open_file_dialog, open_folder_dialog, open_folder_item, replace_all_text, replace_text,
+    run_folder_compare, save_file, search_text, start_compare, toggle_ignore_case,
+    toggle_ignore_whitespace, AppState,
 };
+use slint::SharedString;
 
 fn main() {
     let window = MainWindow::new().unwrap();
     let state = Rc::new(RefCell::new(AppState::new()));
 
-    // Open left file
+    // Open left file (from open dialog browse)
     {
         let window_weak = window.as_weak();
         let state = state.clone();
         window.on_open_left_file(move || {
-            if let Some(path) = open_file_dialog("Select left file") {
-                let window = window_weak.unwrap();
-                let mut s = state.borrow_mut();
-                s.left_path = Some(path);
-                window.set_view_mode(0);
-                run_diff(&window, &mut s);
+            let window = window_weak.unwrap();
+            let is_folder = window.get_open_is_folder_mode();
+            if is_folder {
+                if let Some(path) = open_folder_dialog("Select left folder") {
+                    window.set_open_left_path_input(SharedString::from(
+                        path.to_string_lossy().to_string(),
+                    ));
+                    state.borrow_mut().left_folder = Some(path);
+                }
+            } else {
+                if let Some(path) = open_file_dialog("Select left file") {
+                    window.set_open_left_path_input(SharedString::from(
+                        path.to_string_lossy().to_string(),
+                    ));
+                    state.borrow_mut().left_path = Some(path);
+                }
             }
         });
     }
 
-    // Open right file
+    // Open right file (from open dialog browse)
     {
         let window_weak = window.as_weak();
         let state = state.clone();
         window.on_open_right_file(move || {
-            if let Some(path) = open_file_dialog("Select right file") {
-                let window = window_weak.unwrap();
-                let mut s = state.borrow_mut();
-                s.right_path = Some(path);
-                window.set_view_mode(0);
-                run_diff(&window, &mut s);
+            let window = window_weak.unwrap();
+            let is_folder = window.get_open_is_folder_mode();
+            if is_folder {
+                if let Some(path) = open_folder_dialog("Select right folder") {
+                    window.set_open_right_path_input(SharedString::from(
+                        path.to_string_lossy().to_string(),
+                    ));
+                    state.borrow_mut().right_folder = Some(path);
+                }
+            } else {
+                if let Some(path) = open_file_dialog("Select right file") {
+                    window.set_open_right_path_input(SharedString::from(
+                        path.to_string_lossy().to_string(),
+                    ));
+                    state.borrow_mut().right_path = Some(path);
+                }
             }
         });
     }
 
-    // Open left folder
+    // Open left folder (from menu)
     {
         let window_weak = window.as_weak();
         let state = state.clone();
         window.on_open_folder_left(move || {
             if let Some(path) = open_folder_dialog("Select left folder") {
                 let window = window_weak.unwrap();
-                let mut s = state.borrow_mut();
-                s.left_folder = Some(path);
-                run_folder_compare(&window, &mut s);
+                window.set_open_left_path_input(SharedString::from(
+                    path.to_string_lossy().to_string(),
+                ));
+                state.borrow_mut().left_folder = Some(path);
             }
         });
     }
 
-    // Open right folder
+    // Open right folder (from menu)
     {
         let window_weak = window.as_weak();
         let state = state.clone();
         window.on_open_folder_right(move || {
             if let Some(path) = open_folder_dialog("Select right folder") {
                 let window = window_weak.unwrap();
-                let mut s = state.borrow_mut();
-                s.right_folder = Some(path);
-                run_folder_compare(&window, &mut s);
+                window.set_open_right_path_input(SharedString::from(
+                    path.to_string_lossy().to_string(),
+                ));
+                state.borrow_mut().right_folder = Some(path);
             }
+        });
+    }
+
+    // Start compare (from open dialog)
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_start_compare(move |left, right, is_folder| {
+            let window = window_weak.unwrap();
+            start_compare(&window, &mut state.borrow_mut(), &left, &right, is_folder);
+        });
+    }
+
+    // Discard unsaved and proceed
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_discard_and_proceed(move || {
+            let window = window_weak.unwrap();
+            discard_and_proceed(&window, &mut state.borrow_mut());
         });
     }
 
@@ -82,8 +126,7 @@ fn main() {
         let state = state.clone();
         window.on_folder_item_double_clicked(move |idx| {
             let window = window_weak.unwrap();
-            let mut s = state.borrow_mut();
-            open_folder_item(&window, &mut s, idx);
+            open_folder_item(&window, &mut state.borrow_mut(), idx);
         });
     }
 
@@ -200,6 +243,25 @@ fn main() {
         window.on_search_prev(move || {
             let window = window_weak.unwrap();
             navigate_search(&window, &mut state.borrow_mut(), false);
+        });
+    }
+
+    // Replace
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_replace(move |search, replacement| {
+            let window = window_weak.unwrap();
+            replace_text(&window, &mut state.borrow_mut(), &search, &replacement);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_replace_all(move |search, replacement| {
+            let window = window_weak.unwrap();
+            replace_all_text(&window, &mut state.borrow_mut(), &search, &replacement);
         });
     }
 
