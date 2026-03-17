@@ -464,6 +464,9 @@ export component MainWindow inherits Window {
             left-title: root.left-path != "" ? root.left-path : "Left file";
             right-title: root.right-path != "" ? root.right-path : "Right file";
             context-menu-enabled: root.opt-enable-context-menu;
+            show-line-numbers: root.opt-show-line-numbers;
+            editor-font-size: root.opt-font-size;
+            editor-tab-width: root.opt-tab-width;
             copy-to-right(idx) => { root.copy-to-right(idx); }
             copy-to-left(idx) => { root.copy-to-left(idx); }
             select-diff(idx) => { root.select-diff(idx); }

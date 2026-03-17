@@ -245,11 +245,20 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
         .unwrap_or_default();
     tab.title = format!("{} ↔ {}", left_name, right_name);
 
-    // Compute syntax highlights
+    // Compute syntax highlights (if enabled)
     let left_path_str = left_path.to_string_lossy().to_string();
     let right_path_str = right_path.to_string_lossy().to_string();
-    let left_highlights = highlight_lines(&left_text, &left_path_str);
-    let right_highlights = highlight_lines(&right_text, &right_path_str);
+    let syntax_enabled = window.get_opt_syntax_highlighting();
+    let left_highlights = if syntax_enabled {
+        highlight_lines(&left_text, &left_path_str)
+    } else {
+        Vec::new()
+    };
+    let right_highlights = if syntax_enabled {
+        highlight_lines(&right_text, &right_path_str)
+    } else {
+        Vec::new()
+    };
 
     recompute_diff_from_text_with_highlights(
         window, state, &left_text, &right_text, &left_highlights, &right_highlights,
@@ -741,6 +750,9 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
     let tab = state.current_tab_mut();
     tab.diff_options.ignore_whitespace = settings.ignore_whitespace;
     tab.diff_options.ignore_case = settings.ignore_case;
+    tab.diff_options.ignore_blank_lines = settings.ignore_blank_lines;
+    tab.diff_options.ignore_eol = settings.ignore_eol;
+    tab.diff_options.detect_moved_lines = settings.detect_moved_lines;
 
     if tab.left_path.is_some() && tab.right_path.is_some() {
         run_diff(window, state);
