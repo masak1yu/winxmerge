@@ -62,16 +62,17 @@ export component TabBar inherits Rectangle {
                     color: tab.is-active ? Palette.foreground : Palette.foreground.transparentize(0.3);
                 }
 
-                // Close button
-                Rectangle {
+                // Close button (only show when there are multiple tabs)
+                if root.tabs.length > 1 : Rectangle {
                     width: 20px;
                     height: 20px;
                     border-radius: 3px;
                     background: close-touch.has-hover ? Palette.background.darker(0.15) : transparent;
 
                     Text {
-                        text: "✕";
-                        font-size: 10px;
+                        text: "x";
+                        font-size: 11px;
+                        font-weight: 700;
                         horizontal-alignment: center;
                         vertical-alignment: center;
                         color: Palette.foreground.transparentize(0.4);
