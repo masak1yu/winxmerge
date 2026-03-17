@@ -3,6 +3,7 @@ mod diff;
 mod encoding;
 mod highlight;
 mod models;
+mod settings;
 
 slint::include_modules!();
 
@@ -20,6 +21,18 @@ use slint::SharedString;
 fn main() {
     let window = MainWindow::new().unwrap();
     let state = Rc::new(RefCell::new(AppState::new()));
+    let settings = Rc::new(RefCell::new(settings::AppSettings::load()));
+
+    // Apply loaded settings
+    {
+        let s = settings.borrow();
+        window.set_ignore_whitespace(s.ignore_whitespace);
+        window.set_ignore_case(s.ignore_case);
+        window.set_show_toolbar(s.show_toolbar);
+        let mut app = state.borrow_mut();
+        app.current_tab_mut().diff_options.ignore_whitespace = s.ignore_whitespace;
+        app.current_tab_mut().diff_options.ignore_case = s.ignore_case;
+    }
 
     // Initialize tab list
     app::sync_tab_list(&window, &state.borrow());
@@ -133,9 +146,13 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
+        let settings = settings.clone();
         window.on_start_compare(move |left, right, is_folder| {
             let window = window_weak.unwrap();
             start_compare(&window, &mut state.borrow_mut(), &left, &right, is_folder);
+            let mut s = settings.borrow_mut();
+            s.add_recent(&left, &right, is_folder);
+            s.save();
         });
     }
 
@@ -233,18 +250,26 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
+        let settings = settings.clone();
         window.on_toggle_ignore_whitespace(move || {
             let window = window_weak.unwrap();
             toggle_ignore_whitespace(&window, &mut state.borrow_mut());
+            let mut s = settings.borrow_mut();
+            s.ignore_whitespace = window.get_ignore_whitespace();
+            s.save();
         });
     }
 
     {
         let window_weak = window.as_weak();
         let state = state.clone();
+        let settings = settings.clone();
         window.on_toggle_ignore_case(move || {
             let window = window_weak.unwrap();
             toggle_ignore_case(&window, &mut state.borrow_mut());
+            let mut s = settings.borrow_mut();
+            s.ignore_case = window.get_ignore_case();
+            s.save();
         });
     }
 
