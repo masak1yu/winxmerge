@@ -1,0 +1,64 @@
+// Theme-aware color definitions for WinXMerge
+// All semantic colors are centralized here so that light/dark themes work consistently.
+// ThemeColors.dark is driven by Palette.color-scheme (set from Rust side).
+
+import { Palette } from "std-widgets.slint";
+
+export global ThemeColors {
+    // Derived from Palette.color-scheme — true when dark mode is active
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+
+    // --- Diff status background colors ---
+    // Added (green)
+    out property <color> added-bg: dark ? #1a3a1a : #e6ffec;
+    out property <color> added-bg-current: dark ? #2a5a2a : #ccffd8;
+    // Removed (red)
+    out property <color> removed-bg: dark ? #3a1a1a : #ffebe9;
+    out property <color> removed-bg-current: dark ? #5a2a2a : #ffd7d5;
+    // Modified (yellow)
+    out property <color> modified-bg: dark ? #3a3a1a : #fff8c5;
+    out property <color> modified-bg-current: dark ? #5a5a2a : #fff2a8;
+    // Moved (blue)
+    out property <color> moved-bg: dark ? #1a2a3a : #e0e8ff;
+    out property <color> moved-bg-current: dark ? #2a3a5a : #c0d0ff;
+
+    // --- Diff status marker text colors ---
+    out property <color> added-fg: dark ? #4ec94e : #22863a;
+    out property <color> removed-fg: dark ? #f06060 : #cb2431;
+    out property <color> modified-fg: dark ? #d4b030 : #b08800;
+    out property <color> moved-fg: dark ? #7090d0 : #3b5998;
+
+    // --- 3-way merge status colors ---
+    // LeftChanged (blue)
+    out property <color> left-changed-bg: dark ? #1a2a3a : #e0e8ff;
+    out property <color> left-changed-bg-current: dark ? #2a3a5a : #c0d0ff;
+    // RightChanged (green)
+    out property <color> right-changed-bg: dark ? #1a3a1a : #e0ffe0;
+    out property <color> right-changed-bg-current: dark ? #2a5a2a : #c0ffc0;
+    // BothChanged (yellow)
+    out property <color> both-changed-bg: dark ? #3a3a1a : #fff8c5;
+    out property <color> both-changed-bg-current: dark ? #5a5a2a : #fff2a8;
+    // Conflict (red)
+    out property <color> conflict-bg: dark ? #3a1a1a : #ffcccc;
+    out property <color> conflict-bg-current: dark ? #5a2a2a : #ff9999;
+
+    // --- Location pane current selection ---
+    out property <color> location-current: dark ? #4a9af5 : #0078d4;
+
+    // --- Syntax highlight colors ---
+    out property <color> hl-keyword: dark ? #c678dd : #a626a4;
+    out property <color> hl-string: dark ? #98c379 : #50a14f;
+    out property <color> hl-comment: dark ? #7f848e : #a0a1a7;
+    out property <color> hl-number: dark ? #d19a66 : #986801;
+    out property <color> hl-function: dark ? #61afef : #4078f2;
+    out property <color> hl-type: dark ? #e5c07b : #c18401;
+    out property <color> hl-variable: dark ? #e06c75 : #e45649;
+    out property <color> hl-operator: dark ? #56b6c2 : #0184bc;
+
+    // --- Unsaved indicator ---
+    out property <color> unsaved-indicator: dark ? #d4b030 : #b08800;
+
+    // --- Resolve button hover ---
+    out property <color> resolve-left-hover: dark ? #2a3a5a : #c0d0ff;
+    out property <color> resolve-right-hover: dark ? #2a5a2a : #c0ffc0;
+}

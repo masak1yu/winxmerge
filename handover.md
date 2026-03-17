@@ -7,10 +7,10 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 ## 現在の状態
 
-- **バージョン:** 0.6.0
-- **ブランチ:** `v0.6.0` — PR 作成待ち
+- **バージョン:** 0.7.0
+- **ブランチ:** `feature/v0.7.0`
 - **テスト:** 12件すべてパス
-- **ビルド:** `cargo build --release` 成功（29MB arm64 バイナリ）
+- **ビルド:** `cargo build` 成功
 - **CI:** GitHub Actions（ubuntu / macOS）
 
 ## リリース履歴
@@ -23,6 +23,7 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | v0.4.0 | #4 | Git 連携、オプション画面、コンテキストメニュー、HTML エクスポート、スクロール同期、設定永続化 |
 | v0.5.0 | #5 | 3-way マージ UI 統合、オプション実効化、最近のファイル一覧 |
 | v0.6.0 | #6 | フォルダ比較強化（更新日時、.gitignore、フィルタ）、GitHub Actions CI |
+| v0.7.0 | - | テーマ切替（ライト/ダーク）、ThemeColors グローバルによるカラー一元管理 |
 
 ## 実装済み機能一覧
 
@@ -106,6 +107,13 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | Cmd+N | 新規比較 |
 | Alt+↓/↑ | 次/前の差分 |
 
+### テーマ切替
+- ライト / ダーク テーマ切替（オプション画面の Appearance セクション）
+- `Palette.color-scheme` による Slint ウィジェットの自動テーマ適用
+- `ThemeColors` グローバルで差分カラー・シンタックスハイライト色を一元管理（`ui/theme.slint`）
+- ライト・ダーク各テーマに最適化された差分背景色・マーカー色・構文色
+- 設定は `~/.config/winxmerge/settings.json` に永続化
+
 ### その他
 - WinMerge 風の初期選択ダイアログ
 - 未保存変更の確認ダイアログ
@@ -141,7 +149,8 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | `widgets/folder-view.slint` | フォルダ比較リスト表示 |
 | `widgets/tab-bar.slint` | タブバー |
 | `dialogs/open-dialog.slint` | 初期選択ダイアログ |
-| `dialogs/options-dialog.slint` | オプション設定ダイアログ |
+| `theme.slint` | テーマカラー定義（ThemeColors グローバル、ライト/ダーク対応） |
+| `dialogs/options-dialog.slint` | オプション設定ダイアログ（テーマ選択含む） |
 
 ### 状態管理の構造
 
@@ -190,36 +199,29 @@ AppSettings (永続化)
 
 ---
 
-## 次にやるべき項目 (v0.7.0+)
+## 次にやるべき項目 (v0.8.0+)
 
 ### 優先度高
 
-1. **テーマ切替**
-   - ライト/ダーク テーマ
-   - 色設定のカスタマイズ（オプション画面に追加）
-   - Slint の `Palette` を動的に変更
-
-### 優先度中
-
-2. **国際化 (i18n)**
+1. **国際化 (i18n)**
    - メニュー・ダイアログの日本語/英語切替
    - Slint の `@tr()` マクロ活用
 
-3. **リリースバイナリの自動ビルド**
+2. **リリースバイナリの自動ビルド**
    - GitHub Actions で macOS / Linux / Windows のクロスコンパイル
    - GitHub Releases への自動アップロード
 
 ### 優先度低
 
-4. **行内（文字レベル）差分**
+3. **行内（文字レベル）差分**
    - `similar` の文字レベル diff で変更位置を計算
    - Slint のリッチテキスト対応を待つか、複数 Text 要素で近似実装
 
-5. **プラグインシステム**
+4. **プラグインシステム**
    - カスタム差分フィルタ（前処理）
    - 外部ツール連携
 
-6. **アクセシビリティ**
+5. **アクセシビリティ**
     - スクリーンリーダー対応
     - キーボードのみでの全操作対応
 

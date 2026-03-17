@@ -5,8 +5,9 @@ import { FolderView, FolderItemData } from "widgets/folder-view.slint";
 import { TabBar, TabData } from "widgets/tab-bar.slint";
 import { OpenDialog, RecentEntryData } from "dialogs/open-dialog.slint";
 import { OptionsDialog } from "dialogs/options-dialog.slint";
+import { ThemeColors } from "theme.slint";
 
-export { DiffLineData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData }
+export { DiffLineData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors }
 
 component ConfirmDialog inherits Rectangle {
     in property <string> message: "";
@@ -179,6 +180,14 @@ export component MainWindow inherits Window {
     in-out property <int> opt-font-size: 13;
     in-out property <int> opt-tab-width: 4;
     in-out property <bool> opt-enable-context-menu: true;
+
+    // Theme: 0=Light, 1=Dark
+    in-out property <int> opt-theme: 0;
+
+    // Apply the color scheme from opt-theme
+    public function set-theme(theme-index: int) {
+        Palette.color-scheme = theme-index == 1 ? ColorScheme.dark : ColorScheme.light;
+    }
 
     // Helper: check unsaved before action
     function request-action(action: int) {
@@ -612,8 +621,10 @@ export component MainWindow inherits Window {
         opt-font-size <=> root.opt-font-size;
         opt-tab-width <=> root.opt-tab-width;
         opt-enable-context-menu <=> root.opt-enable-context-menu;
+        opt-theme <=> root.opt-theme;
         apply => {
             root.show-options-dialog = false;
+            root.set-theme(root.opt-theme);
             root.apply-options();
         }
         cancel => {

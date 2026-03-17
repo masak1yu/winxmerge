@@ -1,4 +1,5 @@
 import { VerticalBox, HorizontalBox, ListView, Palette } from "std-widgets.slint";
+import { ThemeColors } from "../theme.slint";
 
 export struct DiffLineData {
     left-line-no: string,
@@ -26,9 +27,9 @@ component DiffLineRow inherits Rectangle {
 
     callback line-clicked(int);
 
-    background: is-current ? current-bg : status == 1 ? #e6ffec : status == 2 ? #ffebe9 : status == 3 ? #fff8c5 : status == 4 ? #e0e8ff : Palette.background;
+    background: is-current ? current-bg : status == 1 ? ThemeColors.added-bg : status == 2 ? ThemeColors.removed-bg : status == 3 ? ThemeColors.modified-bg : status == 4 ? ThemeColors.moved-bg : Palette.background;
 
-    property <color> current-bg: status == 1 ? #ccffd8 : status == 2 ? #ffd7d5 : status == 3 ? #fff2a8 : status == 4 ? #c0d0ff : Palette.background.darker(0.05);
+    property <color> current-bg: status == 1 ? ThemeColors.added-bg-current : status == 2 ? ThemeColors.removed-bg-current : status == 3 ? ThemeColors.modified-bg-current : status == 4 ? ThemeColors.moved-bg-current : Palette.background.darker(0.05);
 
     HorizontalLayout {
         padding-left: 4px;
@@ -65,7 +66,7 @@ component DiffLineRow inherits Rectangle {
                 text: status == 1 ? "+" : status == 2 ? "-" : status == 3 ? "~" : status == 4 ? "↕" : " ";
                 font-size: 12px;
                 font-family: "monospace";
-                color: status == 1 ? #22863a : status == 2 ? #cb2431 : status == 3 ? #b08800 : status == 4 ? #3b5998 : Palette.foreground.transparentize(0.5);
+                color: status == 1 ? ThemeColors.added-fg : status == 2 ? ThemeColors.removed-fg : status == 3 ? ThemeColors.modified-fg : status == 4 ? ThemeColors.moved-fg : Palette.foreground.transparentize(0.5);
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
@@ -78,17 +79,17 @@ component DiffLineRow inherits Rectangle {
             font-family: "monospace";
             vertical-alignment: center;
             overflow: elide;
-            color: highlight-type == 0 ? #c678dd :  // keyword - purple
-                   highlight-type == 1 ? #98c379 :  // string - green
-                   highlight-type == 2 ? #7f848e :  // comment - gray
-                   highlight-type == 3 ? #d19a66 :  // number - orange
-                   highlight-type == 4 ? #61afef :  // function - blue
-                   highlight-type == 5 ? #61afef :  // function.builtin - blue
-                   highlight-type == 6 ? #e5c07b :  // type - yellow
-                   highlight-type == 7 ? #e5c07b :  // type.builtin
-                   highlight-type == 8 ? #e06c75 :  // variable - red
-                   highlight-type == 9 ? #e06c75 :  // variable.builtin
-                   highlight-type == 10 ? #56b6c2 : // operator - cyan
+            color: highlight-type == 0 ? ThemeColors.hl-keyword :
+                   highlight-type == 1 ? ThemeColors.hl-string :
+                   highlight-type == 2 ? ThemeColors.hl-comment :
+                   highlight-type == 3 ? ThemeColors.hl-number :
+                   highlight-type == 4 ? ThemeColors.hl-function :
+                   highlight-type == 5 ? ThemeColors.hl-function :
+                   highlight-type == 6 ? ThemeColors.hl-type :
+                   highlight-type == 7 ? ThemeColors.hl-type :
+                   highlight-type == 8 ? ThemeColors.hl-variable :
+                   highlight-type == 9 ? ThemeColors.hl-variable :
+                   highlight-type == 10 ? ThemeColors.hl-operator :
                    Palette.foreground;
         }
     }
@@ -110,11 +111,11 @@ component LocationPane inherits Rectangle {
         x: 1px;
         width: parent.width - 2px;
         background: line.status == 0 ? transparent :
-                    line.is-current-diff ? #0078d4 :
-                    line.status == 1 ? #22863a :
-                    line.status == 2 ? #cb2431 :
-                    line.status == 3 ? #b08800 :
-                    line.status == 4 ? #3b5998 : transparent;
+                    line.is-current-diff ? ThemeColors.location-current :
+                    line.status == 1 ? ThemeColors.added-fg :
+                    line.status == 2 ? ThemeColors.removed-fg :
+                    line.status == 3 ? ThemeColors.modified-fg :
+                    line.status == 4 ? ThemeColors.moved-fg : transparent;
     }
 }
 
