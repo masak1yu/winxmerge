@@ -7,8 +7,8 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 ## 現在の状態
 
-- **バージョン:** 0.11.0
-- **ブランチ:** `feature/v0.11.0`
+- **バージョン:** 0.13.0
+- **ブランチ:** `feature/v0.13.0`
 - **テスト:** 16件すべてパス
 - **ビルド:** `cargo build` 成功
 - **CI:** GitHub Actions（ubuntu / macOS / Windows）
@@ -27,7 +27,9 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | v0.8.0 | #8 | 国際化 (i18n)：日本語/英語切替、@tr() マクロ、gettext .po ファイル |
 | v0.9.0 | #9 | First/Last diff、Go to Line、ブックマーク、フォルダ操作、リリースCI、Windows CI |
 | v0.10.0 | #10 | 行フィルタ、置換フィルタ（正規表現）、オプション画面拡張 |
-| v0.11.0 | - | ワードレベル差分、プラグインシステム、アクセシビリティ、自動再スキャン、フォルダツリー表示、外部エディタ連携 |
+| v0.11.0 | #11 | ワードレベル差分、プラグインシステム、アクセシビリティ、自動再スキャン、フォルダツリー表示、外部エディタ連携 |
+| v0.12.0 | #12 | スプリッター、インライン編集、パッチエクスポート、スクロール同期、差分統計 |
+| v0.13.0 | - | SVGアイコンツールバー、差分詳細ペイン、コピーして次へ、全差分コピー、ウィンドウサイズ保存 |
 
 ## 実装済み機能一覧
 
@@ -64,7 +66,7 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 ### シンタックスハイライト
 - tree-sitter による行レベルハイライト
-- 対応言語: Rust, JavaScript, Python, JSON, C, C++, Go, TypeScript, TSX, Ruby
+- 対応言語: Rust, JavaScript, Python, JSON, C, C++, Go, TypeScript, TSX, Ruby, Java, C#, YAML, TOML, Markdown
 - ファイルタイプ自動検出（ステータスバーに表示）
 
 ### 検索・置換
@@ -178,6 +180,26 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 - ライト・ダーク各テーマに最適化された差分背景色・マーカー色・構文色
 - 設定は `~/.config/winxmerge/settings.json` に永続化
 
+### SVG アイコンツールバー
+- WinMerge 風のアイコンツールバー（1段、SVG アイコン 20 個）
+- ToolBtn コンポーネント（32x32、ホバーハイライト、無効時半透明）
+- ホバー時にステータスバーにヒント表示
+- トグルボタン（Ignore WS / Ignore Case）はアクティブ時にハイライト
+- アイコン: New, Back, Open L/R, Save L/R, Undo, Redo, Rescan, Settings, First/Prev/Next/Last, Copy R/L, Copy & Next R/L, Copy All R/L, WS, Aa
+
+### 差分詳細ペイン
+- ウィンドウ下部に差分ブロックの内容を上下表示（上=Left/削除、下=Right/追加）
+- ScrollView 付き、選択差分の全行を表示
+- 差分ナビゲーション・タブ切替・再計算時に自動更新
+
+### コピーして次へ / 全差分コピー
+- Copy Right and Advance / Copy Left and Advance（コピー後に次の差分へ自動移動）
+- Copy All Left to Right / Copy All Right to Left（全差分を一括マージ）
+
+### ウィンドウサイズ保存
+- `window().on_close_requested()` でウィンドウサイズを `settings.json` に保存
+- 起動時に `window().set_size()` で復元
+
 ### その他
 - WinMerge 風の初期選択ダイアログ
 - 未保存変更の確認ダイアログ
@@ -197,7 +219,7 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | `diff/three_way.rs` | 3-way マージエンジン。衝突検出・自動マージ。UI 統合済み |
 | `diff/folder.rs` | フォルダ再帰比較 |
 | `encoding.rs` | エンコーディング検出・変換。BOM 対応 |
-| `highlight.rs` | tree-sitter シンタックスハイライト（10言語対応） |
+| `highlight.rs` | tree-sitter シンタックスハイライト（15言語対応） |
 | `export.rs` | HTML 差分レポート生成 |
 | `settings.rs` | 設定の永続化（serde_json） |
 | `models/diff_line.rs` | DiffLine, DiffResult, LineStatus |
@@ -207,7 +229,7 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 | ファイル | 役割 |
 |---------|------|
-| `main.slint` | メインウィンドウ。メニューバー、ツールバー、検索/置換バー、FocusScope（ショートカット）、確認ダイアログ |
+| `main.slint` | メインウィンドウ。メニューバー、SVGアイコンツールバー、差分詳細ペイン、検索/置換バー、FocusScope（ショートカット）、確認ダイアログ |
 | `widgets/diff-view.slint` | 2-way 差分2ペイン + マージボタン列 + ロケーションペイン + コンテキストメニュー |
 | `widgets/diff-view-3way.slint` | 3-way マージ3ペイン（Left/Base/Right）+ 衝突解決ボタン |
 | `widgets/folder-view.slint` | フォルダ比較リスト表示 |
@@ -252,7 +274,7 @@ AppSettings (永続化)
 - **Rust 1.94.0**（asdf 管理、`.tool-versions` あり）
 - **Slint 1.15.1** — UI フレームワーク
 - **similar 2.6** — 差分アルゴリズム
-- **tree-sitter 0.26** + tree-sitter-highlight — シンタックスハイライト（10言語）
+- **tree-sitter 0.26** + tree-sitter-highlight — シンタックスハイライト（15言語）
 - **rfd 0.15** — ネイティブファイルダイアログ
 - **chardetng + encoding_rs** — エンコーディング検出
 - **arboard 3** — クリップボード操作
@@ -270,13 +292,13 @@ AppSettings (永続化)
 
 ---
 
-## 次にやるべき項目 (v0.12.0+)
+## 次にやるべき項目 (v0.14.0+)
 
-1. **インライン編集** — 差分ビュー上で直接テキスト編集
-2. **ドラッグ＆ドロップ** — Slint の D&D サポート待ち
-3. **印刷機能** — 差分レポートの直接印刷
-4. **パフォーマンス** — 超大ファイル（100K行以上）の仮想スクロール最適化
-5. **プラグイン強化** — UI からのプラグイン管理、出力結果の表示
+1. **ドラッグ＆ドロップ** — Slint の D&D サポート待ち
+2. **印刷機能** — 差分レポートの直接印刷
+3. **パフォーマンス** — 超大ファイル（100K行以上）の仮想スクロール最適化
+4. **プラグイン強化** — 出力結果の表示
+5. **差分詳細ペインの改善** — リサイズ可能、ワードレベル差分ハイライト
 
 ## ビルド・テスト手順
 

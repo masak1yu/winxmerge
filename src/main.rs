@@ -12,8 +12,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use app::{
-    AppState, add_tab, apply_options, check_files_changed, close_tab, copy_all_text,
-    copy_current_line_text, copy_to_left, copy_to_right, discard_and_proceed, edit_line,
+    AppState, add_tab, apply_options, check_files_changed, close_tab, copy_all_diffs_to_left,
+    copy_all_diffs_to_right, copy_all_text, copy_current_line_text, copy_left_and_next,
+    copy_right_and_next, copy_to_left, copy_to_right, discard_and_proceed, edit_line,
     export_html_report, export_patch, first_diff, folder_copy_to_left, folder_copy_to_right,
     folder_delete_item, goto_line, last_diff, navigate_bookmark, navigate_conflict, navigate_diff,
     navigate_search, open_file_dialog, open_folder_dialog, open_folder_item, open_in_editor, redo,
@@ -30,6 +31,13 @@ fn main() {
     let window = MainWindow::new().unwrap();
     let state = Rc::new(RefCell::new(AppState::new()));
     let settings = Rc::new(RefCell::new(settings::AppSettings::load()));
+
+    // Restore window size
+    {
+        let s = settings.borrow();
+        let size = slint::LogicalSize::new(s.window_width, s.window_height);
+        window.window().set_size(size);
+    }
 
     // Apply loaded settings
     {
@@ -616,6 +624,42 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
+        window.on_copy_right_and_next(move || {
+            let window = window_weak.unwrap();
+            copy_right_and_next(&window, &mut state.borrow_mut());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_copy_left_and_next(move || {
+            let window = window_weak.unwrap();
+            copy_left_and_next(&window, &mut state.borrow_mut());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_copy_all_diffs_right(move || {
+            let window = window_weak.unwrap();
+            copy_all_diffs_to_right(&window, &mut state.borrow_mut());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_copy_all_diffs_left(move || {
+            let window = window_weak.unwrap();
+            copy_all_diffs_to_left(&window, &mut state.borrow_mut());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
         window.on_edit_left_line(move |idx, text| {
             let window = window_weak.unwrap();
             edit_line(&window, &mut state.borrow_mut(), idx, &text, true);
@@ -806,6 +850,24 @@ fn main() {
                 drop(s);
                 start_compare(&window, &mut state.borrow_mut(), &left, &right, is_folder);
             }
+        });
+    }
+
+    // Save window size on close
+    {
+        let settings = settings.clone();
+        let window_weak = window.as_weak();
+        window.window().on_close_requested(move || {
+            let window = window_weak.unwrap();
+            let size = window
+                .window()
+                .size()
+                .to_logical(window.window().scale_factor());
+            let mut s = settings.borrow_mut();
+            s.window_width = size.width;
+            s.window_height = size.height;
+            s.save();
+            slint::CloseRequestResponse::HideWindow
         });
     }
 
