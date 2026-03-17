@@ -203,6 +203,15 @@ pub fn sync_tab_list(window: &MainWindow, state: &AppState) {
         .collect();
     window.set_tab_list(ModelRc::new(VecModel::from(tab_data)));
     window.set_active_tab_index(state.active_tab as i32);
+
+    // Update window title
+    let tab = state.current_tab();
+    let title = if tab.title == "New" {
+        "WinXMerge".to_string()
+    } else {
+        format!("{} - WinXMerge", tab.title)
+    };
+    window.set_window_title(SharedString::from(title));
 }
 
 // --- Diff operations (work on current tab) ---

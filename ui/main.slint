@@ -67,7 +67,8 @@ component ConfirmDialog inherits Rectangle {
 }
 
 export component MainWindow inherits Window {
-    title: "WinXMerge";
+    in-out property <string> window-title: "WinXMerge";
+    title: window-title;
     width: 1200px;
     height: 800px;
 
