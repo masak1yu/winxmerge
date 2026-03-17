@@ -4,6 +4,7 @@ pub enum LineStatus {
     Added,
     Removed,
     Modified,
+    Moved,
 }
 
 #[derive(Debug, Clone)]
