@@ -65,6 +65,10 @@ pub struct AppSettings {
     #[serde(default)]
     pub auto_rescan: bool,
 
+    // Folder comparison: exclude patterns (e.g., "*.log", "build/", "node_modules")
+    #[serde(default)]
+    pub folder_exclude_patterns: String,
+
     #[serde(default)]
     pub recent_files: Vec<RecentEntry>,
 }
@@ -134,6 +138,7 @@ impl Default for AppSettings {
             plugins: Vec::new(),
             external_editor: String::new(),
             auto_rescan: false,
+            folder_exclude_patterns: String::new(),
             recent_files: Vec::new(),
         }
     }

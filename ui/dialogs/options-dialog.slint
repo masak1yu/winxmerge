@@ -32,6 +32,14 @@ export component OptionsDialog inherits Rectangle {
     // Auto-rescan
     in-out property <bool> opt-auto-rescan: false;
 
+    // Folder exclude patterns
+    in-out property <string> opt-folder-exclude-patterns: "";
+
+    // Plugin management (pipe-separated "name:command" pairs)
+    in-out property <string> opt-plugin-list: "";
+    in-out property <string> plugin-name-input: "";
+    in-out property <string> plugin-command-input: "";
+
     callback apply();
     callback cancel();
 
@@ -45,7 +53,7 @@ export component OptionsDialog inherits Rectangle {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             width: 500px;
-            height: 700px;
+            height: Math.min(800px, parent.height - 40px);
             background: Palette.background;
             border-color: Palette.border;
             border-width: 1px;
@@ -53,6 +61,7 @@ export component OptionsDialog inherits Rectangle {
 
             TouchArea {} // Block overlay click
 
+            ScrollView {
             VerticalLayout {
                 padding: 24px;
                 spacing: 8px;
@@ -201,6 +210,17 @@ export component OptionsDialog inherits Rectangle {
                     }
                 }
 
+                Text {
+                    text: @tr("Folder exclude patterns (semicolon-separated):");
+                    font-size: 12px;
+                    color: Palette.foreground.transparentize(0.3);
+                    wrap: word-wrap;
+                }
+                LineEdit {
+                    text <=> root.opt-folder-exclude-patterns;
+                    placeholder-text: @tr("e.g. *.log;build/;node_modules");
+                }
+
                 Rectangle { height: 8px; }
 
                 // Auto-rescan
@@ -208,6 +228,61 @@ export component OptionsDialog inherits Rectangle {
                     text: @tr("Auto-rescan files on change");
                     checked: root.opt-auto-rescan;
                     toggled => { root.opt-auto-rescan = self.checked; }
+                }
+
+                Rectangle { height: 8px; }
+
+                // Plugins section
+                Text {
+                    text: @tr("Plugins");
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: Palette.foreground;
+                }
+                Rectangle {
+                    height: 1px;
+                    background: Palette.border;
+                }
+
+                Text {
+                    text: @tr("Current plugins:") + " " + root.opt-plugin-list;
+                    font-size: 11px;
+                    color: Palette.foreground.transparentize(0.4);
+                    wrap: word-wrap;
+                }
+
+                HorizontalLayout {
+                    spacing: 4px;
+                    LineEdit {
+                        text <=> root.plugin-name-input;
+                        placeholder-text: @tr("Plugin name");
+                        horizontal-stretch: 1;
+                    }
+                    LineEdit {
+                        text <=> root.plugin-command-input;
+                        placeholder-text: "Command (use {LEFT} {RIGHT})";
+                        horizontal-stretch: 2;
+                    }
+                    Button {
+                        text: @tr("Add");
+                        clicked => {
+                            if root.plugin-name-input != "" && root.plugin-command-input != "" {
+                                if root.opt-plugin-list != "" {
+                                    root.opt-plugin-list = root.opt-plugin-list + "|" + root.plugin-name-input + ":" + root.plugin-command-input;
+                                } else {
+                                    root.opt-plugin-list = root.plugin-name-input + ":" + root.plugin-command-input;
+                                }
+                                root.plugin-name-input = "";
+                                root.plugin-command-input = "";
+                            }
+                        }
+                    }
+                    Button {
+                        text: @tr("Clear");
+                        clicked => {
+                            root.opt-plugin-list = "";
+                        }
+                    }
                 }
 
                 Rectangle { height: 8px; }
@@ -277,7 +352,7 @@ export component OptionsDialog inherits Rectangle {
                     }
                 }
 
-                Rectangle { vertical-stretch: 1; }
+                Rectangle { height: 16px; }
 
                 // Buttons
                 HorizontalLayout {
@@ -293,7 +368,10 @@ export component OptionsDialog inherits Rectangle {
                         clicked => { root.cancel(); }
                     }
                 }
+
+                Rectangle { height: 16px; }
             }
+            } // ScrollView
         }
     }
 }

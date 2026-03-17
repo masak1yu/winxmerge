@@ -116,6 +116,29 @@ pub fn highlight_lines(source: &str, file_path: &str) -> Vec<i32> {
     line_highlights
 }
 
+// C# highlights query (tree-sitter-c-sharp doesn't include one)
+const CSHARP_HIGHLIGHTS_QUERY: &str = r#"
+(using_directive) @keyword
+["if" "else" "switch" "case" "default" "while" "for" "foreach" "do" "return" "break" "continue" "throw" "try" "catch" "finally" "new" "class" "struct" "interface" "enum" "namespace" "public" "private" "protected" "internal" "static" "abstract" "virtual" "override" "sealed" "readonly" "const" "async" "await" "var" "void" "bool" "int" "string" "float" "double" "long" "byte" "char" "decimal" "object" "dynamic" "using" "null" "true" "false" "this" "base" "is" "as" "in" "out" "ref" "params" "get" "set" "value" "where" "yield" "partial" "event" "delegate" "operator" "implicit" "explicit" "checked" "unchecked" "fixed" "lock" "unsafe" "volatile" "extern" "sizeof" "typeof" "nameof" "stackalloc" "record" "init" "required" "file" "global" "scoped" "with" "when"] @keyword
+(comment) @comment
+(string_literal) @string
+(interpolated_string_expression) @string
+(character_literal) @string
+(integer_literal) @number
+(real_literal) @number
+(boolean_literal) @constant.builtin
+(null_literal) @constant.builtin
+(method_declaration name: (identifier) @function)
+(invocation_expression function: (identifier) @function)
+(type_parameter (identifier) @type)
+(generic_name (identifier) @type)
+(base_list (identifier) @type)
+(variable_declaration type: (identifier) @type)
+(parameter type: (identifier) @type)
+(object_creation_expression type: (identifier) @type)
+(attribute (identifier) @attribute)
+"#;
+
 fn get_highlight_config(ext: &str) -> Option<HighlightConfiguration> {
     let (language, highlights_query, injections_query, locals_query) = match ext {
         "rs" => (
@@ -177,6 +200,36 @@ fn get_highlight_config(ext: &str) -> Option<HighlightConfiguration> {
             tree_sitter_ruby::HIGHLIGHTS_QUERY,
             "",
             tree_sitter_ruby::LOCALS_QUERY,
+        ),
+        "java" => (
+            tree_sitter_java::LANGUAGE.into(),
+            tree_sitter_java::HIGHLIGHTS_QUERY,
+            "",
+            "",
+        ),
+        "cs" => (
+            tree_sitter_c_sharp::LANGUAGE.into(),
+            CSHARP_HIGHLIGHTS_QUERY,
+            "",
+            "",
+        ),
+        "yaml" | "yml" => (
+            tree_sitter_yaml::LANGUAGE.into(),
+            tree_sitter_yaml::HIGHLIGHTS_QUERY,
+            "",
+            "",
+        ),
+        "toml" => (
+            tree_sitter_toml_ng::LANGUAGE.into(),
+            tree_sitter_toml_ng::HIGHLIGHTS_QUERY,
+            "",
+            "",
+        ),
+        "md" | "markdown" => (
+            tree_sitter_md::LANGUAGE.into(),
+            tree_sitter_md::HIGHLIGHT_QUERY_BLOCK,
+            "",
+            "",
         ),
         _ => return None,
     };

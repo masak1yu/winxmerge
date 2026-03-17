@@ -127,6 +127,9 @@ export component MainWindow inherits Window {
     in-out property <bool> show-goto-dialog: false;
     in-out property <string> goto-line-input: "";
 
+    // Scroll control for diff view (in pixels, negative = scroll down)
+    in-out property <length> diff-scroll-y: 0px;
+
     // Bookmarks
     in-out property <string> bookmark-lines: ""; // comma-separated line indices
 
@@ -161,8 +164,13 @@ export component MainWindow inherits Window {
     callback undo();
     callback redo();
     callback export-html();
+    callback export-patch();
     callback copy-left-text();
     callback copy-right-text();
+    callback copy-all-left();
+    callback copy-all-right();
+    callback edit-left-line(/* line-index */ int, /* new-text */ string);
+    callback edit-right-line(/* line-index */ int, /* new-text */ string);
     callback open-recent(int);
     callback goto-line(int);
     callback toggle-bookmark(int);
@@ -219,6 +227,12 @@ export component MainWindow inherits Window {
     // Auto-rescan
     in-out property <bool> opt-auto-rescan: false;
 
+    // Folder exclude patterns
+    in-out property <string> opt-folder-exclude-patterns: "";
+
+    // Inline editing
+    in-out property <bool> opt-inline-edit: true;
+
     // Plugin list (pipe-separated "name:command" pairs)
     in-out property <string> plugin-list: "";
 
@@ -231,6 +245,11 @@ export component MainWindow inherits Window {
     // Apply the color scheme from opt-theme
     public function set-theme(theme-index: int) {
         Palette.color-scheme = theme-index == 1 ? ColorScheme.dark : ColorScheme.light;
+    }
+
+    // Scroll diff view to a specific row
+    public function scroll-diff-to-row(row: int) {
+        root.diff-scroll-y = -(row * 24px);
     }
 
     // Helper: check unsaved before action
@@ -264,6 +283,7 @@ export component MainWindow inherits Window {
             MenuItem { title: @tr("Rescan (F5)"); activated => { root.rescan(); } }
             MenuSeparator {}
             MenuItem { title: @tr("Export HTML Report..."); enabled: root.diff-count > 0; activated => { root.export-html(); } }
+            MenuItem { title: @tr("Export Patch (Unified Diff)..."); enabled: root.diff-count > 0; activated => { root.export-patch(); } }
         }
         Menu {
             title: @tr("Edit");
@@ -274,6 +294,9 @@ export component MainWindow inherits Window {
                 title: @tr("Find / Replace...");
                 activated => { root.show-search = !root.show-search; }
             }
+            MenuSeparator {}
+            MenuItem { title: @tr("Copy All Left Text"); enabled: root.view-mode == 0; activated => { root.copy-all-left(); } }
+            MenuItem { title: @tr("Copy All Right Text"); enabled: root.view-mode == 0; activated => { root.copy-all-right(); } }
             MenuSeparator {}
             MenuItem {
                 title: @tr("Options...");
@@ -567,6 +590,7 @@ export component MainWindow inherits Window {
         if root.view-mode == 0 : DiffView {
             diff-lines: root.diff-lines;
             current-diff-index: root.current-diff-index;
+            scroll-y <=> root.diff-scroll-y;
             left-title: root.left-path != "" ? root.left-path : @tr("Left file");
             right-title: root.right-path != "" ? root.right-path : @tr("Right file");
             context-menu-enabled: root.opt-enable-context-menu;
@@ -580,6 +604,9 @@ export component MainWindow inherits Window {
             prev-diff => { root.prev-diff(); }
             copy-left-text => { root.copy-left-text(); }
             copy-right-text => { root.copy-right-text(); }
+            inline-edit-enabled: root.opt-inline-edit;
+            edit-left-line(idx, text) => { root.edit-left-line(idx, text); }
+            edit-right-line(idx, text) => { root.edit-right-line(idx, text); }
         }
 
         if root.view-mode == 1 : FolderView {
@@ -732,6 +759,8 @@ export component MainWindow inherits Window {
         opt-substitution-patterns <=> root.opt-substitution-patterns;
         opt-substitution-replacements <=> root.opt-substitution-replacements;
         opt-auto-rescan <=> root.opt-auto-rescan;
+        opt-folder-exclude-patterns <=> root.opt-folder-exclude-patterns;
+        opt-plugin-list <=> root.plugin-list;
         apply => {
             root.show-options-dialog = false;
             root.set-theme(root.opt-theme);

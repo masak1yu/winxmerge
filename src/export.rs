@@ -76,6 +76,127 @@ pub fn export_html(diff_result: &DiffResult, left_title: &str, right_title: &str
     html
 }
 
+/// Export diff result as a unified diff (patch) file
+pub fn export_unified_diff(
+    diff_result: &DiffResult,
+    left_title: &str,
+    right_title: &str,
+) -> String {
+    let mut output = String::new();
+    output.push_str(&format!("--- {}\n", left_title));
+    output.push_str(&format!("+++ {}\n", right_title));
+
+    // Group consecutive changes into hunks
+    let lines = &diff_result.lines;
+    if lines.is_empty() {
+        return output;
+    }
+
+    let context_lines = 3usize;
+    let mut i = 0;
+    while i < lines.len() {
+        // Find the start of a change
+        if lines[i].status == LineStatus::Equal {
+            i += 1;
+            continue;
+        }
+
+        // Found a change; build a hunk with context
+        let hunk_start = i.saturating_sub(context_lines);
+        // Find the end of changes (merging nearby changes)
+        let mut hunk_end = i;
+        while hunk_end < lines.len() {
+            if lines[hunk_end].status != LineStatus::Equal {
+                hunk_end += 1;
+            } else {
+                // Check if another change is within context range
+                let lookahead = (hunk_end + context_lines * 2 + 1).min(lines.len());
+                let next_change =
+                    (hunk_end..lookahead).find(|&j| lines[j].status != LineStatus::Equal);
+                if let Some(nc) = next_change {
+                    hunk_end = nc + 1;
+                } else {
+                    break;
+                }
+            }
+        }
+        let hunk_end = (hunk_end + context_lines).min(lines.len());
+
+        // Count left/right lines in hunk
+        let mut left_count = 0u32;
+        let mut right_count = 0u32;
+        let mut left_start = 0u32;
+        let mut right_start = 0u32;
+        let mut left_start_set = false;
+        let mut right_start_set = false;
+
+        for line in &lines[hunk_start..hunk_end] {
+            if let Some(n) = line.left_line_no {
+                if !left_start_set {
+                    left_start = n as u32;
+                    left_start_set = true;
+                }
+                left_count += 1;
+            }
+            if let Some(n) = line.right_line_no {
+                if !right_start_set {
+                    right_start = n as u32;
+                    right_start_set = true;
+                }
+                right_count += 1;
+            }
+        }
+
+        if !left_start_set {
+            left_start = 1;
+        }
+        if !right_start_set {
+            right_start = 1;
+        }
+
+        output.push_str(&format!(
+            "@@ -{},{} +{},{} @@\n",
+            left_start, left_count, right_start, right_count
+        ));
+
+        for line in &lines[hunk_start..hunk_end] {
+            match line.status {
+                LineStatus::Equal => {
+                    output.push(' ');
+                    output.push_str(&line.left_text);
+                    output.push('\n');
+                }
+                LineStatus::Removed => {
+                    output.push('-');
+                    output.push_str(&line.left_text);
+                    output.push('\n');
+                }
+                LineStatus::Added => {
+                    output.push('+');
+                    output.push_str(&line.right_text);
+                    output.push('\n');
+                }
+                LineStatus::Modified | LineStatus::Moved => {
+                    if !line.left_text.is_empty() {
+                        output.push('-');
+                        output.push_str(&line.left_text);
+                        output.push('\n');
+                    }
+                    if !line.right_text.is_empty() {
+                        output.push('+');
+                        output.push_str(&line.right_text);
+                        output.push('\n');
+                    }
+                }
+            }
+        }
+
+        i = hunk_end;
+    }
+
+    output
+}
+
 fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")

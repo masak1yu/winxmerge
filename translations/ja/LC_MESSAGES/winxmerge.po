@@ -4,7 +4,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: winxmerge 0.11.0\n"
+"Project-Id-Version: winxmerge 0.12.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-17 00:00+0000\n"
 "PO-Revision-Date: 2026-03-17 00:00+0000\n"
@@ -419,3 +419,38 @@ msgstr "プラグインコマンドを実行..."
 # v0.11.0 - Auto-rescan
 msgid "Auto-rescan files on change"
 msgstr "ファイル変更時に自動再スキャン"
+
+# v0.12.0 - Folder exclude patterns
+msgid "Folder exclude patterns (semicolon-separated):"
+msgstr "フォルダ除外パターン (セミコロン区切り):"
+
+msgid "e.g. *.log;build/;node_modules"
+msgstr "例: *.log;build/;node_modules"
+
+# v0.12.0 - Patch export
+msgid "Export Patch (Unified Diff)..."
+msgstr "パッチをエクスポート (Unified Diff)..."
+
+# v0.12.0 - Copy all text
+msgid "Copy All Left Text"
+msgstr "左テキスト全体をコピー"
+
+msgid "Copy All Right Text"
+msgstr "右テキスト全体をコピー"
+
+# v0.12.0 - Plugin management UI
+msgid "Current plugins:"
+msgstr "現在のプラグイン:"
+
+msgid "Plugin name"
+msgstr "プラグイン名"
+
+# Plugin command placeholder (not @tr(), uses literal string)
+# msgid "Command (use {LEFT} {RIGHT})"
+# msgstr "コマンド ({LEFT} {RIGHT} を使用)"
+
+msgid "Add"
+msgstr "追加"
+
+msgid "Clear"
+msgstr "クリア"
