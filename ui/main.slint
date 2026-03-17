@@ -67,7 +67,8 @@ component ConfirmDialog inherits Rectangle {
 }
 
 export component MainWindow inherits Window {
-    title: "WinXMerge";
+    in-out property <string> window-title: "WinXMerge";
+    title: window-title;
     width: 1200px;
     height: 800px;
 
@@ -95,6 +96,10 @@ export component MainWindow inherits Window {
     in-out property <bool> show-search: false;
     in-out property <string> search-query: "";
     in-out property <int> search-match-count: 0;
+
+    // Undo/Redo
+    in-out property <bool> can-undo: false;
+    in-out property <bool> can-redo: false;
 
     // Unsaved changes dialog
     in-out property <bool> show-confirm-dialog: false;
@@ -134,6 +139,8 @@ export component MainWindow inherits Window {
     callback new-tab();
     callback close-tab(int);
     callback switch-tab(int);
+    callback undo();
+    callback redo();
 
     // Helper: check unsaved before action
     function request-action(action: int) {
@@ -162,6 +169,9 @@ export component MainWindow inherits Window {
         }
         Menu {
             title: "Edit";
+            MenuItem { title: "Undo"; enabled: root.can-undo; activated => { root.undo(); } }
+            MenuItem { title: "Redo"; enabled: root.can-redo; activated => { root.redo(); } }
+            MenuSeparator {}
             MenuItem {
                 title: "Find / Replace...";
                 activated => { root.show-search = !root.show-search; }
@@ -454,6 +464,57 @@ export component MainWindow inherits Window {
                     vertical-alignment: center;
                 }
             }
+        }
+    }
+
+    // Keyboard shortcuts
+    FocusScope {
+        width: 0;
+        height: 0;
+        key-pressed(event) => {
+            // Cmd/Ctrl modifier
+            if event.modifiers.meta || event.modifiers.control {
+                if event.text == "s" {
+                    root.save-left();
+                    return accept;
+                }
+                if event.text == "f" {
+                    root.show-search = !root.show-search;
+                    return accept;
+                }
+                if event.text == "z" {
+                    if event.modifiers.shift {
+                        root.redo();
+                    } else {
+                        root.undo();
+                    }
+                    return accept;
+                }
+                if event.text == "t" {
+                    root.new-tab();
+                    return accept;
+                }
+                if event.text == "w" {
+                    root.close-tab(root.active-tab-index);
+                    return accept;
+                }
+                if event.text == "n" {
+                    root.request-action(5);
+                    return accept;
+                }
+            }
+            // Alt + arrow for diff navigation
+            if event.modifiers.alt {
+                if event.text == Key.DownArrow {
+                    root.next-diff();
+                    return accept;
+                }
+                if event.text == Key.UpArrow {
+                    root.prev-diff();
+                    return accept;
+                }
+            }
+            return reject;
         }
     }
 
