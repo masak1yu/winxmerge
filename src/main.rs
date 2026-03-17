@@ -21,6 +21,8 @@ use app::{
 use slint::SharedString;
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
     let window = MainWindow::new().unwrap();
     let state = Rc::new(RefCell::new(AppState::new()));
     let settings = Rc::new(RefCell::new(settings::AppSettings::load()));
@@ -47,6 +49,21 @@ fn main() {
 
     // Initialize tab list
     app::sync_tab_list(&window, &state.borrow());
+
+    // Handle CLI arguments: winxmerge <left> <right>
+    if args.len() >= 3 {
+        let left = std::path::PathBuf::from(&args[1]);
+        let right = std::path::PathBuf::from(&args[2]);
+        let mut s = state.borrow_mut();
+        let tab = s.current_tab_mut();
+        tab.left_path = Some(left);
+        tab.right_path = Some(right);
+        tab.view_mode = 0;
+        drop(tab);
+        window.set_view_mode(0);
+        app::run_diff(&window, &mut s);
+        app::sync_tab_list(&window, &s);
+    }
 
     // --- Tab management ---
     {
