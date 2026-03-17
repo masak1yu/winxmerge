@@ -7,8 +7,8 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 ## 現在の状態
 
-- **バージョン:** 0.8.0
-- **ブランチ:** `feature/v0.8.0`
+- **バージョン:** 0.9.0
+- **ブランチ:** `feature/v0.9.0`
 - **テスト:** 12件すべてパス
 - **ビルド:** `cargo build` 成功
 - **CI:** GitHub Actions（ubuntu / macOS）
@@ -24,7 +24,8 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | v0.5.0 | #5 | 3-way マージ UI 統合、オプション実効化、最近のファイル一覧 |
 | v0.6.0 | #6 | フォルダ比較強化（更新日時、.gitignore、フィルタ）、GitHub Actions CI |
 | v0.7.0 | #7 | テーマ切替（ライト/ダーク）、ThemeColors グローバルによるカラー一元管理 |
-| v0.8.0 | - | 国際化 (i18n)：日本語/英語切替、@tr() マクロ、gettext .po ファイル |
+| v0.8.0 | #8 | 国際化 (i18n)：日本語/英語切替、@tr() マクロ、gettext .po ファイル |
+| v0.9.0 | - | First/Last diff、Go to Line、ブックマーク、フォルダ操作、リリースCI、Windows CI |
 
 ## 実装済み機能一覧
 
@@ -96,17 +97,38 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 - File → Export HTML Report... で差分レポートを HTML 出力
 - 色分けテーブル、印刷用 CSS 付き
 
+### 差分ナビゲーション拡張
+- First Diff / Last Diff（⏮ / ⏭ ボタン、Alt+Home / Alt+End）
+- Go to Line ダイアログ（Cmd+G）
+- ブックマーク切替（Cmd+M）、次/前のブックマーク（F2、Navigate メニュー）
+
+### フォルダ操作
+- 右クリックコンテキストメニュー（開く、左→右コピー、右→左コピー、削除）
+- クリックで行選択
+
+### リリースバイナリ自動ビルド
+- GitHub Actions でタグ push 時に自動ビルド
+- Linux (x86_64), macOS (x86_64 + aarch64), Windows (x86_64)
+- GitHub Releases への自動アップロード
+
+### CI 拡張
+- Windows をビルド・テストマトリクスに追加
+
 ### キーボードショートカット
 | キー | 動作 |
 |------|------|
 | Cmd+S | 左ファイル保存 |
 | Cmd+F | 検索・置換 |
+| Cmd+G | 指定行へ移動 |
+| Cmd+M | ブックマーク切替 |
 | Cmd+Z | Undo |
 | Cmd+Shift+Z | Redo |
 | Cmd+T | 新規タブ |
 | Cmd+W | タブを閉じる |
 | Cmd+N | 新規比較 |
 | Alt+↓/↑ | 次/前の差分 |
+| Alt+Home/End | 最初/最後の差分 |
+| F2 | 次のブックマーク |
 
 ### 国際化 (i18n)
 - 日本語 / 英語の UI 切替（オプション画面の Appearance セクション）
@@ -208,19 +230,19 @@ AppSettings (永続化)
 
 ---
 
-## 次にやるべき項目 (v0.9.0+)
+## 次にやるべき項目 (v0.10.0+)
 
 ### 優先度高
 
-1. **リリースバイナリの自動ビルド**
-   - GitHub Actions で macOS / Linux / Windows のクロスコンパイル
-   - GitHub Releases への自動アップロード
+1. **行フィルタ / 置換フィルタ**
+   - 正規表現で特定行を比較から除外
+   - 比較前の文字列置換（タイムスタンプ等を無視）
 
-### 優先度低
-
-2. **行内（文字レベル）差分**
+2. **ワードレベル差分**
    - `similar` の文字レベル diff で変更位置を計算
    - Slint のリッチテキスト対応を待つか、複数 Text 要素で近似実装
+
+### 優先度低
 
 3. **プラグインシステム**
    - カスタム差分フィルタ（前処理）

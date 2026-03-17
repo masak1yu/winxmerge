@@ -8,7 +8,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 
 ### File Comparison (2-way)
 - Line-level diff display (additions/deletions/changes/moves with color coding)
-- Diff navigation (jump to next/previous diff)
+- Diff navigation (first/previous/next/last diff)
 - Merge operations (block-level copy: left→right / right→left)
 - Two-pane display with inline diff markers
 - Location pane (minimap of diff positions)
@@ -30,6 +30,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Automatic .gitignore pattern loading (.git directories auto-excluded)
 - File extension filter
 - Double-click to open file diff view
+- Right-click context menu (copy to left/right, delete)
 - "< Back" button to return to folder view
 
 ### Tabs
@@ -63,12 +64,21 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Text search (match count display, previous/next navigation)
 - Replace / Replace All
 
+### Go to Line
+- Jump to a specific line number (Cmd+G)
+
+### Bookmarks
+- Toggle bookmarks on diff lines (Cmd+M)
+- Navigate between bookmarks (F2 / Navigate menu)
+
 ### Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
 | Cmd+S | Save left file |
 | Cmd+F | Toggle search & replace |
+| Cmd+G | Go to line |
+| Cmd+M | Toggle bookmark |
 | Cmd+Z | Undo |
 | Cmd+Shift+Z | Redo |
 | Cmd+T | New tab |
@@ -76,6 +86,9 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 | Cmd+N | New comparison |
 | Alt+↓ | Next diff |
 | Alt+↑ | Previous diff |
+| Alt+Home | First diff |
+| Alt+End | Last diff |
+| F2 | Next bookmark |
 
 ### Internationalization (i18n)
 - Japanese / English UI switching (Edit → Options... → Appearance → Language)
@@ -96,7 +109,8 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Native menu bar (macOS / Windows)
 - Settings persistence (~/.config/winxmerge/settings.json)
 - Performance optimizations for large files
-- GitHub Actions CI (build, test, lint on Ubuntu / macOS)
+- GitHub Actions CI (build, test, lint on Ubuntu / macOS / Windows)
+- Automated release builds for Linux, macOS (x86_64 + aarch64), and Windows
 
 ## Tech Stack
 

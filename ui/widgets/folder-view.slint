@@ -17,12 +17,14 @@ component FolderItemRow inherits Rectangle {
     in property <bool> selected: false;
 
     callback double-clicked();
+    callback clicked();
 
     height: 24px;
     background: selected ? Palette.accent-background :
                 ta.has-hover ? Palette.background.darker(0.05) : Palette.background;
 
     ta := TouchArea {
+        clicked => { root.clicked(); }
         double-clicked => { root.double-clicked(); }
     }
 
@@ -113,9 +115,13 @@ component FolderItemRow inherits Rectangle {
 
 export component FolderView inherits Rectangle {
     in property <[FolderItemData]> items;
-    in property <int> selected-index: -1;
+    in-out property <int> selected-index: -1;
+    in property <bool> context-menu-enabled: true;
 
     callback item-double-clicked(int);
+    callback copy-to-right(int);
+    callback copy-to-left(int);
+    callback delete-item(int);
 
     border-color: Palette.border;
     border-width: 1px;
@@ -186,10 +192,36 @@ export component FolderView inherits Rectangle {
         }
 
         // Items
-        ListView {
+        if root.context-menu-enabled : ListView {
+            for item[idx] in items: Rectangle {
+                height: 24px;
+
+                ContextMenuArea {
+                    Menu {
+                        title: @tr("Context");
+                        MenuItem { title: @tr("Open"); activated => { root.item-double-clicked(idx); } }
+                        MenuSeparator {}
+                        MenuItem { title: @tr("Copy to Right →"); enabled: item.status == 2 || item.status == 1; activated => { root.copy-to-right(idx); } }
+                        MenuItem { title: @tr("← Copy to Left"); enabled: item.status == 3 || item.status == 1; activated => { root.copy-to-left(idx); } }
+                        MenuSeparator {}
+                        MenuItem { title: @tr("Delete"); activated => { root.delete-item(idx); } }
+                    }
+                }
+
+                FolderItemRow {
+                    item: item;
+                    selected: idx == root.selected-index;
+                    clicked => { root.selected-index = idx; }
+                    double-clicked => { root.item-double-clicked(idx); }
+                }
+            }
+        }
+
+        if !root.context-menu-enabled : ListView {
             for item[idx] in items: FolderItemRow {
                 item: item;
-                selected: idx == selected-index;
+                selected: idx == root.selected-index;
+                clicked => { root.selected-index = idx; }
                 double-clicked => { root.item-double-clicked(idx); }
             }
         }
