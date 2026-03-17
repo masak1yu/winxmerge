@@ -10,6 +10,8 @@ export struct FolderItemData {
     right-size: string,
     left-modified: string,
     right-modified: string,
+    // Tree depth (0=root level)
+    depth: int,
 }
 
 component FolderItemRow inherits Rectangle {
@@ -29,7 +31,7 @@ component FolderItemRow inherits Rectangle {
     }
 
     HorizontalLayout {
-        padding-left: 8px;
+        padding-left: 8px + item.depth * 16px;
         padding-right: 8px;
         spacing: 8px;
 
@@ -41,7 +43,7 @@ component FolderItemRow inherits Rectangle {
             vertical-alignment: center;
         }
 
-        // Path
+        // Path (show only filename for indented items)
         Text {
             horizontal-stretch: 1;
             text: item.relative-path;
@@ -122,6 +124,9 @@ export component FolderView inherits Rectangle {
     callback copy-to-right(int);
     callback copy-to-left(int);
     callback delete-item(int);
+
+    accessible-role: list;
+    accessible-label: "Folder comparison results";
 
     border-color: Palette.border;
     border-width: 1px;

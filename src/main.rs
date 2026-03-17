@@ -12,14 +12,14 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use app::{
-    AppState, add_tab, apply_options, close_tab, copy_current_line_text, copy_to_left,
-    copy_to_right, discard_and_proceed, export_html_report, first_diff, folder_copy_to_left,
-    folder_copy_to_right, folder_delete_item, goto_line, last_diff, navigate_bookmark,
-    navigate_conflict, navigate_diff, navigate_search, open_file_dialog, open_folder_dialog,
-    open_folder_item, redo, replace_all_text, replace_text, resolve_conflict_use_left,
-    resolve_conflict_use_right, run_folder_compare, save_file, search_text, select_diff,
-    start_compare, start_three_way_compare, switch_tab, toggle_bookmark, toggle_ignore_case,
-    toggle_ignore_whitespace, undo,
+    AppState, add_tab, apply_options, check_files_changed, close_tab, copy_current_line_text,
+    copy_to_left, copy_to_right, discard_and_proceed, export_html_report, first_diff,
+    folder_copy_to_left, folder_copy_to_right, folder_delete_item, goto_line, last_diff,
+    navigate_bookmark, navigate_conflict, navigate_diff, navigate_search, open_file_dialog,
+    open_folder_dialog, open_folder_item, open_in_editor, redo, replace_all_text, replace_text,
+    rescan, resolve_conflict_use_left, resolve_conflict_use_right, run_folder_compare, run_plugin,
+    save_file, search_text, select_diff, start_compare, start_three_way_compare, switch_tab,
+    toggle_bookmark, toggle_ignore_case, toggle_ignore_whitespace, undo,
 };
 use slint::{ModelRc, SharedString, VecModel};
 
@@ -66,6 +66,14 @@ fn main() {
             .collect();
         window.set_opt_substitution_patterns(SharedString::from(sub_patterns.join("|")));
         window.set_opt_substitution_replacements(SharedString::from(sub_replacements.join("|")));
+        window.set_opt_auto_rescan(s.auto_rescan);
+        // Load plugin list as pipe-separated "name:command" pairs
+        let plugin_str: Vec<String> = s
+            .plugins
+            .iter()
+            .map(|p| format!("{}:{}", p.name, p.command))
+            .collect();
+        window.set_plugin_list(SharedString::from(plugin_str.join("|")));
 
         let mut app = state.borrow_mut();
         let tab = app.current_tab_mut();
@@ -600,6 +608,85 @@ fn main() {
             let window = window_weak.unwrap();
             resolve_conflict_use_right(&window, &mut state.borrow_mut(), idx);
         });
+    }
+
+    // Open in external editor
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        let settings = settings.clone();
+        window.on_open_left_in_editor(move || {
+            let window = window_weak.unwrap();
+            let editor = settings.borrow().external_editor.clone();
+            open_in_editor(&window, &state.borrow(), true, &editor);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        let settings = settings.clone();
+        window.on_open_right_in_editor(move || {
+            let window = window_weak.unwrap();
+            let editor = settings.borrow().external_editor.clone();
+            open_in_editor(&window, &state.borrow(), false, &editor);
+        });
+    }
+
+    // Plugin execution
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        let settings = settings.clone();
+        window.on_run_plugin(move |_plugin_list| {
+            let window = window_weak.unwrap();
+            let s = settings.borrow();
+            // Run the first plugin (for now)
+            if let Some(plugin) = s.plugins.first() {
+                run_plugin(&window, &state.borrow(), &plugin.command);
+            }
+        });
+    }
+
+    // Rescan
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_rescan(move || {
+            let window = window_weak.unwrap();
+            rescan(&window, &mut state.borrow_mut());
+        });
+    }
+
+    // Auto-rescan timer
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_check_auto_rescan(move || {
+            let window = window_weak.unwrap();
+            if window.get_opt_auto_rescan() && check_files_changed(&state.borrow()) {
+                rescan(&window, &mut state.borrow_mut());
+            }
+        });
+    }
+
+    // Set up auto-rescan timer (check every 2 seconds)
+    {
+        let window_weak = window.as_weak();
+        let timer = slint::Timer::default();
+        timer.start(
+            slint::TimerMode::Repeated,
+            std::time::Duration::from_secs(2),
+            move || {
+                if let Some(window) = window_weak.upgrade() {
+                    if window.get_opt_auto_rescan() {
+                        window.invoke_check_auto_rescan();
+                    }
+                }
+            },
+        );
+        // Keep timer alive by leaking it (it runs for the lifetime of the app)
+        std::mem::forget(timer);
     }
 
     // Open recent entry

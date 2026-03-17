@@ -4,7 +4,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: winxmerge 0.8.0\n"
+"Project-Id-Version: winxmerge 0.11.0\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-03-17 00:00+0000\n"
 "PO-Revision-Date: 2026-03-17 00:00+0000\n"
@@ -383,17 +383,39 @@ msgstr "削除"
 msgid "Filters"
 msgstr "フィルタ"
 
-msgid "Line filters (regex, one per line — matching lines are excluded):"
-msgstr "行フィルタ (正規表現、| 区切り — マッチする行を除外):"
+msgid "Line filters (regex, pipe-separated for multiple rules):"
+msgstr "行フィルタ (正規表現、| 区切りで複数ルール):"
 
 msgid "e.g. ^//.*|^#.*"
 msgstr "例: ^//.*|^#.*"
 
-msgid "Substitution filters (regex → replacement, applied before comparison):"
-msgstr "置換フィルタ (正規表現 → 置換文字列、比較前に適用):"
+msgid "Substitution filters (pipe-separated patterns → replacements):"
+msgstr "置換フィルタ (| 区切りのパターン → 置換文字列):"
 
 msgid "Pattern regex"
 msgstr "パターン (正規表現)"
 
 msgid "Replacement text"
 msgstr "置換文字列"
+
+# v0.11.0 - Open in editor
+msgid "Open Left in Editor"
+msgstr "左をエディタで開く"
+
+msgid "Open Right in Editor"
+msgstr "右をエディタで開く"
+
+# v0.11.0 - Rescan
+msgid "Rescan (F5)"
+msgstr "再スキャン (F5)"
+
+# v0.11.0 - Plugins
+msgid "Plugins"
+msgstr "プラグイン"
+
+msgid "Run Plugin Command..."
+msgstr "プラグインコマンドを実行..."
+
+# v0.11.0 - Auto-rescan
+msgid "Auto-rescan files on change"
+msgstr "ファイル変更時に自動再スキャン"

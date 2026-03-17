@@ -13,6 +13,10 @@ export struct DiffLineData {
     // Syntax highlight: -1=none, 0=keyword, 1=string, 2=comment, 3=number, 4=function, etc.
     left-highlight: int,
     right-highlight: int,
+    // Word-level diff: text with changed portions marked (for Modified lines)
+    // Format: "unchanged|CHANGED|unchanged|CHANGED" where CHANGED segments are the differing parts
+    left-word-diff: string,
+    right-word-diff: string,
 }
 
 component DiffLineRow inherits Rectangle {
@@ -24,6 +28,8 @@ component DiffLineRow inherits Rectangle {
     in property <int> diff-idx: -1;
     in property <bool> show-line-no: true;
     in property <int> text-font-size: 13;
+    // Word diff: shows only the changed characters (for Modified lines)
+    in property <string> word-diff: "";
 
     callback line-clicked(int);
 
@@ -72,25 +78,37 @@ component DiffLineRow inherits Rectangle {
             }
         }
 
-        // Text content
-        Text {
-            text: text;
-            font-size: text-font-size * 1px;
-            font-family: "monospace";
-            vertical-alignment: center;
-            overflow: elide;
-            color: highlight-type == 0 ? ThemeColors.hl-keyword :
-                   highlight-type == 1 ? ThemeColors.hl-string :
-                   highlight-type == 2 ? ThemeColors.hl-comment :
-                   highlight-type == 3 ? ThemeColors.hl-number :
-                   highlight-type == 4 ? ThemeColors.hl-function :
-                   highlight-type == 5 ? ThemeColors.hl-function :
-                   highlight-type == 6 ? ThemeColors.hl-type :
-                   highlight-type == 7 ? ThemeColors.hl-type :
-                   highlight-type == 8 ? ThemeColors.hl-variable :
-                   highlight-type == 9 ? ThemeColors.hl-variable :
-                   highlight-type == 10 ? ThemeColors.hl-operator :
-                   Palette.foreground;
+        // Text content with word-level diff indicator
+        VerticalLayout {
+            spacing: 0;
+            Text {
+                text: text;
+                font-size: text-font-size * 1px;
+                font-family: "monospace";
+                vertical-alignment: center;
+                overflow: elide;
+                color: highlight-type == 0 ? ThemeColors.hl-keyword :
+                       highlight-type == 1 ? ThemeColors.hl-string :
+                       highlight-type == 2 ? ThemeColors.hl-comment :
+                       highlight-type == 3 ? ThemeColors.hl-number :
+                       highlight-type == 4 ? ThemeColors.hl-function :
+                       highlight-type == 5 ? ThemeColors.hl-function :
+                       highlight-type == 6 ? ThemeColors.hl-type :
+                       highlight-type == 7 ? ThemeColors.hl-type :
+                       highlight-type == 8 ? ThemeColors.hl-variable :
+                       highlight-type == 9 ? ThemeColors.hl-variable :
+                       highlight-type == 10 ? ThemeColors.hl-operator :
+                       Palette.foreground;
+            }
+            // Word diff underline: shows changed characters with highlighting
+            if word-diff != "" : Text {
+                text: word-diff;
+                font-size: (text-font-size - 2) * 1px;
+                font-family: "monospace";
+                color: ThemeColors.modified-fg;
+                overflow: elide;
+                height: 12px;
+            }
         }
     }
 }
@@ -129,6 +147,9 @@ export component DiffView inherits Rectangle {
     in property <bool> show-line-numbers: true;
     in property <int> editor-font-size: 13;
     in property <int> editor-tab-width: 4;
+
+    accessible-role: list;
+    accessible-label: "File difference view";
 
     callback copy-to-right(/* diff-index */ int);
     callback copy-to-left(/* diff-index */ int);
@@ -212,7 +233,7 @@ export component DiffView inherits Rectangle {
 
                 left-list := ListView {
                     for line in diff-lines: DiffLineRow {
-                        height: 24px;
+                        height: line.left-word-diff != "" ? 36px : 24px;
                         line-no: line.left-line-no;
                         text: line.left-text;
                         status: line.status == 1 ? 0 : line.status;
@@ -221,6 +242,7 @@ export component DiffView inherits Rectangle {
                         diff-idx: line.diff-index;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
+                        word-diff: line.left-word-diff;
                         line-clicked(idx) => { root.select-diff(idx); }
                     }
                 }
@@ -236,7 +258,7 @@ export component DiffView inherits Rectangle {
                 mid-list := ListView {
                     viewport-y: left-list.viewport-y;
                     for line in diff-lines: Rectangle {
-                        height: 24px;
+                        height: line.left-word-diff != "" || line.right-word-diff != "" ? 36px : 24px;
                         if line.status != 0 : HorizontalLayout {
                             padding: 1px;
                             spacing: 1px;
@@ -299,7 +321,7 @@ export component DiffView inherits Rectangle {
                 right-list := ListView {
                     viewport-y: left-list.viewport-y;
                     for line in diff-lines: DiffLineRow {
-                        height: 24px;
+                        height: line.right-word-diff != "" ? 36px : 24px;
                         line-no: line.right-line-no;
                         text: line.right-text;
                         status: line.status == 2 ? 0 : line.status;
@@ -308,6 +330,7 @@ export component DiffView inherits Rectangle {
                         diff-idx: line.diff-index;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
+                        word-diff: line.right-word-diff;
                         line-clicked(idx) => { root.select-diff(idx); }
                     }
                 }

@@ -24,10 +24,13 @@ export component OptionsDialog inherits Rectangle {
     // Language: 0=English, 1=Japanese
     in-out property <int> opt-language: 0;
 
-    // Filters (newline-separated)
+    // Filters (pipe-separated for multiple rules)
     in-out property <string> opt-line-filters: "";
     in-out property <string> opt-substitution-patterns: "";
     in-out property <string> opt-substitution-replacements: "";
+
+    // Auto-rescan
+    in-out property <bool> opt-auto-rescan: false;
 
     callback apply();
     callback cancel();
@@ -163,7 +166,7 @@ export component OptionsDialog inherits Rectangle {
                 }
 
                 Text {
-                    text: @tr("Line filters (regex, one per line — matching lines are excluded):");
+                    text: @tr("Line filters (regex, pipe-separated for multiple rules):");
                     font-size: 12px;
                     color: Palette.foreground.transparentize(0.3);
                     wrap: word-wrap;
@@ -174,7 +177,7 @@ export component OptionsDialog inherits Rectangle {
                 }
 
                 Text {
-                    text: @tr("Substitution filters (regex → replacement, applied before comparison):");
+                    text: @tr("Substitution filters (pipe-separated patterns → replacements):");
                     font-size: 12px;
                     color: Palette.foreground.transparentize(0.3);
                     wrap: word-wrap;
@@ -196,6 +199,15 @@ export component OptionsDialog inherits Rectangle {
                         placeholder-text: @tr("Replacement text");
                         horizontal-stretch: 1;
                     }
+                }
+
+                Rectangle { height: 8px; }
+
+                // Auto-rescan
+                CheckBox {
+                    text: @tr("Auto-rescan files on change");
+                    checked: root.opt-auto-rescan;
+                    toggled => { root.opt-auto-rescan = self.checked; }
                 }
 
                 Rectangle { height: 8px; }

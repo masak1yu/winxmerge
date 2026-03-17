@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 use slint::{Model, ModelRc, SharedString, VecModel};
 
@@ -50,6 +51,9 @@ pub struct TabState {
     pub title: String,
     pub bookmarks: Vec<usize>,
     pub current_bookmark: i32,
+    /// File modification times for auto-rescan
+    pub left_mtime: Option<SystemTime>,
+    pub right_mtime: Option<SystemTime>,
 }
 
 impl TabState {
@@ -81,6 +85,8 @@ impl TabState {
             title: "New".to_string(),
             bookmarks: Vec::new(),
             current_bookmark: -1,
+            left_mtime: None,
+            right_mtime: None,
         }
     }
 }
@@ -244,6 +250,13 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
     let tab = state.current_tab_mut();
     tab.left_encoding = left_enc.to_string();
     tab.right_encoding = right_enc.to_string();
+    // Store modification times for auto-rescan
+    tab.left_mtime = fs::metadata(&left_path)
+        .ok()
+        .and_then(|m| m.modified().ok());
+    tab.right_mtime = fs::metadata(&right_path)
+        .ok()
+        .and_then(|m| m.modified().ok());
 
     // Generate title from filenames
     let left_name = left_path
@@ -357,6 +370,30 @@ pub fn recompute_diff_from_text_with_highlights(
                 .and_then(|n| right_highlights.get((n - 1) as usize).copied())
                 .unwrap_or(-1);
 
+            // Build word-diff display strings for modified lines
+            let left_word_diff =
+                if line.status == LineStatus::Modified && !line.left_word_segments.is_empty() {
+                    line.left_word_segments
+                        .iter()
+                        .filter(|s| s.changed)
+                        .map(|s| s.text.as_str())
+                        .collect::<Vec<&str>>()
+                        .join("")
+                } else {
+                    String::new()
+                };
+            let right_word_diff =
+                if line.status == LineStatus::Modified && !line.right_word_segments.is_empty() {
+                    line.right_word_segments
+                        .iter()
+                        .filter(|s| s.changed)
+                        .map(|s| s.text.as_str())
+                        .collect::<Vec<&str>>()
+                        .join("")
+                } else {
+                    String::new()
+                };
+
             DiffLineData {
                 left_line_no: line
                     .left_line_no
@@ -373,6 +410,8 @@ pub fn recompute_diff_from_text_with_highlights(
                 diff_index,
                 left_highlight: left_hl,
                 right_highlight: right_hl,
+                left_word_diff: SharedString::from(left_word_diff),
+                right_word_diff: SharedString::from(right_word_diff),
             }
         })
         .collect();
@@ -895,6 +934,8 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
     let lang_code = if settings.language == "ja" { "ja" } else { "" };
     let _ = slint::select_bundled_translation(lang_code);
 
+    settings.auto_rescan = window.get_opt_auto_rescan();
+
     // Read filter settings
     let line_filters_str = window.get_opt_line_filters().to_string();
     settings.line_filters = line_filters_str
@@ -1248,6 +1289,12 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
                 FileCompareStatus::LeftOnly => 2,
                 FileCompareStatus::RightOnly => 3,
             };
+            // Compute tree depth from path separators
+            let depth = item
+                .relative_path
+                .chars()
+                .filter(|&c| c == '/' || c == '\\')
+                .count() as i32;
             FolderItemData {
                 relative_path: SharedString::from(&item.relative_path),
                 is_directory: item.is_directory,
@@ -1270,6 +1317,7 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
                     .as_ref()
                     .map(|s| SharedString::from(s.as_str()))
                     .unwrap_or_default(),
+                depth,
             }
         })
         .collect();
@@ -1631,6 +1679,130 @@ fn copy_dir_recursive(src: &std::path::Path, dest: &std::path::Path) {
                 let _ = fs::copy(&src_path, &dest_path);
             }
         }
+    }
+}
+
+// --- Open in external editor ---
+
+pub fn open_in_editor(window: &MainWindow, state: &AppState, is_left: bool, editor_cmd: &str) {
+    let tab = state.current_tab();
+    let path = if is_left {
+        &tab.left_path
+    } else {
+        &tab.right_path
+    };
+    if let Some(path) = path {
+        if editor_cmd.is_empty() {
+            // Use system default
+            match open::that_detached(path) {
+                Ok(_) => {
+                    window.set_status_text(SharedString::from(format!(
+                        "Opened {} in default editor",
+                        path.to_string_lossy()
+                    )));
+                }
+                Err(e) => {
+                    window.set_status_text(SharedString::from(format!(
+                        "Failed to open editor: {}",
+                        e
+                    )));
+                }
+            }
+        } else {
+            // Use custom editor command
+            let result = std::process::Command::new(editor_cmd).arg(path).spawn();
+            match result {
+                Ok(_) => {
+                    window.set_status_text(SharedString::from(format!(
+                        "Opened {} in {}",
+                        path.to_string_lossy(),
+                        editor_cmd
+                    )));
+                }
+                Err(e) => {
+                    window.set_status_text(SharedString::from(format!(
+                        "Failed to open editor '{}': {}",
+                        editor_cmd, e
+                    )));
+                }
+            }
+        }
+    }
+}
+
+// --- Plugin execution ---
+
+pub fn run_plugin(window: &MainWindow, state: &AppState, command: &str) {
+    let tab = state.current_tab();
+    let left = tab
+        .left_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let right = tab
+        .right_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // Replace placeholders in command
+    let cmd = command.replace("{LEFT}", &left).replace("{RIGHT}", &right);
+
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("cmd").args(["/C", &cmd]).spawn();
+    #[cfg(not(target_os = "windows"))]
+    let result = std::process::Command::new("sh").args(["-c", &cmd]).spawn();
+
+    match result {
+        Ok(_) => {
+            window.set_status_text(SharedString::from(format!("Plugin executed: {}", command)));
+        }
+        Err(e) => {
+            window.set_status_text(SharedString::from(format!("Plugin error: {}", e)));
+        }
+    }
+}
+
+// --- Auto-rescan: check if files changed on disk ---
+
+pub fn check_files_changed(state: &AppState) -> bool {
+    let tab = state.current_tab();
+    if tab.view_mode != 0 {
+        return false;
+    }
+    if let Some(left_path) = &tab.left_path {
+        if let Some(old_mtime) = &tab.left_mtime {
+            if let Ok(meta) = fs::metadata(left_path) {
+                if let Ok(new_mtime) = meta.modified() {
+                    if new_mtime != *old_mtime {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    if let Some(right_path) = &tab.right_path {
+        if let Some(old_mtime) = &tab.right_mtime {
+            if let Ok(meta) = fs::metadata(right_path) {
+                if let Ok(new_mtime) = meta.modified() {
+                    if new_mtime != *old_mtime {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+pub fn rescan(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab();
+    if tab.view_mode == 0 && tab.left_path.is_some() && tab.right_path.is_some() {
+        run_diff(window, state);
+        window.set_status_text(SharedString::from("Files rescanned"));
+    } else if tab.view_mode == 1 {
+        run_folder_compare(window, state);
+        window.set_status_text(SharedString::from("Folders rescanned"));
     }
 }
 

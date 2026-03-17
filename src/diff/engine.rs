@@ -3,7 +3,7 @@ use std::time::Duration;
 use regex::Regex;
 use similar::{Algorithm, ChangeTag, TextDiff};
 
-use crate::models::diff_line::{DiffLine, DiffResult, LineStatus};
+use crate::models::diff_line::{DiffLine, DiffResult, LineStatus, WordDiffSegment};
 
 /// Maximum number of lines before switching to a faster algorithm
 const LARGE_FILE_THRESHOLD: usize = 10_000;
@@ -89,6 +89,8 @@ pub fn compute_diff_with_options(
                     left_text: left_display,
                     right_text: right_display,
                     status: LineStatus::Equal,
+                    left_word_segments: Vec::new(),
+                    right_word_segments: Vec::new(),
                 });
                 i += 1;
             }
@@ -102,6 +104,7 @@ pub fn compute_diff_with_options(
                         .get(right_line_no as usize)
                         .unwrap_or(&"")
                         .to_string();
+                    let (left_segs, right_segs) = compute_word_diff(&left_display, &right_display);
                     left_line_no += 1;
                     right_line_no += 1;
                     lines.push(DiffLine {
@@ -110,6 +113,8 @@ pub fn compute_diff_with_options(
                         left_text: left_display,
                         right_text: right_display,
                         status: LineStatus::Modified,
+                        left_word_segments: left_segs,
+                        right_word_segments: right_segs,
                     });
                     i += 2;
                 } else {
@@ -124,6 +129,8 @@ pub fn compute_diff_with_options(
                         left_text: left_display,
                         right_text: String::new(),
                         status: LineStatus::Removed,
+                        left_word_segments: Vec::new(),
+                        right_word_segments: Vec::new(),
                     });
                     i += 1;
                 }
@@ -140,6 +147,8 @@ pub fn compute_diff_with_options(
                     left_text: String::new(),
                     right_text: right_display,
                     status: LineStatus::Added,
+                    left_word_segments: Vec::new(),
+                    right_word_segments: Vec::new(),
                 });
                 i += 1;
             }
@@ -166,6 +175,47 @@ pub fn compute_diff_with_options(
         diff_count,
         diff_positions,
     }
+}
+
+/// Compute word-level diff between two strings, returning segments for left and right.
+fn compute_word_diff(left: &str, right: &str) -> (Vec<WordDiffSegment>, Vec<WordDiffSegment>) {
+    let diff = TextDiff::configure()
+        .algorithm(Algorithm::Myers)
+        .diff_chars(left, right);
+
+    let mut left_segs: Vec<WordDiffSegment> = Vec::new();
+    let mut right_segs: Vec<WordDiffSegment> = Vec::new();
+
+    for change in diff.iter_all_changes() {
+        let text = change.value().to_string();
+        match change.tag() {
+            ChangeTag::Equal => {
+                push_segment(&mut left_segs, &text, false);
+                push_segment(&mut right_segs, &text, false);
+            }
+            ChangeTag::Delete => {
+                push_segment(&mut left_segs, &text, true);
+            }
+            ChangeTag::Insert => {
+                push_segment(&mut right_segs, &text, true);
+            }
+        }
+    }
+
+    (left_segs, right_segs)
+}
+
+fn push_segment(segs: &mut Vec<WordDiffSegment>, text: &str, changed: bool) {
+    if let Some(last) = segs.last_mut() {
+        if last.changed == changed {
+            last.text.push_str(text);
+            return;
+        }
+    }
+    segs.push(WordDiffSegment {
+        text: text.to_string(),
+        changed,
+    });
 }
 
 fn detect_moved_lines(lines: &mut [DiffLine]) {
