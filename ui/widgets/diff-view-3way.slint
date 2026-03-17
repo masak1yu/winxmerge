@@ -1,4 +1,5 @@
 import { VerticalBox, HorizontalBox, ListView, Palette } from "std-widgets.slint";
+import { ThemeColors } from "../theme.slint";
 
 export struct ThreeWayLineData {
     base-line-no: string,
@@ -22,17 +23,17 @@ component ThreeWayLineRow inherits Rectangle {
     in property <int> text-font-size: 13;
 
     background: is-current ? current-bg :
-                status == 1 ? #e0e8ff :   // LeftChanged - blue
-                status == 2 ? #e0ffe0 :   // RightChanged - green
-                status == 3 ? #fff8c5 :   // BothChanged - yellow
-                status == 4 ? #ffcccc :   // Conflict - red
+                status == 1 ? ThemeColors.left-changed-bg :
+                status == 2 ? ThemeColors.right-changed-bg :
+                status == 3 ? ThemeColors.both-changed-bg :
+                status == 4 ? ThemeColors.conflict-bg :
                 Palette.background;
 
     property <color> current-bg:
-                status == 4 ? #ff9999 :
-                status == 1 ? #c0d0ff :
-                status == 2 ? #c0ffc0 :
-                status == 3 ? #fff2a8 :
+                status == 4 ? ThemeColors.conflict-bg-current :
+                status == 1 ? ThemeColors.left-changed-bg-current :
+                status == 2 ? ThemeColors.right-changed-bg-current :
+                status == 3 ? ThemeColors.both-changed-bg-current :
                 Palette.background.darker(0.05);
 
     HorizontalLayout {
@@ -60,7 +61,7 @@ component ThreeWayLineRow inherits Rectangle {
                 font-size: 10px;
                 font-family: "monospace";
                 font-weight: 700;
-                color: status == 1 ? #3b5998 : status == 2 ? #22863a : status == 3 ? #b08800 : status == 4 ? #cb2431 : Palette.foreground.transparentize(0.5);
+                color: status == 1 ? ThemeColors.moved-fg : status == 2 ? ThemeColors.added-fg : status == 3 ? ThemeColors.modified-fg : status == 4 ? ThemeColors.removed-fg : Palette.foreground.transparentize(0.5);
                 vertical-alignment: center;
                 horizontal-alignment: center;
             }
@@ -210,13 +211,13 @@ export component DiffView3Way inherits Rectangle {
                             Rectangle {
                                 width: 24px;
                                 height: 20px;
-                                background: use-l-touch.has-hover ? #c0d0ff : transparent;
+                                background: use-l-touch.has-hover ? ThemeColors.resolve-left-hover : transparent;
                                 border-radius: 2px;
                                 Text {
                                     text: "L";
                                     font-size: 10px;
                                     font-weight: 700;
-                                    color: #3b5998;
+                                    color: ThemeColors.moved-fg;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }
@@ -228,13 +229,13 @@ export component DiffView3Way inherits Rectangle {
                             Rectangle {
                                 width: 24px;
                                 height: 20px;
-                                background: use-r-touch.has-hover ? #c0ffc0 : transparent;
+                                background: use-r-touch.has-hover ? ThemeColors.resolve-right-hover : transparent;
                                 border-radius: 2px;
                                 Text {
                                     text: "R";
                                     font-size: 10px;
                                     font-weight: 700;
-                                    color: #22863a;
+                                    color: ThemeColors.added-fg;
                                     horizontal-alignment: center;
                                     vertical-alignment: center;
                                 }

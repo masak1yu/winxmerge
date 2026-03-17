@@ -1,4 +1,5 @@
 import { ListView, Palette } from "std-widgets.slint";
+import { ThemeColors } from "../theme.slint";
 
 export struct FolderItemData {
     relative-path: string,
@@ -46,9 +47,9 @@ component FolderItemRow inherits Rectangle {
             font-family: "monospace";
             vertical-alignment: center;
             overflow: elide;
-            color: item.status == 2 ? #cb2431 :
-                   item.status == 3 ? #22863a :
-                   item.status == 1 ? #b08800 :
+            color: item.status == 2 ? ThemeColors.removed-fg :
+                   item.status == 3 ? ThemeColors.added-fg :
+                   item.status == 1 ? ThemeColors.modified-fg :
                    Palette.foreground;
         }
 
@@ -61,9 +62,9 @@ component FolderItemRow inherits Rectangle {
                   "Right only";
             font-size: 11px;
             color: item.status == 0 ? Palette.foreground.transparentize(0.5) :
-                   item.status == 2 ? #cb2431 :
-                   item.status == 3 ? #22863a :
-                   #b08800;
+                   item.status == 2 ? ThemeColors.removed-fg :
+                   item.status == 3 ? ThemeColors.added-fg :
+                   ThemeColors.modified-fg;
             vertical-alignment: center;
             horizontal-alignment: center;
         }
