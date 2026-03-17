@@ -3,14 +3,14 @@ use std::path::PathBuf;
 
 use slint::{Model, ModelRc, SharedString, VecModel};
 
-use crate::diff::engine::{compute_diff_with_options, DiffOptions};
-use crate::diff::three_way::{compute_three_way_diff, ThreeWayStatus};
-use crate::settings::AppSettings;
+use crate::diff::engine::{DiffOptions, compute_diff_with_options};
 use crate::diff::folder::compare_folders;
+use crate::diff::three_way::{ThreeWayStatus, compute_three_way_diff};
 use crate::encoding::{decode_file, encode_text};
 use crate::highlight::{detect_file_type, highlight_lines};
 use crate::models::diff_line::LineStatus;
 use crate::models::folder_item::FileCompareStatus;
+use crate::settings::AppSettings;
 use crate::{DiffLineData, FolderItemData, MainWindow, TabData, ThreeWayLineData};
 
 /// Snapshot for undo/redo
@@ -268,7 +268,12 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
     };
 
     recompute_diff_from_text_with_highlights(
-        window, state, &left_text, &right_text, &left_highlights, &right_highlights,
+        window,
+        state,
+        &left_text,
+        &right_text,
+        &left_highlights,
+        &right_highlights,
     );
 
     let tab = state.current_tab();
@@ -291,7 +296,9 @@ pub fn recompute_diff_from_text(
     right_text: &str,
 ) {
     let empty_hl: Vec<i32> = Vec::new();
-    recompute_diff_from_text_with_highlights(window, state, left_text, right_text, &empty_hl, &empty_hl);
+    recompute_diff_from_text_with_highlights(
+        window, state, left_text, right_text, &empty_hl, &empty_hl,
+    );
 }
 
 pub fn recompute_diff_from_text_with_highlights(
@@ -337,10 +344,12 @@ pub fn recompute_diff_from_text_with_highlights(
             let diff_index = pos_to_idx.get(&i).copied().unwrap_or(-1);
 
             // Map line numbers to highlight indices
-            let left_hl = line.left_line_no
+            let left_hl = line
+                .left_line_no
                 .and_then(|n| left_highlights.get((n - 1) as usize).copied())
                 .unwrap_or(-1);
-            let right_hl = line.right_line_no
+            let right_hl = line
+                .right_line_no
                 .and_then(|n| right_highlights.get((n - 1) as usize).copied())
                 .unwrap_or(-1);
 
@@ -456,7 +465,10 @@ fn push_undo_snapshot(state: &mut AppState, vec_model: &VecModel<DiffLineData>) 
     let left_text = rebuild_left(vec_model);
     let right_text = rebuild_right(vec_model);
     let tab = state.current_tab_mut();
-    tab.undo_stack.push(TextSnapshot { left_text, right_text });
+    tab.undo_stack.push(TextSnapshot {
+        left_text,
+        right_text,
+    });
     tab.redo_stack.clear();
 }
 
@@ -670,10 +682,14 @@ pub fn export_html_report(window: &MainWindow, state: &AppState) {
     let right_text = tab.right_lines.join("\n") + "\n";
     let result = compute_diff_with_options(&left_text, &right_text, &tab.diff_options);
 
-    let left_title = tab.left_path.as_ref()
+    let left_title = tab
+        .left_path
+        .as_ref()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| "Left".to_string());
-    let right_title = tab.right_path.as_ref()
+    let right_title = tab
+        .right_path
+        .as_ref()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| "Right".to_string());
 
@@ -805,8 +821,16 @@ pub fn search_text(window: &MainWindow, state: &mut AppState, query: &str) {
     if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
         for i in 0..vec_model.row_count() {
             let row = vec_model.row_data(i).unwrap();
-            if row.left_text.to_string().to_lowercase().contains(&query_lower)
-                || row.right_text.to_string().to_lowercase().contains(&query_lower)
+            if row
+                .left_text
+                .to_string()
+                .to_lowercase()
+                .contains(&query_lower)
+                || row
+                    .right_text
+                    .to_string()
+                    .to_lowercase()
+                    .contains(&query_lower)
             {
                 tab.search_matches.push(i);
             }
@@ -849,7 +873,8 @@ pub fn replace_text(window: &MainWindow, state: &mut AppState, search: &str, rep
     let left = row.left_text.to_string();
     let right = row.right_text.to_string();
     row.left_text = SharedString::from(case_insensitive_replace(&left, &search_lower, replacement));
-    row.right_text = SharedString::from(case_insensitive_replace(&right, &search_lower, replacement));
+    row.right_text =
+        SharedString::from(case_insensitive_replace(&right, &search_lower, replacement));
     vec_model.set_row_data(match_idx, row);
 
     state.current_tab_mut().has_unsaved_changes = true;
@@ -858,7 +883,12 @@ pub fn replace_text(window: &MainWindow, state: &mut AppState, search: &str, rep
     search_text(window, state, search);
 }
 
-pub fn replace_all_text(window: &MainWindow, state: &mut AppState, search: &str, replacement: &str) {
+pub fn replace_all_text(
+    window: &MainWindow,
+    state: &mut AppState,
+    search: &str,
+    replacement: &str,
+) {
     let tab = state.current_tab();
     if search.is_empty() || tab.search_matches.is_empty() {
         return;
@@ -876,8 +906,10 @@ pub fn replace_all_text(window: &MainWindow, state: &mut AppState, search: &str,
         let mut row = vec_model.row_data(match_idx).unwrap();
         let left = row.left_text.to_string();
         let right = row.right_text.to_string();
-        row.left_text = SharedString::from(case_insensitive_replace(&left, &search_lower, replacement));
-        row.right_text = SharedString::from(case_insensitive_replace(&right, &search_lower, replacement));
+        row.left_text =
+            SharedString::from(case_insensitive_replace(&left, &search_lower, replacement));
+        row.right_text =
+            SharedString::from(case_insensitive_replace(&right, &search_lower, replacement));
         vec_model.set_row_data(match_idx, row);
     }
 
@@ -905,7 +937,13 @@ fn case_insensitive_replace(text: &str, search_lower: &str, replacement: &str) -
     result
 }
 
-pub fn start_three_way_compare(window: &MainWindow, state: &mut AppState, base: &str, left: &str, right: &str) {
+pub fn start_three_way_compare(
+    window: &MainWindow,
+    state: &mut AppState,
+    base: &str,
+    left: &str,
+    right: &str,
+) {
     {
         let tab = state.current_tab_mut();
         tab.base_path = Some(PathBuf::from(base));
@@ -916,7 +954,13 @@ pub fn start_three_way_compare(window: &MainWindow, state: &mut AppState, base: 
     run_three_way_diff(window, state);
 }
 
-pub fn start_compare(window: &MainWindow, state: &mut AppState, left: &str, right: &str, is_folder: bool) {
+pub fn start_compare(
+    window: &MainWindow,
+    state: &mut AppState,
+    left: &str,
+    right: &str,
+    is_folder: bool,
+) {
     let left_path = PathBuf::from(left);
     let right_path = PathBuf::from(right);
 
@@ -954,7 +998,9 @@ pub fn discard_and_proceed(window: &MainWindow, state: &mut AppState) {
                     tab.left_path = Some(path.clone());
                     tab.view_mode = 0;
                 }
-                window.set_open_left_path_input(SharedString::from(path.to_string_lossy().to_string()));
+                window.set_open_left_path_input(SharedString::from(
+                    path.to_string_lossy().to_string(),
+                ));
                 window.set_view_mode(0);
                 run_diff(window, state);
             }
@@ -966,7 +1012,9 @@ pub fn discard_and_proceed(window: &MainWindow, state: &mut AppState) {
                     tab.right_path = Some(path.clone());
                     tab.view_mode = 0;
                 }
-                window.set_open_right_path_input(SharedString::from(path.to_string_lossy().to_string()));
+                window.set_open_right_path_input(SharedString::from(
+                    path.to_string_lossy().to_string(),
+                ));
                 window.set_view_mode(0);
                 run_diff(window, state);
             }
@@ -974,14 +1022,18 @@ pub fn discard_and_proceed(window: &MainWindow, state: &mut AppState) {
         3 => {
             if let Some(path) = open_folder_dialog("Select left folder") {
                 state.current_tab_mut().left_folder = Some(path.clone());
-                window.set_open_left_path_input(SharedString::from(path.to_string_lossy().to_string()));
+                window.set_open_left_path_input(SharedString::from(
+                    path.to_string_lossy().to_string(),
+                ));
                 run_folder_compare(window, state);
             }
         }
         4 => {
             if let Some(path) = open_folder_dialog("Select right folder") {
                 state.current_tab_mut().right_folder = Some(path.clone());
-                window.set_open_right_path_input(SharedString::from(path.to_string_lossy().to_string()));
+                window.set_open_right_path_input(SharedString::from(
+                    path.to_string_lossy().to_string(),
+                ));
                 run_folder_compare(window, state);
             }
         }
@@ -1053,6 +1105,16 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
                     .right_size
                     .map(|s| SharedString::from(format_size(s)))
                     .unwrap_or_default(),
+                left_modified: item
+                    .left_modified
+                    .as_ref()
+                    .map(|s| SharedString::from(s.as_str()))
+                    .unwrap_or_default(),
+                right_modified: item
+                    .right_modified
+                    .as_ref()
+                    .map(|s| SharedString::from(s.as_str()))
+                    .unwrap_or_default(),
             }
         })
         .collect();
@@ -1062,8 +1124,14 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
         .filter(|i| i.status != FileCompareStatus::Identical)
         .count();
 
-    let left_name = left_folder.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let right_name = right_folder.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let left_name = left_folder
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let right_name = right_folder
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
 
     let tab = state.current_tab_mut();
     tab.folder_items = items;
@@ -1112,7 +1180,8 @@ pub fn open_folder_item(window: &MainWindow, state: &mut AppState, index: i32) {
 
 pub fn run_three_way_diff(window: &MainWindow, state: &mut AppState) {
     let tab = state.current_tab();
-    let (base_path, left_path, right_path) = match (&tab.base_path, &tab.left_path, &tab.right_path) {
+    let (base_path, left_path, right_path) = match (&tab.base_path, &tab.left_path, &tab.right_path)
+    {
         (Some(b), Some(l), Some(r)) => (b.clone(), l.clone(), r.clone()),
         _ => return,
     };
@@ -1146,9 +1215,18 @@ pub fn run_three_way_diff(window: &MainWindow, state: &mut AppState) {
                 .map(|idx| idx as i32)
                 .unwrap_or(-1);
             ThreeWayLineData {
-                base_line_no: line.base_line_no.map(|n| SharedString::from(n.to_string())).unwrap_or_default(),
-                left_line_no: line.left_line_no.map(|n| SharedString::from(n.to_string())).unwrap_or_default(),
-                right_line_no: line.right_line_no.map(|n| SharedString::from(n.to_string())).unwrap_or_default(),
+                base_line_no: line
+                    .base_line_no
+                    .map(|n| SharedString::from(n.to_string()))
+                    .unwrap_or_default(),
+                left_line_no: line
+                    .left_line_no
+                    .map(|n| SharedString::from(n.to_string()))
+                    .unwrap_or_default(),
+                right_line_no: line
+                    .right_line_no
+                    .map(|n| SharedString::from(n.to_string()))
+                    .unwrap_or_default(),
                 base_text: SharedString::from(&line.base_text),
                 left_text: SharedString::from(&line.left_text),
                 right_text: SharedString::from(&line.right_text),
@@ -1159,12 +1237,22 @@ pub fn run_three_way_diff(window: &MainWindow, state: &mut AppState) {
         })
         .collect();
 
-    let left_name = left_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let right_name = right_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let left_name = left_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let right_name = right_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
 
     let tab = state.current_tab_mut();
     tab.three_way_conflict_positions = result.conflict_positions.clone();
-    tab.current_conflict = if result.conflict_positions.is_empty() { -1 } else { 0 };
+    tab.current_conflict = if result.conflict_positions.is_empty() {
+        -1
+    } else {
+        0
+    };
     tab.view_mode = 3;
     tab.title = format!("{} ↔ {} (3-way)", left_name, right_name);
 

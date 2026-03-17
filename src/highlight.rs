@@ -3,27 +3,27 @@ use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter}
 
 /// Highlight names we recognize, mapped to color indices
 const HIGHLIGHT_NAMES: &[&str] = &[
-    "keyword",              // 0
-    "string",               // 1
-    "comment",              // 2
-    "number",               // 3
-    "function",             // 4
-    "function.builtin",     // 5
-    "type",                 // 6
-    "type.builtin",         // 7
-    "variable",             // 8
-    "variable.builtin",     // 9
-    "operator",             // 10
-    "constant",             // 11
-    "constant.builtin",     // 12
-    "property",             // 13
-    "attribute",            // 14
-    "punctuation.bracket",  // 15
-    "punctuation.delimiter",// 16
-    "constructor",          // 17
-    "module",               // 18
-    "tag",                  // 19
-    "embedded",             // 20
+    "keyword",               // 0
+    "string",                // 1
+    "comment",               // 2
+    "number",                // 3
+    "function",              // 4
+    "function.builtin",      // 5
+    "type",                  // 6
+    "type.builtin",          // 7
+    "variable",              // 8
+    "variable.builtin",      // 9
+    "operator",              // 10
+    "constant",              // 11
+    "constant.builtin",      // 12
+    "property",              // 13
+    "attribute",             // 14
+    "punctuation.bracket",   // 15
+    "punctuation.delimiter", // 16
+    "constructor",           // 17
+    "module",                // 18
+    "tag",                   // 19
+    "embedded",              // 20
 ];
 
 /// Per-line highlight: the dominant highlight type for the line
@@ -59,9 +59,11 @@ pub fn highlight_lines(source: &str, file_path: &str) -> Vec<i32> {
     let mut line_type_counts: Vec<[u32; 21]> = vec![[0u32; 21]; line_count];
 
     let line_starts: Vec<usize> = std::iter::once(0)
-        .chain(source.bytes().enumerate().filter_map(|(i, b)| {
-            if b == b'\n' { Some(i + 1) } else { None }
-        }))
+        .chain(source.bytes().enumerate().filter_map(
+            |(i, b)| {
+                if b == b'\n' { Some(i + 1) } else { None }
+            },
+        ))
         .collect();
 
     for event in highlights {
@@ -76,8 +78,12 @@ pub fn highlight_lines(source: &str, file_path: &str) -> Vec<i32> {
                 if let Some(hl) = current_highlight {
                     if hl < 21 {
                         // Find which lines this span covers
-                        let start_line = line_starts.partition_point(|&ls| ls <= start).saturating_sub(1);
-                        let end_line = line_starts.partition_point(|&ls| ls <= end).saturating_sub(1);
+                        let start_line = line_starts
+                            .partition_point(|&ls| ls <= start)
+                            .saturating_sub(1);
+                        let end_line = line_starts
+                            .partition_point(|&ls| ls <= end)
+                            .saturating_sub(1);
                         let span_len = (end - start) as u32;
                         for line in start_line..=end_line.min(line_count - 1) {
                             line_type_counts[line][hl] += span_len;
