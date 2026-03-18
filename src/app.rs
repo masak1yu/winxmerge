@@ -54,6 +54,8 @@ pub struct TabState {
     /// File modification times for auto-rescan
     pub left_mtime: Option<SystemTime>,
     pub right_mtime: Option<SystemTime>,
+    /// Pre-computed diff stats string "+A -R ~M"
+    pub diff_stats: String,
 }
 
 impl TabState {
@@ -87,6 +89,7 @@ impl TabState {
             current_bookmark: -1,
             left_mtime: None,
             right_mtime: None,
+            diff_stats: String::new(),
         }
     }
 }
@@ -357,13 +360,21 @@ pub fn recompute_diff_from_text_with_highlights(
         0
     };
 
-    // Build position→index lookup for O(1) access
-    let pos_to_idx: std::collections::HashMap<usize, i32> = result
-        .diff_positions
-        .iter()
-        .enumerate()
-        .map(|(idx, &pos)| (pos, idx as i32))
-        .collect();
+    // Build per-line diff block index: all lines in the same contiguous block share one index
+    let mut line_block_idx: Vec<i32> = vec![-1; result.lines.len()];
+    let mut current_block = -1i32;
+    let mut was_in_diff = false;
+    for (i, line) in result.lines.iter().enumerate() {
+        if line.status != LineStatus::Equal {
+            if !was_in_diff {
+                current_block += 1;
+                was_in_diff = true;
+            }
+            line_block_idx[i] = current_block;
+        } else {
+            was_in_diff = false;
+        }
+    }
 
     let diff_line_data: Vec<DiffLineData> = result
         .lines
@@ -377,7 +388,7 @@ pub fn recompute_diff_from_text_with_highlights(
                 LineStatus::Modified => 3,
                 LineStatus::Moved => 4,
             };
-            let diff_index = pos_to_idx.get(&i).copied().unwrap_or(-1);
+            let diff_index = line_block_idx[i];
 
             // Map line numbers to highlight indices
             let left_hl = line
@@ -425,7 +436,7 @@ pub fn recompute_diff_from_text_with_highlights(
                 left_text: SharedString::from(&line.left_text),
                 right_text: SharedString::from(&line.right_text),
                 status,
-                is_current_diff: diff_index == 0 && !result.diff_positions.is_empty(),
+                is_current_diff: false,
                 diff_index,
                 left_highlight: left_hl,
                 right_highlight: right_hl,
@@ -454,7 +465,7 @@ pub fn recompute_diff_from_text_with_highlights(
             .unwrap_or_default(),
     ));
 
-    // Compute diff statistics
+    // Compute diff statistics once and cache them
     let mut added = 0u32;
     let mut removed = 0u32;
     let mut modified = 0u32;
@@ -466,7 +477,8 @@ pub fn recompute_diff_from_text_with_highlights(
             _ => {}
         }
     }
-    let stats = format!("+{} -{} ~{}", added, removed, modified);
+    tab.diff_stats = format!("+{} -{} ~{}", added, removed, modified);
+    let stats = &tab.diff_stats.clone();
 
     let status = if result.diff_count == 0 {
         "Files are identical".to_string()
@@ -626,42 +638,14 @@ pub fn navigate_bookmark(window: &MainWindow, state: &mut AppState, forward: boo
 fn update_current_diff(window: &MainWindow, state: &mut AppState, new_index: i32) {
     let tab = state.current_tab_mut();
     tab.current_diff = new_index;
-    window.set_current_diff_index(new_index);
-
     let current_pos = tab.diff_positions[new_index as usize];
     let total = tab.diff_positions.len();
+    let stats = tab.diff_stats.clone();
 
+    // Update current diff index (Slint side handles highlighting reactively)
+    window.set_current_diff_index(new_index);
     // Scroll to the diff position
     window.invoke_scroll_diff_to_row(current_pos as i32);
-
-    let model = window.get_diff_lines();
-    if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        for i in 0..vec_model.row_count() {
-            let mut row = vec_model.row_data(i).unwrap();
-            let should_highlight = i == current_pos;
-            if row.is_current_diff != should_highlight {
-                row.is_current_diff = should_highlight;
-                vec_model.set_row_data(i, row);
-            }
-        }
-    }
-
-    // Compute diff statistics
-    let mut added = 0u32;
-    let mut removed = 0u32;
-    let mut modified = 0u32;
-    if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        for i in 0..vec_model.row_count() {
-            let row = vec_model.row_data(i).unwrap();
-            match row.status {
-                1 => added += 1,
-                2 => removed += 1,
-                3 => modified += 1,
-                _ => {}
-            }
-        }
-    }
-    let stats = format!("+{} -{} ~{}", added, removed, modified);
 
     window.set_status_text(SharedString::from(format!(
         "Difference {} of {} [{}]",
@@ -671,6 +655,8 @@ fn update_current_diff(window: &MainWindow, state: &mut AppState, new_index: i32
     )));
 
     // Update diff detail pane
+    let model = window.get_diff_lines();
+    let tab = state.current_tab();
     update_detail_pane(window, &model, new_index, tab);
 }
 
