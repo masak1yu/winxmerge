@@ -70,8 +70,7 @@ pub fn compute_diff_with_options(
     let mut i = 0;
 
     while i < changes.len() {
-        let change = &changes[i];
-        match change.tag() {
+        match changes[i].tag() {
             ChangeTag::Equal => {
                 let left_display = left_orig_lines
                     .get(left_line_no as usize)
@@ -94,37 +93,55 @@ pub fn compute_diff_with_options(
                 });
                 i += 1;
             }
-            ChangeTag::Delete => {
-                if i + 1 < changes.len() && changes[i + 1].tag() == ChangeTag::Insert {
+            ChangeTag::Delete | ChangeTag::Insert => {
+                // Collect all consecutive non-Equal changes as one diff block
+                let mut del_indices: Vec<u32> = Vec::new();
+                let mut ins_indices: Vec<u32> = Vec::new();
+                while i < changes.len() && changes[i].tag() != ChangeTag::Equal {
+                    match changes[i].tag() {
+                        ChangeTag::Delete => {
+                            del_indices.push(left_line_no);
+                            left_line_no += 1;
+                        }
+                        ChangeTag::Insert => {
+                            ins_indices.push(right_line_no);
+                            right_line_no += 1;
+                        }
+                        _ => unreachable!(),
+                    }
+                    i += 1;
+                }
+
+                // Pair up deletions and insertions as Modified lines (word-diff computed per pair)
+                let n_pairs = del_indices.len().min(ins_indices.len());
+                for j in 0..n_pairs {
                     let left_display = left_orig_lines
-                        .get(left_line_no as usize)
+                        .get(del_indices[j] as usize)
                         .unwrap_or(&"")
                         .to_string();
                     let right_display = right_orig_lines
-                        .get(right_line_no as usize)
+                        .get(ins_indices[j] as usize)
                         .unwrap_or(&"")
                         .to_string();
                     let (left_segs, right_segs) = compute_word_diff(&left_display, &right_display);
-                    left_line_no += 1;
-                    right_line_no += 1;
                     lines.push(DiffLine {
-                        left_line_no: Some(left_line_no),
-                        right_line_no: Some(right_line_no),
+                        left_line_no: Some(del_indices[j] + 1),
+                        right_line_no: Some(ins_indices[j] + 1),
                         left_text: left_display,
                         right_text: right_display,
                         status: LineStatus::Modified,
                         left_word_segments: left_segs,
                         right_word_segments: right_segs,
                     });
-                    i += 2;
-                } else {
+                }
+                // Extra deletions → Removed
+                for j in n_pairs..del_indices.len() {
                     let left_display = left_orig_lines
-                        .get(left_line_no as usize)
+                        .get(del_indices[j] as usize)
                         .unwrap_or(&"")
                         .to_string();
-                    left_line_no += 1;
                     lines.push(DiffLine {
-                        left_line_no: Some(left_line_no),
+                        left_line_no: Some(del_indices[j] + 1),
                         right_line_no: None,
                         left_text: left_display,
                         right_text: String::new(),
@@ -132,25 +149,23 @@ pub fn compute_diff_with_options(
                         left_word_segments: Vec::new(),
                         right_word_segments: Vec::new(),
                     });
-                    i += 1;
                 }
-            }
-            ChangeTag::Insert => {
-                let right_display = right_orig_lines
-                    .get(right_line_no as usize)
-                    .unwrap_or(&"")
-                    .to_string();
-                right_line_no += 1;
-                lines.push(DiffLine {
-                    left_line_no: None,
-                    right_line_no: Some(right_line_no),
-                    left_text: String::new(),
-                    right_text: right_display,
-                    status: LineStatus::Added,
-                    left_word_segments: Vec::new(),
-                    right_word_segments: Vec::new(),
-                });
-                i += 1;
+                // Extra insertions → Added
+                for j in n_pairs..ins_indices.len() {
+                    let right_display = right_orig_lines
+                        .get(ins_indices[j] as usize)
+                        .unwrap_or(&"")
+                        .to_string();
+                    lines.push(DiffLine {
+                        left_line_no: None,
+                        right_line_no: Some(ins_indices[j] + 1),
+                        left_text: String::new(),
+                        right_text: right_display,
+                        status: LineStatus::Added,
+                        left_word_segments: Vec::new(),
+                        right_word_segments: Vec::new(),
+                    });
+                }
             }
         }
     }
@@ -160,13 +175,19 @@ pub fn compute_diff_with_options(
         detect_moved_lines(&mut lines);
     }
 
-    // Rebuild diff_positions and diff_count after move detection
+    // Rebuild diff_positions (one entry per contiguous diff block) and diff_count
     diff_positions.clear();
     let mut diff_count: u32 = 0;
+    let mut in_diff_block = false;
     for (idx, line) in lines.iter().enumerate() {
         if line.status != LineStatus::Equal {
-            diff_positions.push(idx);
-            diff_count += 1;
+            if !in_diff_block {
+                diff_positions.push(idx);
+                diff_count += 1;
+                in_diff_block = true;
+            }
+        } else {
+            in_diff_block = false;
         }
     }
 
@@ -424,6 +445,53 @@ mod tests {
         let right = "created: 2025-06-15\n";
         let result = compute_diff_with_options(left, right, &opts);
         assert_eq!(result.diff_count, 0, "Date differences should be ignored");
+    }
+
+    #[test]
+    fn test_block_grouping_multi_delete_insert() {
+        // 3 lines deleted, 3 lines inserted → 1 diff block with 3 Modified lines
+        let left = "a\nb\nc\nd\n";
+        let right = "x\ny\nz\nd\n";
+        let result = compute_diff_with_options(left, right, &DiffOptions::default());
+        assert_eq!(result.diff_positions.len(), 1, "Should be 1 diff block");
+        assert_eq!(result.diff_count, 1);
+        let modified_count = result
+            .lines
+            .iter()
+            .filter(|l| l.status == LineStatus::Modified)
+            .count();
+        assert_eq!(modified_count, 3, "3 pairs should be Modified");
+    }
+
+    #[test]
+    fn test_block_grouping_unequal_sides() {
+        // 2 lines deleted, 4 lines inserted → 1 block: 2 Modified + 2 Added
+        let left = "a\nb\nc\n";
+        let right = "x\ny\np\nq\nc\n";
+        let result = compute_diff_with_options(left, right, &DiffOptions::default());
+        assert_eq!(result.diff_positions.len(), 1, "Should be 1 diff block");
+        let modified = result
+            .lines
+            .iter()
+            .filter(|l| l.status == LineStatus::Modified)
+            .count();
+        let added = result
+            .lines
+            .iter()
+            .filter(|l| l.status == LineStatus::Added)
+            .count();
+        assert_eq!(modified, 2);
+        assert_eq!(added, 2);
+    }
+
+    #[test]
+    fn test_two_separate_blocks() {
+        // Two separate diff hunks → 2 diff blocks
+        let left = "a\nb\nc\nd\ne\n";
+        let right = "X\nb\nc\nd\nY\n";
+        let result = compute_diff_with_options(left, right, &DiffOptions::default());
+        assert_eq!(result.diff_positions.len(), 2, "Should be 2 diff blocks");
+        assert_eq!(result.diff_count, 2);
     }
 
     #[test]
