@@ -7,13 +7,14 @@ import { OpenDialog, RecentEntryData } from "dialogs/open-dialog.slint";
 import { OptionsDialog } from "dialogs/options-dialog.slint";
 import { FileBrowserDialog, FileEntryData } from "dialogs/file-browser.slint";
 import { ThemeColors } from "theme.slint";
+import { ExcelView, ExcelCellData } from "widgets/excel-view.slint";
 
 export struct PluginEntryData {
     name: string,
     command: string,
 }
 
-export { DiffLineData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors, FileEntryData }
+export { DiffLineData, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors, FileEntryData }
 
 // Toolbar icon button: fixed 32x32 with image icon + optional overlay text
 component ToolBtn inherits Rectangle {
@@ -366,6 +367,11 @@ export component MainWindow inherits Window {
 
     // Folder comparison summary
     in-out property <string> folder-summary-text: "";
+
+    // Excel comparison (view_mode == 4)
+    in-out property <[ExcelCellData]> excel-cells;
+    in property <[string]> excel-sheet-names;
+    in-out property <string> excel-active-sheet: "";
 
     // Inline editing
     in-out property <bool> opt-inline-edit: true;
@@ -814,6 +820,14 @@ export component MainWindow inherits Window {
             prev-conflict => { root.prev-conflict(); }
             use-left(idx) => { root.use-left(idx); }
             use-right(idx) => { root.use-right(idx); }
+        }
+
+        // Excel compare view
+        if root.view-mode == 4 : ExcelView {
+            cells: root.excel-cells;
+            sheet-names: root.excel-sheet-names;
+            active-sheet <=> root.excel-active-sheet;
+            vertical-stretch: 1;
         }
 
         // Diff detail pane resize handle
