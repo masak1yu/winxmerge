@@ -19,6 +19,8 @@ export struct DiffLineData {
     right-word-diff: string,
     // True when this row matches the current search query
     is-search-match: bool,
+    // True when this row is part of a multi-line selection
+    is-selected: bool,
 }
 
 component DiffLineRow inherits Rectangle {
@@ -35,11 +37,13 @@ component DiffLineRow inherits Rectangle {
     // Word diff: shows only the changed characters (for Modified lines)
     in property <string> word-diff: "";
     in property <bool> is-search-match: false;
+    in property <bool> is-selected: false;
 
     callback line-clicked(int);
     callback text-edited(string);
 
     background: is-current ? current-bg
+              : is-selected ? Palette.accent-background.transparentize(0.6)
               : is-search-match ? ThemeColors.search-match-bg
               : status == 1 ? ThemeColors.added-bg
               : status == 2 ? ThemeColors.removed-bg
@@ -213,6 +217,9 @@ export component DiffView inherits Rectangle {
     callback prev-diff();
     callback copy-left-text();
     callback copy-right-text();
+    callback row-shift-clicked(/* row-index */ int);
+    callback copy-selection-to-right();
+    callback copy-selection-to-left();
 
     border-color: Palette.border;
     border-width: 1px;
@@ -313,6 +320,9 @@ export component DiffView inherits Rectangle {
                         MenuItem { title: @tr("Copy to Right →"); enabled: root.current-diff-index >= 0; activated => { root.copy-to-right(root.current-diff-index); } }
                         MenuItem { title: @tr("← Copy to Left"); enabled: root.current-diff-index >= 0; activated => { root.copy-to-left(root.current-diff-index); } }
                         MenuSeparator {}
+                        MenuItem { title: @tr("Copy Selection →"); activated => { root.copy-selection-to-right(); } }
+                        MenuItem { title: @tr("← Copy Selection"); activated => { root.copy-selection-to-left(); } }
+                        MenuSeparator {}
                         MenuItem { title: @tr("Copy Text"); activated => { root.copy-left-text(); } }
                         MenuSeparator {}
                         MenuItem { title: @tr("Next Difference"); activated => { root.next-diff(); } }
@@ -330,6 +340,7 @@ export component DiffView inherits Rectangle {
                         status: line.status == 1 ? 0 : line.status;
                         is-current: line.diff-index >= 0 && line.diff-index == root.current-diff-index;
                         is-search-match: line.is-search-match;
+                        is-selected: line.is-selected;
                         highlight-type: line.left-highlight;
                         diff-idx: line.diff-index;
                         show-line-no: root.show-line-numbers;
@@ -407,6 +418,9 @@ export component DiffView inherits Rectangle {
                         MenuItem { title: @tr("← Copy to Left"); enabled: root.current-diff-index >= 0; activated => { root.copy-to-left(root.current-diff-index); } }
                         MenuItem { title: @tr("Copy to Right →"); enabled: root.current-diff-index >= 0; activated => { root.copy-to-right(root.current-diff-index); } }
                         MenuSeparator {}
+                        MenuItem { title: @tr("← Copy Selection"); activated => { root.copy-selection-to-left(); } }
+                        MenuItem { title: @tr("Copy Selection →"); activated => { root.copy-selection-to-right(); } }
+                        MenuSeparator {}
                         MenuItem { title: @tr("Copy Text"); activated => { root.copy-right-text(); } }
                         MenuSeparator {}
                         MenuItem { title: @tr("Next Difference"); activated => { root.next-diff(); } }
@@ -424,6 +438,7 @@ export component DiffView inherits Rectangle {
                         status: line.status == 2 ? 0 : line.status;
                         is-current: line.diff-index >= 0 && line.diff-index == root.current-diff-index;
                         is-search-match: line.is-search-match;
+                        is-selected: line.is-selected;
                         highlight-type: line.right-highlight;
                         diff-idx: line.diff-index;
                         show-line-no: root.show-line-numbers;
