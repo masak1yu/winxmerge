@@ -12,17 +12,16 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use app::{
-    AppState, add_tab, apply_options, check_files_changed, close_tab, copy_all_diffs_to_left,
-    copy_all_diffs_to_right, copy_all_text, copy_current_line_text, copy_left_and_next,
-    copy_right_and_next, copy_to_left, copy_to_right, discard_and_proceed, edit_line,
-    export_html_report, export_patch, first_diff, folder_copy_to_left, folder_copy_to_right,
-    print_diff,
-    folder_delete_item, goto_line, last_diff, navigate_bookmark, navigate_conflict, navigate_diff,
-    navigate_search, open_file_dialog, open_folder_dialog, open_folder_item, open_in_editor,
-    print_diff, redo, replace_all_text, replace_text, rescan, resolve_conflict_use_left,
-    resolve_conflict_use_right, run_diff, run_folder_compare, run_plugin, save_file, search_text,
-    select_diff, start_compare, start_three_way_compare, switch_tab, toggle_bookmark,
-    toggle_ignore_case, toggle_ignore_whitespace, undo,
+    AppState, add_tab, apply_options, apply_pending_diff_if_ready, check_files_changed, close_tab,
+    copy_all_diffs_to_left, copy_all_diffs_to_right, copy_all_text, copy_current_line_text,
+    copy_left_and_next, copy_right_and_next, copy_to_left, copy_to_right, discard_and_proceed,
+    edit_line, export_html_report, export_patch, first_diff, folder_copy_to_left,
+    folder_copy_to_right, folder_delete_item, goto_line, last_diff, navigate_bookmark,
+    navigate_conflict, navigate_diff, navigate_search, open_file_dialog, open_folder_dialog,
+    open_folder_item, open_in_editor, print_diff, redo, replace_all_text, replace_text, rescan,
+    resolve_conflict_use_left, resolve_conflict_use_right, run_diff, run_folder_compare,
+    run_plugin, save_file, search_text, select_diff, start_compare, start_three_way_compare,
+    switch_tab, toggle_bookmark, toggle_ignore_case, toggle_ignore_whitespace, undo,
 };
 use slint::{ModelRc, SharedString, VecModel};
 
@@ -1035,14 +1034,9 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
-        let settings = settings.clone();
-        window.on_run_plugin(move |_plugin_list| {
+        window.on_run_plugin(move |command| {
             let window = window_weak.unwrap();
-            let s = settings.borrow();
-            // Run the first plugin (for now)
-            if let Some(plugin) = s.plugins.first() {
-                run_plugin(&window, &state.borrow(), &plugin.command);
-            }
+            run_plugin(&window, &state.borrow(), command.as_str());
         });
     }
 
@@ -1084,6 +1078,23 @@ fn main() {
             },
         );
         // Keep timer alive by leaking it (it runs for the lifetime of the app)
+        std::mem::forget(timer);
+    }
+
+    // Background diff result polling timer (100ms interval)
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        let timer = slint::Timer::default();
+        timer.start(
+            slint::TimerMode::Repeated,
+            std::time::Duration::from_millis(100),
+            move || {
+                if let Some(window) = window_weak.upgrade() {
+                    apply_pending_diff_if_ready(&window, &mut state.borrow_mut());
+                }
+            },
+        );
         std::mem::forget(timer);
     }
 
