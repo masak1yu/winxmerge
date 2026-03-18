@@ -6531,13 +6531,14 @@ dependencies = [
 
 [[package]]
 name = "winxmerge"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "arboard",
  "calamine",
  "chardetng",
  "dirs",
  "encoding_rs",
+ "image",
  "open",
  "regex",
  "rfd",

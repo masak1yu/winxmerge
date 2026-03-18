@@ -1,0 +1,124 @@
+import { Palette } from "std-widgets.slint";
+import { ThemeColors } from "../theme.slint";
+
+export component ImageView inherits Rectangle {
+    in property <image> left-image;
+    in property <image> right-image;
+    in property <image> diff-image;
+    in property <string> stats: "";
+    in property <string> left-title: @tr("Left");
+    in property <string> right-title: @tr("Right");
+
+    VerticalLayout {
+        // Stats bar
+        Rectangle {
+            height: 28px;
+            background: Palette.background.darker(0.04);
+            border-color: Palette.border;
+            border-width: 1px;
+
+            Text {
+                x: 8px;
+                text: root.stats;
+                font-size: 12px;
+                vertical-alignment: center;
+                color: Palette.foreground;
+            }
+        }
+
+        // Left / Right side-by-side
+        HorizontalLayout {
+            vertical-stretch: 2;
+            spacing: 2px;
+
+            // Left image panel
+            Rectangle {
+                horizontal-stretch: 1;
+                border-color: Palette.border;
+                border-width: 1px;
+
+                VerticalLayout {
+                    Rectangle {
+                        height: 24px;
+                        background: ThemeColors.removed-bg.transparentize(0.6);
+
+                        Text {
+                            x: 8px;
+                            text: root.left-title;
+                            font-size: 11px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            color: Palette.foreground;
+                            overflow: elide;
+                        }
+                    }
+
+                    Image {
+                        source: root.left-image;
+                        image-fit: contain;
+                        vertical-stretch: 1;
+                    }
+                }
+            }
+
+            // Right image panel
+            Rectangle {
+                horizontal-stretch: 1;
+                border-color: Palette.border;
+                border-width: 1px;
+
+                VerticalLayout {
+                    Rectangle {
+                        height: 24px;
+                        background: ThemeColors.added-bg.transparentize(0.6);
+
+                        Text {
+                            x: 8px;
+                            text: root.right-title;
+                            font-size: 11px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            color: Palette.foreground;
+                            overflow: elide;
+                        }
+                    }
+
+                    Image {
+                        source: root.right-image;
+                        image-fit: contain;
+                        vertical-stretch: 1;
+                    }
+                }
+            }
+        }
+
+        // Diff image panel
+        Rectangle {
+            vertical-stretch: 1;
+            border-color: Palette.border;
+            border-width: 1px;
+
+            VerticalLayout {
+                Rectangle {
+                    height: 24px;
+                    background: Palette.background.darker(0.04);
+
+                    Text {
+                        x: 8px;
+                        text: @tr("Diff  (changed pixels in red, identical pixels in gray)");
+                        font-size: 11px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        color: Palette.foreground;
+                    }
+                }
+
+                Image {
+                    source: root.diff-image;
+                    image-fit: contain;
+                    vertical-stretch: 1;
+                }
+            }
+        }
+    }
+}
