@@ -1,0 +1,184 @@
+# Configuration File - Version 2.0
+# Application: DataProcessor Pro
+# Author: Team Alpha
+# Last Updated: 2024-06-20
+
+[general]
+app_name = DataProcessor Pro
+version = 2.1.0
+debug = true
+log_level = debug
+max_threads = 8
+timeout = 60
+environment = production
+
+[database]
+host = db.internal.example.com
+port = 5432
+name = appdb_prod
+user = app_user
+password = REDACTED
+pool_size = 20
+pool_timeout = 10
+ssl_mode = require
+retry_attempts = 5
+retry_delay = 2000
+read_replica = replica.internal.example.com
+
+[cache]
+backend = redis
+host = redis.internal.example.com
+port = 6379
+ttl = 7200
+max_size = 5000
+eviction_policy = allkeys-lru
+namespace = app_cache_v2
+cluster_mode = true
+
+[logging]
+level = debug
+format = json
+output = file
+file_path = /var/log/dataprocessor/app.log
+max_file_size = 500
+max_backups = 14
+compress = true
+include_caller = true
+include_stack_trace = true
+
+[server]
+host = 0.0.0.0
+port = 443
+read_timeout = 60
+write_timeout = 60
+idle_timeout = 120
+max_header_bytes = 2097152
+enable_cors = true
+cors_origins = https://app.example.com,https://admin.example.com
+enable_tls = true
+tls_cert = /etc/ssl/certs/app.crt
+tls_key = /etc/ssl/private/app.key
+
+[auth]
+provider = oauth2
+token_expiry = 1800
+refresh_expiry = 604800
+secret_key = REDACTED
+algorithm = RS256
+bcrypt_cost = 12
+mfa_enabled = true
+oauth2_client_id = REDACTED
+oauth2_client_secret = REDACTED
+
+[features]
+enable_analytics = true
+enable_notifications = true
+enable_export = true
+enable_import = true
+enable_audit_log = true
+enable_rate_limit = true
+rate_limit_rps = 500
+rate_limit_burst = 1000
+enable_dark_mode = true
+
+[storage]
+provider = s3
+bucket = dataprocessor-uploads-prod
+region = ap-northeast-1
+access_key = REDACTED
+secret_key = REDACTED
+base_path = uploads
+max_file_size = 52428800
+allowed_types = jpg,png,gif,pdf,csv,xlsx,zip
+temp_dir = /tmp/uploads
+cdn_url = https://cdn.example.com
+
+[email]
+provider = ses
+region = us-east-1
+access_key = REDACTED
+secret_key = REDACTED
+from = noreply@example.com
+from_name = DataProcessor Pro
+reply_to = support@example.com
+template_dir = /templates/email
+
+[metrics]
+enabled = true
+provider = datadog
+api_key = REDACTED
+app_key = REDACTED
+host = localhost
+port = 8125
+path = /metrics
+interval = 10
+tags = env:production,app:dataprocessor
+
+[scheduler]
+enabled = true
+timezone = Asia/Tokyo
+cleanup_job = 0 3 * * *
+report_job = 0 9 * * 1-5
+backup_job = 0 2 * * *
+archive_job = 0 4 1 * *
+
+[api]
+version = v2
+base_path = /api
+enable_swagger = false
+rate_limit = true
+pagination_default = 50
+pagination_max = 500
+graphql_enabled = true
+graphql_path = /graphql
+websocket_enabled = true
+
+[plugins]
+enabled = true
+dir = /opt/dataprocessor/plugins
+auto_load = true
+allowed_plugins = auth_plugin,export_plugin,analytics_plugin
+
+# Section: Processing Rules
+[processing]
+batch_size = 2000
+max_retries = 5
+retry_delay = 5000
+parallel_workers = 8
+queue_size = 10000
+dead_letter_queue = true
+circuit_breaker = true
+circuit_breaker_threshold = 50
+
+# Section: Monitoring
+[monitoring]
+enabled = true
+interval = 30
+alert_email = ops@example.com,oncall@example.com
+alert_slack = https://hooks.slack.com/services/xxx/yyy/zzz
+alert_threshold_cpu = 70
+alert_threshold_mem = 80
+alert_threshold_disk = 75
+pagerduty_key = pd_integration_key
+
+# Section: Backup
+[backup]
+enabled = true
+schedule = 0 1 * * *
+destination = s3://backups-bucket/dataprocessor
+retention_days = 90
+compress = true
+encrypt = true
+encryption_key = backup_encryption_key_here
+verify_after_backup = true
+
+# Section: Security
+[security]
+enable_waf = true
+ip_whitelist = 10.0.0.0/8,172.16.0.0/12
+max_login_attempts = 5
+lockout_duration = 900
+csrf_protection = true
+content_security_policy = default-src 'self'
+
+# EOF
