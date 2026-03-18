@@ -3,12 +3,12 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use slint::{Model, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use crate::diff::engine::{DiffOptions, compute_diff_with_options};
 use crate::diff::folder::{FolderCompareOptions, compare_folders_with_options};
 use crate::diff::three_way::{ThreeWayStatus, compute_three_way_diff};
-use crate::encoding::{decode_file, encode_text, is_binary};
+use crate::encoding::{decode_file, detect_eol, encode_text, is_binary};
 use crate::highlight::{detect_file_type, highlight_lines};
 use crate::models::diff_line::DiffResult;
 use crate::models::diff_line::LineStatus;
@@ -61,6 +61,8 @@ pub struct TabState {
     pub folder_items: Vec<crate::models::folder_item::FolderItem>,
     pub left_encoding: String,
     pub right_encoding: String,
+    pub left_eol_type: String,
+    pub right_eol_type: String,
     pub diff_options: DiffOptions,
     pub search_matches: Vec<usize>,
     pub current_search_match: i32,
@@ -100,6 +102,8 @@ impl TabState {
             folder_items: Vec::new(),
             left_encoding: "UTF-8".to_string(),
             right_encoding: "UTF-8".to_string(),
+            left_eol_type: String::new(),
+            right_eol_type: String::new(),
             diff_options: DiffOptions::default(),
             search_matches: Vec::new(),
             current_search_match: -1,
@@ -200,6 +204,28 @@ fn save_current_tab_from_window(window: &MainWindow, state: &mut AppState) {
             }
         }
     }
+    // Save per-tab diff options from window state
+    tab.diff_options.ignore_whitespace = window.get_ignore_whitespace();
+    tab.diff_options.ignore_case = window.get_ignore_case();
+    tab.diff_options.ignore_blank_lines = window.get_opt_ignore_blank_lines();
+    tab.diff_options.ignore_eol = window.get_opt_ignore_eol();
+    tab.diff_options.detect_moved_lines = window.get_opt_detect_moved_lines();
+    let lf = window.get_opt_line_filters().to_string();
+    tab.diff_options.line_filters = lf
+        .split('|')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let sub_pat = window.get_opt_substitution_patterns().to_string();
+    let sub_rep = window.get_opt_substitution_replacements().to_string();
+    let pats: Vec<&str> = sub_pat.split('|').collect();
+    let reps: Vec<&str> = sub_rep.split('|').collect();
+    tab.diff_options.substitution_filters = pats
+        .iter()
+        .zip(reps.iter())
+        .filter(|(p, _)| !p.trim().is_empty())
+        .map(|(p, r)| (p.trim().to_string(), r.trim().to_string()))
+        .collect();
 }
 
 fn restore_tab(window: &MainWindow, state: &AppState) {
@@ -216,6 +242,33 @@ fn restore_tab(window: &MainWindow, state: &AppState) {
     window.set_has_unsaved_changes(tab.has_unsaved_changes);
     window.set_ignore_whitespace(tab.diff_options.ignore_whitespace);
     window.set_ignore_case(tab.diff_options.ignore_case);
+
+    // Restore per-tab diff options
+    window.set_opt_ignore_blank_lines(tab.diff_options.ignore_blank_lines);
+    window.set_opt_ignore_eol(tab.diff_options.ignore_eol);
+    window.set_opt_detect_moved_lines(tab.diff_options.detect_moved_lines);
+    let filters_str = tab.diff_options.line_filters.join("|");
+    window.set_opt_line_filters(SharedString::from(filters_str));
+    let sub_pats: Vec<&str> = tab
+        .diff_options
+        .substitution_filters
+        .iter()
+        .map(|(p, _)| p.as_str())
+        .collect();
+    let sub_reps: Vec<&str> = tab
+        .diff_options
+        .substitution_filters
+        .iter()
+        .map(|(_, r)| r.as_str())
+        .collect();
+    window.set_opt_substitution_patterns(SharedString::from(sub_pats.join("|")));
+    window.set_opt_substitution_replacements(SharedString::from(sub_reps.join("|")));
+
+    window.set_diff_stats_text(SharedString::from(&tab.diff_stats));
+    window.set_left_encoding_display(SharedString::from(&tab.left_encoding));
+    window.set_right_encoding_display(SharedString::from(&tab.right_encoding));
+    window.set_left_eol_type(SharedString::from(&tab.left_eol_type));
+    window.set_right_eol_type(SharedString::from(&tab.right_eol_type));
 
     window.set_left_path(SharedString::from(
         tab.left_path
@@ -318,6 +371,8 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
     let tab = state.current_tab_mut();
     tab.left_encoding = left_enc.to_string();
     tab.right_encoding = right_enc.to_string();
+    tab.left_eol_type = detect_eol(&left_bytes).to_string();
+    tab.right_eol_type = detect_eol(&right_bytes).to_string();
     // Store modification times for auto-rescan
     tab.left_mtime = fs::metadata(&left_path)
         .ok()
@@ -370,6 +425,10 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
     );
     let current = window.get_status_text().to_string();
     window.set_status_text(SharedString::from(current + &enc_info));
+    window.set_left_encoding_display(SharedString::from(&tab.left_encoding));
+    window.set_right_encoding_display(SharedString::from(&tab.right_encoding));
+    window.set_left_eol_type(SharedString::from(&tab.left_eol_type));
+    window.set_right_eol_type(SharedString::from(&tab.right_eol_type));
 
     sync_tab_list(window, state);
 }
@@ -600,6 +659,7 @@ fn apply_diff_result(
     let tab = state.current_tab_mut();
     tab.diff_stats = format!("+{} -{} ~{}", added, removed, modified);
     let stats = tab.diff_stats.clone();
+    window.set_diff_stats_text(SharedString::from(tab.diff_stats.clone()));
 
     let status = if result.diff_count == 0 {
         "Files are identical".to_string()
@@ -1419,6 +1479,10 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
         .filter(|s| !s.is_empty())
         .collect();
     settings.folder_max_depth = window.get_opt_folder_max_depth().max(0) as usize;
+    settings.folder_min_size = window.get_opt_folder_min_size() as u64;
+    settings.folder_max_size = window.get_opt_folder_max_size() as u64;
+    settings.folder_modified_after = window.get_opt_folder_modified_after().to_string();
+    settings.folder_modified_before = window.get_opt_folder_modified_before().to_string();
 
     // Read filter settings
     let line_filters_str = window.get_opt_line_filters().to_string();
@@ -1821,6 +1885,10 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
     let options = FolderCompareOptions {
         exclude_patterns: state.folder_exclude_patterns.clone(),
         max_depth: folder_max_depth,
+        min_size: window.get_opt_folder_min_size() as u64,
+        max_size: window.get_opt_folder_max_size() as u64,
+        modified_after: window.get_opt_folder_modified_after().to_string(),
+        modified_before: window.get_opt_folder_modified_before().to_string(),
         ..Default::default()
     };
     let items = compare_folders_with_options(&left_folder, &right_folder, &options);
@@ -2289,45 +2357,51 @@ pub fn run_plugin(window: &MainWindow, state: &AppState, command: &str) {
         .as_ref()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
-
     let cmd = command.replace("{LEFT}", &left).replace("{RIGHT}", &right);
 
-    #[cfg(target_os = "windows")]
-    let result = std::process::Command::new("cmd")
-        .args(["/C", &cmd])
-        .output();
-    #[cfg(not(target_os = "windows"))]
-    let result = std::process::Command::new("sh").args(["-c", &cmd]).output();
+    window.set_status_text(SharedString::from(format!("Running plugin...")));
+    let window_weak = window.as_weak();
+    let cmd_clone = cmd.clone();
+    std::thread::spawn(move || {
+        #[cfg(target_os = "windows")]
+        let result = std::process::Command::new("cmd")
+            .args(["/C", &cmd_clone])
+            .output();
+        #[cfg(not(target_os = "windows"))]
+        let result = std::process::Command::new("sh")
+            .args(["-c", &cmd_clone])
+            .output();
 
-    match result {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            let combined = match (stdout.trim().is_empty(), stderr.trim().is_empty()) {
-                (false, false) => format!("{}\n---\n{}", stdout.trim(), stderr.trim()),
-                (false, true) => stdout.trim().to_string(),
-                (true, false) => stderr.trim().to_string(),
-                (true, true) => "(no output)".to_string(),
-            };
-            let title = format!(
-                "Plugin: {} (exit {})",
-                command,
-                output.status.code().unwrap_or(-1)
-            );
-            window.set_plugin_output_title(SharedString::from(title));
-            window.set_plugin_output_text(SharedString::from(combined));
-            window.set_show_plugin_output(true);
-            window.set_status_text(SharedString::from(format!(
-                "Plugin finished: exit {}",
-                output.status.code().unwrap_or(-1)
-            )));
-        }
-        Err(e) => {
-            window.set_plugin_output_title(SharedString::from(format!("Plugin error")));
-            window.set_plugin_output_text(SharedString::from(e.to_string()));
-            window.set_show_plugin_output(true);
-        }
-    }
+        let (title, text, status_msg) = match result {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                let combined = match (stdout.trim().is_empty(), stderr.trim().is_empty()) {
+                    (false, false) => format!("{}\n---\n{}", stdout.trim(), stderr.trim()),
+                    (false, true) => stdout.trim().to_string(),
+                    (true, false) => stderr.trim().to_string(),
+                    (true, true) => "(no output)".to_string(),
+                };
+                let exit = output.status.code().unwrap_or(-1);
+                (
+                    format!("Plugin: {} (exit {})", cmd_clone, exit),
+                    combined,
+                    format!("Plugin finished: exit {}", exit),
+                )
+            }
+            Err(e) => (
+                "Plugin error".to_string(),
+                e.to_string(),
+                "Plugin failed".to_string(),
+            ),
+        };
+        let _ = window_weak.upgrade_in_event_loop(move |w: MainWindow| {
+            w.set_plugin_output_title(SharedString::from(title));
+            w.set_plugin_output_text(SharedString::from(text));
+            w.set_show_plugin_output(true);
+            w.set_status_text(SharedString::from(status_msg));
+        });
+    });
 }
 
 // --- Auto-rescan: check if files changed on disk ---
