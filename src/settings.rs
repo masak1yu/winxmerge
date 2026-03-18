@@ -91,6 +91,17 @@ pub struct AppSettings {
     // Folder max recursion depth (0 = unlimited)
     #[serde(default)]
     pub folder_max_depth: usize,
+
+    // Folder size filters (bytes, 0 = no limit)
+    #[serde(default)]
+    pub folder_min_size: u64,
+    #[serde(default)]
+    pub folder_max_size: u64,
+    // Folder date filters (YYYY-MM-DD string, empty = no filter)
+    #[serde(default)]
+    pub folder_modified_after: String,
+    #[serde(default)]
+    pub folder_modified_before: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -174,6 +185,10 @@ impl Default for AppSettings {
             session: Vec::new(),
             diff_only: false,
             folder_max_depth: 0,
+            folder_min_size: 0,
+            folder_max_size: 0,
+            folder_modified_after: String::new(),
+            folder_modified_before: String::new(),
         }
     }
 }

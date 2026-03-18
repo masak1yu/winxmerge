@@ -84,6 +84,10 @@ fn main() {
         window.set_opt_auto_rescan(s.auto_rescan);
         window.set_opt_folder_exclude_patterns(SharedString::from(&s.folder_exclude_patterns));
         window.set_opt_folder_max_depth(s.folder_max_depth as i32);
+        window.set_opt_folder_min_size(s.folder_min_size as i32);
+        window.set_opt_folder_max_size(s.folder_max_size as i32);
+        window.set_opt_folder_modified_after(SharedString::from(&s.folder_modified_after));
+        window.set_opt_folder_modified_before(SharedString::from(&s.folder_modified_before));
         window.set_show_location_pane(s.show_location_pane);
         window.set_show_word_diff(s.show_word_diff);
         window.set_show_detail_pane(s.show_detail_pane);
@@ -1174,6 +1178,10 @@ fn main() {
             s.show_detail_pane = window.get_show_detail_pane();
             s.diff_only = window.get_opt_diff_only();
             s.folder_max_depth = window.get_opt_folder_max_depth().max(0) as usize;
+            s.folder_min_size = window.get_opt_folder_min_size().max(0) as u64;
+            s.folder_max_size = window.get_opt_folder_max_size().max(0) as u64;
+            s.folder_modified_after = window.get_opt_folder_modified_after().to_string();
+            s.folder_modified_before = window.get_opt_folder_modified_before().to_string();
             // Save session (open tabs)
             let app = state.borrow();
             s.session = app
