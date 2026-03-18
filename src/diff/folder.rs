@@ -14,6 +14,8 @@ pub struct FolderCompareOptions {
     pub respect_gitignore: bool,
     /// Exclude patterns (e.g., ["*.log", "build/", "node_modules"])
     pub exclude_patterns: Vec<String>,
+    /// Maximum recursion depth (0 = unlimited)
+    pub max_depth: usize,
 }
 
 pub fn compare_folders_with_options(
@@ -30,8 +32,8 @@ pub fn compare_folders_with_options(
         Vec::new()
     };
 
-    let left_entries = collect_entries(left_dir, left_dir, &gitignore_patterns, options);
-    let right_entries = collect_entries(right_dir, right_dir, &gitignore_patterns, options);
+    let left_entries = collect_entries(left_dir, left_dir, &gitignore_patterns, options, 0);
+    let right_entries = collect_entries(right_dir, right_dir, &gitignore_patterns, options, 0);
 
     let all_paths: BTreeSet<&String> = left_entries
         .iter()
@@ -114,6 +116,7 @@ fn collect_entries(
     base: &Path,
     gitignore_patterns: &[String],
     options: &FolderCompareOptions,
+    depth: usize,
 ) -> Vec<(String, EntryInfo)> {
     let mut entries = Vec::new();
     if let Ok(read_dir) = fs::read_dir(dir) {
@@ -176,7 +179,17 @@ fn collect_entries(
             ));
 
             if is_dir {
-                entries.extend(collect_entries(&path, base, gitignore_patterns, options));
+                let next_depth = depth + 1;
+                let at_limit = options.max_depth > 0 && next_depth >= options.max_depth;
+                if !at_limit {
+                    entries.extend(collect_entries(
+                        &path,
+                        base,
+                        gitignore_patterns,
+                        options,
+                        next_depth,
+                    ));
+                }
             }
         }
     }
