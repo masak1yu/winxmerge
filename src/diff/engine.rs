@@ -9,6 +9,8 @@ use crate::models::diff_line::{DiffLine, DiffResult, LineStatus, WordDiffSegment
 const LARGE_FILE_THRESHOLD: usize = 10_000;
 /// Timeout for diff computation
 const DIFF_TIMEOUT: Duration = Duration::from_secs(5);
+/// Skip per-pair word diff above this total line count to avoid O(N²) slowdown
+const WORD_DIFF_LINE_LIMIT: usize = 20_000;
 
 #[derive(Debug, Clone)]
 pub struct DiffOptions {
@@ -113,6 +115,7 @@ pub fn compute_diff_with_options(
                 }
 
                 // Pair up deletions and insertions as Modified lines (word-diff computed per pair)
+                let word_diff_enabled = line_count <= WORD_DIFF_LINE_LIMIT;
                 let n_pairs = del_indices.len().min(ins_indices.len());
                 for j in 0..n_pairs {
                     let left_display = left_orig_lines
@@ -123,7 +126,11 @@ pub fn compute_diff_with_options(
                         .get(ins_indices[j] as usize)
                         .unwrap_or(&"")
                         .to_string();
-                    let (left_segs, right_segs) = compute_word_diff(&left_display, &right_display);
+                    let (left_segs, right_segs) = if word_diff_enabled {
+                        compute_word_diff(&left_display, &right_display)
+                    } else {
+                        (Vec::new(), Vec::new())
+                    };
                     lines.push(DiffLine {
                         left_line_no: Some(del_indices[j] + 1),
                         right_line_no: Some(ins_indices[j] + 1),

@@ -1,5 +1,22 @@
 use crate::models::diff_line::{DiffResult, LineStatus};
 
+/// Generate HTML for printing: includes auto-print script and print-optimized CSS
+pub fn export_html_for_print(
+    diff_result: &DiffResult,
+    left_title: &str,
+    right_title: &str,
+) -> String {
+    let mut html = export_html(diff_result, left_title, right_title);
+    // Insert auto-print script before </body>
+    let script = "<script>window.onload=function(){window.print();}</script>\n";
+    if let Some(pos) = html.rfind("</body>") {
+        html.insert_str(pos, script);
+    } else {
+        html.push_str(script);
+    }
+    html
+}
+
 /// Export diff result as an HTML file
 pub fn export_html(diff_result: &DiffResult, left_title: &str, right_title: &str) -> String {
     let mut html = String::new();

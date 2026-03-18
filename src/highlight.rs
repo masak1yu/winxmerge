@@ -26,6 +26,10 @@ const HIGHLIGHT_NAMES: &[&str] = &[
     "embedded",              // 20
 ];
 
+/// Maximum number of lines for which syntax highlighting is computed.
+/// Files larger than this skip highlighting to avoid UI latency.
+const HIGHLIGHT_LINE_LIMIT: usize = 5_000;
+
 /// Per-line highlight: the dominant highlight type for the line
 /// Returns a Vec of highlight indices (one per line), where:
 ///   -1 = no highlight (plain text)
@@ -33,6 +37,11 @@ const HIGHLIGHT_NAMES: &[&str] = &[
 pub fn highlight_lines(source: &str, file_path: &str) -> Vec<i32> {
     let line_count = source.lines().count().max(1);
     let mut line_highlights = vec![-1i32; line_count];
+
+    // Skip highlighting for large files to avoid UI latency
+    if line_count > HIGHLIGHT_LINE_LIMIT {
+        return line_highlights;
+    }
 
     let ext = Path::new(file_path)
         .extension()
