@@ -14,6 +14,8 @@ export component TabBar inherits Rectangle {
     callback tab-clicked(int);
     callback tab-close(int);
     callback new-tab();
+    callback tab-move-left(int);
+    callback tab-move-right(int);
 
     height: 32px;
     background: Palette.background.darker(0.04);
@@ -31,6 +33,17 @@ export component TabBar inherits Rectangle {
             border-color: Palette.border;
             border-width: 1px;
             border-radius: 0;
+
+            // Context menu for tab operations
+            ContextMenuArea {
+                Menu {
+                    title: @tr("Tab");
+                    MenuItem { title: @tr("Move Tab Left"); enabled: idx > 0; activated => { root.tab-move-left(idx); } }
+                    MenuItem { title: @tr("Move Tab Right"); enabled: idx < root.tabs.length - 1; activated => { root.tab-move-right(idx); } }
+                    MenuSeparator {}
+                    MenuItem { title: @tr("Close Tab"); enabled: root.tabs.length > 1; activated => { root.tab-close(idx); } }
+                }
+            }
 
             // Tab click area (must be first so close button overlays it)
             TouchArea {

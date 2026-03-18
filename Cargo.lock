@@ -6253,7 +6253,7 @@ dependencies = [
 
 [[package]]
 name = "winxmerge"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "arboard",
  "chardetng",
