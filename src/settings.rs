@@ -124,11 +124,33 @@ pub struct RecentEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionComment {
+    pub block_index: usize,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionEntry {
     pub left_path: String,
     pub right_path: String,
     #[serde(default)]
     pub base_path: String,
+    #[serde(default)]
+    pub left_encoding: String,
+    #[serde(default)]
+    pub right_encoding: String,
+    #[serde(default)]
+    pub left_eol: String,
+    #[serde(default)]
+    pub right_eol: String,
+    #[serde(default = "default_tab_width")]
+    pub tab_width: i32,
+    #[serde(default)]
+    pub diff_only: bool,
+    #[serde(default)]
+    pub diff_status_filter: i32,
+    #[serde(default)]
+    pub diff_comments: Vec<SessionComment>,
 }
 
 fn default_width() -> f32 {

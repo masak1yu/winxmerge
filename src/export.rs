@@ -6,7 +6,12 @@ pub fn export_html_for_print(
     left_title: &str,
     right_title: &str,
 ) -> String {
-    let mut html = export_html(diff_result, left_title, right_title);
+    let mut html = export_html(
+        diff_result,
+        left_title,
+        right_title,
+        &std::collections::HashMap::new(),
+    );
     // Insert auto-print script before </body>
     let script = "<script>window.onload=function(){window.print();}</script>\n";
     if let Some(pos) = html.rfind("</body>") {
@@ -18,7 +23,12 @@ pub fn export_html_for_print(
 }
 
 /// Export diff result as an HTML file
-pub fn export_html(diff_result: &DiffResult, left_title: &str, right_title: &str) -> String {
+pub fn export_html(
+    diff_result: &DiffResult,
+    left_title: &str,
+    right_title: &str,
+    comments: &std::collections::HashMap<usize, String>,
+) -> String {
     let mut html = String::new();
 
     html.push_str("<!DOCTYPE html>\n<html>\n<head>\n");
@@ -50,6 +60,7 @@ pub fn export_html(diff_result: &DiffResult, left_title: &str, right_title: &str
     ));
     html.push_str("</tr>\n</thead>\n<tbody>\n");
 
+    let mut diff_block_idx: usize = 0;
     for line in &diff_result.lines {
         let class = match line.status {
             LineStatus::Equal => "",
@@ -84,6 +95,19 @@ pub fn export_html(diff_result: &DiffResult, left_title: &str, right_title: &str
         ));
 
         html.push_str("</tr>\n");
+
+        // After each non-Equal row, emit comment row if present
+        if line.status != LineStatus::Equal {
+            if let Some(comment) = comments.get(&diff_block_idx) {
+                if !comment.is_empty() {
+                    html.push_str(&format!(
+                        "<tr class=\"comment-row\"><td colspan=\"4\">💬 {}</td></tr>\n",
+                        escape_html(comment)
+                    ));
+                }
+            }
+            diff_block_idx += 1;
+        }
     }
 
     html.push_str("</tbody>\n</table>\n");
@@ -331,6 +355,7 @@ tr.added { background: #e6ffec; }
 tr.removed { background: #ffebe9; }
 tr.modified { background: #fff8c5; }
 tr.moved { background: #e0e8ff; }
+.comment-row td { background: #fffbe6; color: #856404; font-style: italic; padding: 4px 8px; border: 1px solid #ffd700; }
 .footer { margin-top: 20px; color: #999; font-size: 12px; }
 @media print {
     body { background: white; padding: 0; }

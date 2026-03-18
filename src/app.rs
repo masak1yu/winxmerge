@@ -309,7 +309,7 @@ fn restore_tab(window: &MainWindow, state: &AppState) {
     window.set_opt_substitution_patterns(SharedString::from(sub_pats.join("|")));
     window.set_opt_substitution_replacements(SharedString::from(sub_reps.join("|")));
 
-    window.set_diff_stats_text(SharedString::from(&tab.diff_stats));
+    sync_diff_stats(window, &tab.diff_stats.clone());
     window.set_left_encoding_display(SharedString::from(&tab.left_encoding));
     window.set_right_encoding_display(SharedString::from(&tab.right_encoding));
     window.set_left_eol_type(SharedString::from(&tab.left_eol_type));
@@ -792,7 +792,7 @@ fn apply_diff_result(
     let tab = state.current_tab_mut();
     tab.diff_stats = format!("+{} -{} ~{}", added, removed, modified);
     let stats = tab.diff_stats.clone();
-    window.set_diff_stats_text(SharedString::from(tab.diff_stats.clone()));
+    sync_diff_stats(window, &stats);
 
     let status = if result.diff_count == 0 {
         "Files are identical".to_string()
@@ -1580,7 +1580,7 @@ pub fn export_html_report(window: &MainWindow, state: &AppState) {
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| "Right".to_string());
 
-    let html = crate::export::export_html(&result, &left_title, &right_title);
+    let html = crate::export::export_html(&result, &left_title, &right_title, &tab.diff_comments);
 
     // Save dialog
     if let Some(path) = rfd::FileDialog::new()
@@ -3255,4 +3255,30 @@ fn load_text_preview(path: &std::path::Path) -> String {
     }
     let (text, _) = decode_file(&bytes);
     text.lines().take(20).collect::<Vec<_>>().join("\n")
+}
+
+/// Parse diff stats string "+A -R ~M" into (added, removed, modified)
+pub fn parse_diff_stats(s: &str) -> (i32, i32, i32) {
+    let mut added = 0i32;
+    let mut removed = 0i32;
+    let mut modified = 0i32;
+    for token in s.split_whitespace() {
+        if let Some(n) = token.strip_prefix('+') {
+            added = n.parse().unwrap_or(0);
+        } else if let Some(n) = token.strip_prefix('-') {
+            removed = n.parse().unwrap_or(0);
+        } else if let Some(n) = token.strip_prefix('~') {
+            modified = n.parse().unwrap_or(0);
+        }
+    }
+    (added, removed, modified)
+}
+
+/// Set diff stats text and also update individual stat properties on the window
+pub fn sync_diff_stats(window: &MainWindow, stats: &str) {
+    window.set_diff_stats_text(SharedString::from(stats));
+    let (added, removed, modified) = parse_diff_stats(stats);
+    window.set_diff_stats_added(added);
+    window.set_diff_stats_removed(removed);
+    window.set_diff_stats_modified(modified);
 }

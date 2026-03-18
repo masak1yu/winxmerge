@@ -7,10 +7,10 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 ## 現在の状態
 
-- **バージョン:** 0.23.0
-- **ブランチ:** `feature/v0.23.0`
+- **バージョン:** 0.24.0
+- **ブランチ:** `feature/v0.24.0`
 - **テスト:** 19件すべてパス
-- **ビルド:** `cargo build` 成功
+- **ビルド:** `cargo build` 成功（警告: `excel.rs` の未使用フィールド `col` のみ）
 - **CI:** GitHub Actions（ubuntu / macOS / Windows）
 
 ## リリース履歴
@@ -39,7 +39,8 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | v0.20.0 | #22 | ステータス別差分ナビゲーション、複数行選択+ブロックコピー、CSV/TSVエクスポート+フォルダHTMLレポート、クリップボード比較、タブ並び替え、フォルダ比較サマリー |
 | v0.21.0 | #23 | ZIPアーカイブ比較（仮想フォルダビューでエントリ差分表示）、Excelファイル比較（テーブルビューでセル差分表示） |
 | v0.22.0 | #24 | 画像比較（ピクセルレベル差分、左右サイドバイサイド＋差分オーバーレイ表示） |
-| v0.23.0 | - | 差分コメント、比較結果ステータスフィルタ、クリップボードパス貼り付け、画像比較ズーム＋差分パネル切替、フォルダ比較ファイルプレビュー |
+| v0.23.0 | #25 | 差分コメント、比較結果ステータスフィルタ、クリップボードパス貼り付け、画像比較ズーム＋差分パネル切替、フォルダ比較ファイルプレビュー |
+| v0.24.0 | - | アプリアイコン、差分コメントHTMLエクスポート、画像連続ズームスライダー、差分コメントセッション保存、フォルダステータスフィルタUI、ショートカットダイアログ、セッション保存改善、差分統計ミニグラフ |
 
 ## 実装済み機能一覧
 
@@ -249,6 +250,14 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 - **クリップボードパス貼り付け** — 選択ダイアログの 📋 ボタンでクリップボードのファイルパス（file:// URI も対応）を左右パス欄に貼り付け
 - **画像比較ズーム＋差分パネル切替** — Fit/100%/200% ズームボタン（100%/200% 時は ScrollView）、"Diff Panel" トグルで差分オーバーレイパネルの表示切替
 - **フォルダ比較ファイルプレビュー** — フォルダビューでアイテムをクリックすると下部プレビューパネルに左右ファイルの先頭20行を表示
+- **アプリアイコン** — "Diff Panels" デザインの SVG アイコン（`assets/icons/`）。Windows 実行ファイル埋め込み（`.ico`）、macOS バンドル（`.icns`）、Slint ウィンドウアイコン（`app-icon-256.png`）
+- **差分コメントの HTML エクスポート** — `export_html()` が `comments: &HashMap<usize, String>` を受け取り、差分ブロック後にコメント行（黄色ハイライト）を出力
+- **画像比較の連続ズームスライダー** — `zoom-percent: float`（0=Fit, 10–400）+ Slider ウィジェット（`std-widgets` の `Slider`）。Fit ボタンで zoom-percent=0
+- **差分コメントのセッション保存** — `SessionEntry` に `diff_comments: Vec<SessionComment>` 追加。起動時にコメントを復元
+- **フォルダ比較ステータスフィルタ UI** — `FolderView` 上部に All/Identical/Different/Left only/Right only フィルタバー。フィルタ外の行は `height: 0px` で非表示
+- **キーボードショートカット一覧ダイアログ** — `ui/dialogs/shortcuts-dialog.slint` 新規作成。Help メニュー → "Keyboard Shortcuts" で表示。File/Navigation/Merge/View セクション
+- **タブのセッション保存改善** — `SessionEntry` に `left_encoding`, `right_encoding`, `left_eol`, `right_eol`, `tab_width`, `diff_only`, `diff_status_filter` 追加。復元時に TabState へ反映
+- **差分統計ミニグラフ表示** — ステータスバーに緑/赤/黄の比例バー（`horizontal-stretch` 使用）を追加。`parse_diff_stats()` + `sync_diff_stats()` ヘルパーで `+A -R ~M` テキストと同時に3プロパティを更新
 
 ## アーキテクチャ
 
@@ -285,7 +294,9 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | `theme.slint` | テーマカラー定義（ThemeColors グローバル、ライト/ダーク対応） |
 | `dialogs/options-dialog.slint` | オプション設定ダイアログ（テーマ選択含む） |
 | `widgets/excel-view.slint` | Excelセル差分テーブルビュー（シートセレクタ + ListView） |
-| `widgets/image-view.slint` | 画像比較ビュー（左右サイドバイサイド + 差分オーバーレイパネル） |
+| `widgets/excel-view.slint` | Excelセル差分テーブルビュー（シートセレクタ + ListView） |
+| `widgets/image-view.slint` | 画像比較ビュー（左右サイドバイサイド + 差分オーバーレイパネル + 連続ズームスライダー） |
+| `dialogs/shortcuts-dialog.slint` | キーボードショートカット一覧ダイアログ |
 
 ### 状態管理の構造
 
@@ -305,7 +316,10 @@ AppState
     ├── diff_line_data                  # UI 表示用キャッシュ
     ├── folder_items / folder_item_data # フォルダ比較結果
     ├── left_encoding / right_encoding  # 検出されたエンコーディング
-    └── left_mtime / right_mtime        # ファイル更新時刻（自動再スキャン用）
+    ├── left_mtime / right_mtime        # ファイル更新時刻（自動再スキャン用）
+    ├── diff_comments: HashMap<usize, String>  # 差分ブロックごとのコメント
+    ├── diff_status_filter: i32         # 差分フィルタ（0=All, 1=Added, 2=Removed, 3=Modified, 4=Moved）
+    └── image_left_w/h, image_right_w/h # 画像サイズ（ズーム計算用）
 
 AppSettings (永続化)
 ├── 比較オプション（ignore_whitespace, ignore_case, etc.）
@@ -315,7 +329,8 @@ AppSettings (永続化)
 ├── plugins: Vec<PluginEntry>   # プラグイン定義（name, command）
 ├── external_editor: String     # 外部エディタコマンド
 ├── auto_rescan: bool           # 自動再スキャン
-└── recent_files: Vec<RecentEntry>
+├── recent_files: Vec<RecentEntry>
+└── session: Vec<SessionEntry>  # タブ復元（left/right/base_path + encoding/EOL/tab_width/comments）
 ```
 
 ## 技術スタック
@@ -343,11 +358,13 @@ AppSettings (永続化)
 
 ---
 
-## 次にやるべき項目 (v0.24.0+)
+## 次にやるべき項目 (v0.25.0+)
 
 1. **ドラッグ＆ドロップ** — Slint の OS ファイル D&D サポート待ち（winit の DroppedFile が Slint 公開 API に未公開）
-2. **差分コメントのエクスポート** — HTML レポートへの差分コメント埋め込み
-3. **画像比較の任意ズーム** — スライダーによる連続ズーム（現在はFit/100%/200%の3段階）
+2. **差分コメントの印刷対応** — `export_html_for_print` にもコメントを渡すよう改善
+3. **フォルダ比較のソート** — 列ヘッダクリックでの Name/Status/Size/Date ソート
+4. **画像比較のオーバーレイ透明度調整** — diff overlay の blend 強度スライダー
+5. **差分コメントの全体エクスポート** — 全タブのコメントを一括 CSV/JSON 出力
 
 ## ビルド・テスト手順
 

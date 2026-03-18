@@ -243,6 +243,27 @@ fn main() {
                         is_folder,
                     );
                 }
+                // Restore extended session fields
+                {
+                    let tab = s.current_tab_mut();
+                    if !entry.left_encoding.is_empty() {
+                        tab.left_encoding = entry.left_encoding.clone();
+                    }
+                    if !entry.right_encoding.is_empty() {
+                        tab.right_encoding = entry.right_encoding.clone();
+                    }
+                    if !entry.left_eol.is_empty() {
+                        tab.left_eol_type = entry.left_eol.clone();
+                    }
+                    if !entry.right_eol.is_empty() {
+                        tab.right_eol_type = entry.right_eol.clone();
+                    }
+                    // tab_width is a UI setting, not per-tab state
+                    tab.diff_status_filter = entry.diff_status_filter;
+                    for sc in &entry.diff_comments {
+                        tab.diff_comments.insert(sc.block_index, sc.text.clone());
+                    }
+                }
                 app::sync_tab_list(&window, &s);
             }
         }
@@ -1327,6 +1348,14 @@ fn main() {
         });
     }
 
+    // Keyboard shortcuts dialog close
+    {
+        let window_weak = window.as_weak();
+        window.on_shortcuts_dialog_close(move || {
+            window_weak.unwrap().set_show_shortcuts_dialog(false);
+        });
+    }
+
     // Save window size on close
     {
         let settings = settings.clone();
@@ -1382,10 +1411,26 @@ fn main() {
                         .as_ref()
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_default();
+                    let diff_comments: Vec<settings::SessionComment> = tab
+                        .diff_comments
+                        .iter()
+                        .map(|(&block_index, text)| settings::SessionComment {
+                            block_index,
+                            text: text.clone(),
+                        })
+                        .collect();
                     Some(settings::SessionEntry {
                         left_path: left,
                         right_path: right,
                         base_path: base,
+                        left_encoding: tab.left_encoding.clone(),
+                        right_encoding: tab.right_encoding.clone(),
+                        left_eol: tab.left_eol_type.clone(),
+                        right_eol: tab.right_eol_type.clone(),
+                        tab_width: window.get_opt_tab_width(),
+                        diff_only: false,
+                        diff_status_filter: tab.diff_status_filter,
+                        diff_comments,
                     })
                 })
                 .collect();
