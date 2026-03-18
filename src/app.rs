@@ -5,16 +5,21 @@ use std::time::SystemTime;
 
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
+use crate::archive::{compare_zip_archives, is_zip_bytes, is_zip_path};
 use crate::diff::engine::{DiffOptions, compute_diff_with_options};
 use crate::diff::folder::{FolderCompareOptions, compare_folders_with_options};
 use crate::diff::three_way::{ThreeWayStatus, compute_three_way_diff};
 use crate::encoding::{decode_file, detect_eol, encode_text, is_binary};
+use crate::excel::{compare_excel, is_excel_path};
 use crate::highlight::{detect_file_type, highlight_lines};
 use crate::models::diff_line::DiffResult;
 use crate::models::diff_line::LineStatus;
 use crate::models::folder_item::FileCompareStatus;
 use crate::settings::AppSettings;
-use crate::{DiffLineData, FolderItemData, MainWindow, PluginEntryData, TabData, ThreeWayLineData};
+use crate::{
+    DiffLineData, ExcelCellData, FolderItemData, MainWindow, PluginEntryData, TabData,
+    ThreeWayLineData,
+};
 
 /// Line count threshold above which diff is computed on a background thread
 const ASYNC_DIFF_THRESHOLD: usize = 30_000;
@@ -85,6 +90,10 @@ pub struct TabState {
     pub selection_end: i32,
     /// Folder comparison summary text
     pub folder_summary: String,
+    /// Excel comparison cell diffs
+    pub excel_cells: Vec<ExcelCellData>,
+    /// Excel sheet names for the selector
+    pub excel_sheet_names: Vec<String>,
 }
 
 impl TabState {
@@ -125,6 +134,8 @@ impl TabState {
             selection_start: -1,
             selection_end: -1,
             folder_summary: String::new(),
+            excel_cells: Vec::new(),
+            excel_sheet_names: Vec::new(),
         }
     }
 }
@@ -303,6 +314,20 @@ fn restore_tab(window: &MainWindow, state: &AppState) {
         window.set_folder_summary_text(SharedString::from(&tab.folder_summary));
     }
 
+    if tab.view_mode == 4 {
+        let sheet_model: ModelRc<SharedString> = ModelRc::new(VecModel::from(
+            std::iter::once(SharedString::from(""))
+                .chain(
+                    tab.excel_sheet_names
+                        .iter()
+                        .map(|s| SharedString::from(s.as_str())),
+                )
+                .collect::<Vec<_>>(),
+        ));
+        window.set_excel_cells(ModelRc::new(VecModel::from(tab.excel_cells.clone())));
+        window.set_excel_sheet_names(sheet_model);
+    }
+
     if tab.view_mode == 2 {
         window.set_status_text(SharedString::from("Select files or folders to compare"));
         // Clear path inputs for a fresh open dialog state
@@ -356,6 +381,34 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
 
     let left_bytes = fs::read(&left_path).unwrap_or_default();
     let right_bytes = fs::read(&right_path).unwrap_or_default();
+
+    // ZIP archive comparison
+    if (is_zip_bytes(&left_bytes) || is_zip_path(&left_path))
+        && (is_zip_bytes(&right_bytes) || is_zip_path(&right_path))
+    {
+        run_zip_compare(
+            window,
+            state,
+            &left_bytes,
+            &right_bytes,
+            &left_path,
+            &right_path,
+        );
+        return;
+    }
+
+    // Excel comparison
+    if is_excel_path(&left_path) && is_excel_path(&right_path) {
+        run_excel_compare(
+            window,
+            state,
+            &left_bytes,
+            &right_bytes,
+            &left_path,
+            &right_path,
+        );
+        return;
+    }
 
     // Binary file detection
     if is_binary(&left_bytes) || is_binary(&right_bytes) {
@@ -2771,6 +2824,176 @@ pub fn reorder_tab(window: &MainWindow, state: &mut AppState, from: usize, to: u
     } else if from > state.active_tab && to <= state.active_tab {
         state.active_tab += 1;
     }
+    sync_tab_list(window, state);
+}
+
+fn run_zip_compare(
+    window: &MainWindow,
+    state: &mut AppState,
+    left_bytes: &[u8],
+    right_bytes: &[u8],
+    left_path: &std::path::Path,
+    right_path: &std::path::Path,
+) {
+    let left_str = left_path.to_string_lossy();
+    let right_str = right_path.to_string_lossy();
+    let items = compare_zip_archives(left_bytes, right_bytes, &left_str, &right_str);
+
+    let folder_item_data: Vec<FolderItemData> = items
+        .iter()
+        .map(|item| {
+            let status: i32 = match item.status {
+                crate::models::folder_item::FileCompareStatus::Identical => 0,
+                crate::models::folder_item::FileCompareStatus::Different => 1,
+                crate::models::folder_item::FileCompareStatus::LeftOnly => 2,
+                crate::models::folder_item::FileCompareStatus::RightOnly => 3,
+            };
+            let depth = item.relative_path.chars().filter(|&c| c == '/').count() as i32;
+            FolderItemData {
+                relative_path: SharedString::from(&item.relative_path),
+                is_directory: item.is_directory,
+                status,
+                left_size: item
+                    .left_size
+                    .map(|s| SharedString::from(format_size(s)))
+                    .unwrap_or_default(),
+                right_size: item
+                    .right_size
+                    .map(|s| SharedString::from(format_size(s)))
+                    .unwrap_or_default(),
+                left_modified: item
+                    .left_modified
+                    .as_ref()
+                    .map(|s| SharedString::from(s.as_str()))
+                    .unwrap_or_default(),
+                right_modified: item
+                    .right_modified
+                    .as_ref()
+                    .map(|s| SharedString::from(s.as_str()))
+                    .unwrap_or_default(),
+                depth,
+            }
+        })
+        .collect();
+
+    let identical = items
+        .iter()
+        .filter(|i| i.status == crate::models::folder_item::FileCompareStatus::Identical)
+        .count();
+    let different = items
+        .iter()
+        .filter(|i| i.status == crate::models::folder_item::FileCompareStatus::Different)
+        .count();
+    let left_only = items
+        .iter()
+        .filter(|i| i.status == crate::models::folder_item::FileCompareStatus::LeftOnly)
+        .count();
+    let right_only = items
+        .iter()
+        .filter(|i| i.status == crate::models::folder_item::FileCompareStatus::RightOnly)
+        .count();
+
+    let left_name = left_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let right_name = right_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let summary = format!(
+        "Identical: {} | Different: {} | Left only: {} | Right only: {} | Total: {}",
+        identical,
+        different,
+        left_only,
+        right_only,
+        items.len()
+    );
+
+    let tab = state.current_tab_mut();
+    tab.folder_items = items;
+    tab.folder_item_data = folder_item_data.clone();
+    tab.view_mode = 1;
+    tab.title = format!("{} ↔ {}", left_name, right_name);
+    tab.folder_summary = summary.clone();
+
+    let model = ModelRc::new(VecModel::from(folder_item_data));
+    window.set_folder_items(model);
+    window.set_view_mode(1);
+    window.set_folder_summary_text(SharedString::from(&summary));
+    window.set_status_text(SharedString::from(format!(
+        "[ZIP] {} ↔ {} — {}",
+        left_name, right_name, summary
+    )));
+    window.set_left_path(SharedString::from(left_path.to_string_lossy().to_string()));
+    window.set_right_path(SharedString::from(right_path.to_string_lossy().to_string()));
+    sync_tab_list(window, state);
+}
+
+fn run_excel_compare(
+    window: &MainWindow,
+    state: &mut AppState,
+    left_bytes: &[u8],
+    right_bytes: &[u8],
+    left_path: &std::path::Path,
+    right_path: &std::path::Path,
+) {
+    let diffs = compare_excel(left_bytes, right_bytes);
+
+    // Collect unique sheet names (preserve order via BTreeSet for determinism)
+    let mut sheet_set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for d in &diffs {
+        sheet_set.insert(d.sheet.clone());
+    }
+    let sheet_names: Vec<String> = sheet_set.into_iter().collect();
+
+    let cell_data: Vec<ExcelCellData> = diffs
+        .iter()
+        .map(|d| ExcelCellData {
+            sheet_name: SharedString::from(&d.sheet),
+            row: d.row as i32,
+            col_name: SharedString::from(&d.col_name),
+            left_value: SharedString::from(&d.left_value),
+            right_value: SharedString::from(&d.right_value),
+            status: d.status,
+        })
+        .collect();
+
+    let left_name = left_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let right_name = right_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let diff_count = diffs.len();
+
+    let tab = state.current_tab_mut();
+    tab.excel_cells = cell_data.clone();
+    tab.excel_sheet_names = sheet_names.clone();
+    tab.view_mode = 4;
+    tab.title = format!("{} ↔ {}", left_name, right_name);
+
+    // Prepend empty string so user can select "All sheets"
+    let sheet_model: ModelRc<SharedString> = ModelRc::new(VecModel::from(
+        std::iter::once(SharedString::from(""))
+            .chain(sheet_names.iter().map(|s| SharedString::from(s.as_str())))
+            .collect::<Vec<_>>(),
+    ));
+
+    window.set_excel_cells(ModelRc::new(VecModel::from(cell_data)));
+    window.set_excel_sheet_names(sheet_model);
+    window.set_excel_active_sheet(SharedString::from(""));
+    window.set_view_mode(4);
+    window.set_left_path(SharedString::from(left_path.to_string_lossy().to_string()));
+    window.set_right_path(SharedString::from(right_path.to_string_lossy().to_string()));
+    window.set_status_text(SharedString::from(format!(
+        "[Excel] {} ↔ {} — {} cells changed",
+        left_name, right_name, diff_count
+    )));
     sync_tab_list(window, state);
 }
 
