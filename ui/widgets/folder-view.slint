@@ -119,6 +119,8 @@ export component FolderView inherits Rectangle {
     in property <[FolderItemData]> items;
     in-out property <int> selected-index: -1;
     in property <bool> context-menu-enabled: true;
+    // 0=All, 1=Identical, 2=Different, 3=LeftOnly, 4=RightOnly
+    in-out property <int> folder-status-filter: 0;
 
     callback item-double-clicked(int);
     callback copy-to-right(int);
@@ -133,6 +135,36 @@ export component FolderView inherits Rectangle {
     border-width: 1px;
 
     VerticalLayout {
+        // Filter bar
+        Rectangle {
+            height: 28px;
+            background: Palette.background.darker(0.03);
+            border-color: Palette.border;
+            border-width: 1px;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                spacing: 4px;
+                alignment: start;
+                Text {
+                    text: @tr("Filter:");
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    color: Palette.foreground.transparentize(0.3);
+                }
+                for flabel[fi] in [@tr("All"), @tr("Identical"), @tr("Different"), @tr("Left only"), @tr("Right only")] : Rectangle {
+                    width: 72px;
+                    height: 20px;
+                    border-radius: 3px;
+                    border-width: 1px;
+                    border-color: root.folder-status-filter == fi ? Palette.accent-background : Palette.border;
+                    background: root.folder-status-filter == fi ? Palette.accent-background.transparentize(0.5) : transparent;
+                    TouchArea { clicked => { root.folder-status-filter = fi; } }
+                    Text { text: flabel; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                }
+            }
+        }
+
         // Column header
         Rectangle {
             height: 28px;
@@ -200,7 +232,8 @@ export component FolderView inherits Rectangle {
         // Items
         if root.context-menu-enabled : ListView {
             for item[idx] in items: Rectangle {
-                height: 24px;
+                height: (root.folder-status-filter == 0 || item.status == root.folder-status-filter - 1) ? 24px : 0px;
+                clip: true;
 
                 ContextMenuArea {
                     Menu {
@@ -224,11 +257,16 @@ export component FolderView inherits Rectangle {
         }
 
         if !root.context-menu-enabled : ListView {
-            for item[idx] in items: FolderItemRow {
-                item: item;
-                selected: idx == root.selected-index;
-                clicked => { root.selected-index = idx; root.item-preview(idx); }
-                double-clicked => { root.item-double-clicked(idx); }
+            for item[idx] in items: Rectangle {
+                height: (root.folder-status-filter == 0 || item.status == root.folder-status-filter - 1) ? 24px : 0px;
+                clip: true;
+
+                FolderItemRow {
+                    item: item;
+                    selected: idx == root.selected-index;
+                    clicked => { root.selected-index = idx; root.item-preview(idx); }
+                    double-clicked => { root.item-double-clicked(idx); }
+                }
             }
         }
     }

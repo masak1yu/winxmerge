@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!--
+    Draft A-v2: "Diff Panels — Bold"
+    差分ラインを太く・本数を絞り小サイズで視認しやすく。
+    赤パネル(左/削除) / 緑パネル(右/追加) の構造は維持。
+  -->
+  <defs>
+    <linearGradient id="bgA2" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0%" stop-color="#1b2838"/>
+      <stop offset="100%" stop-color="#111820"/>
+    </linearGradient>
+  </defs>
+
+  <!-- App background -->
+  <rect width="512" height="512" rx="88" ry="88" fill="url(#bgA2)"/>
+
+  <!-- ===== LEFT PANEL ===== -->
+  <rect x="36" y="72" width="196" height="368" rx="18" fill="#1e1e2e"/>
+
+  <!-- Red header -->
+  <rect x="36" y="72" width="196" height="52" rx="18" fill="#d63031"/>
+  <rect x="36" y="104" width="196" height="20" fill="#d63031"/>
+  <!-- Header label dots -->
+  <circle cx="68"  cy="98" r="8" fill="#ff7675" opacity="0.8"/>
+  <circle cx="96"  cy="98" r="8" fill="#ff7675" opacity="0.5"/>
+  <circle cx="124" cy="98" r="8" fill="#ff7675" opacity="0.3"/>
+
+  <!-- Left diff lines (4 lines: 2 removed, 2 context) -->
+  <!-- context -->
+  <rect x="56" y="148" width="156" height="16" rx="8" fill="#3a3a55" opacity="0.9"/>
+  <!-- removed -->
+  <rect x="48" y="178" width="172" height="20" rx="8" fill="#c0392b" opacity="0.9"/>
+  <rect x="48" y="212" width="140" height="20" rx="8" fill="#c0392b" opacity="0.9"/>
+  <!-- context -->
+  <rect x="56" y="246" width="156" height="16" rx="8" fill="#3a3a55" opacity="0.9"/>
+  <!-- removed -->
+  <rect x="48" y="276" width="160" height="20" rx="8" fill="#c0392b" opacity="0.9"/>
+  <!-- context -->
+  <rect x="56" y="310" width="120" height="16" rx="8" fill="#3a3a55" opacity="0.9"/>
+  <rect x="56" y="340" width="148" height="16" rx="8" fill="#3a3a55" opacity="0.9"/>
+  <!-- removed -->
+  <rect x="48" y="370" width="172" height="20" rx="8" fill="#c0392b" opacity="0.9"/>
+
+  <!-- ===== CENTER DIVIDER + ARROWS ===== -->
+  <rect x="242" y="72" width="28" height="368" rx="14" fill="#252535"/>
+  <!-- Up arrow (copy right) -->
+  <polygon points="256,192 238,224 274,224" fill="#6c7a89" opacity="0.9"/>
+  <!-- Down arrow (copy left) -->
+  <polygon points="256,320 238,288 274,288" fill="#6c7a89" opacity="0.9"/>
+
+  <!-- ===== RIGHT PANEL ===== -->
+  <rect x="280" y="72" width="196" height="368" rx="18" fill="#1e1e2e"/>
+
+  <!-- Green header -->
+  <rect x="280" y="72" width="196" height="52" rx="18" fill="#00b894"/>
+  <rect x="280" y="104" width="196" height="20" fill="#00b894"/>
+  <!-- Header label dots -->
+  <circle cx="312" cy="98" r="8" fill="#55efc4" opacity="0.8"/>
+  <circle cx="340" cy="98" r="8" fill="#55efc4" opacity="0.5"/>
+  <circle cx="368" cy="98" r="8" fill="#55efc4" opacity="0.3"/>
+
+  <!-- Right diff lines (4 lines: 2 added, 2 context) -->
+  <!-- context -->
+  <rect x="300" y="148" width="156" height="16" rx="8" fill="#3a3a55" opacity="0.9"/>
+  <!-- added -->
+  <rect x="292" y="178" width="172" height="20" rx="8" fill="#00a884" opacity="0.9"/>
+  <rect x="292" y="212" width="148" height="20" rx="8" fill="#00a884" opacity="0.9"/>
+  <!-- context -->
+  <rect x="300" y="246" width="156" height="16" rx="8" fill="#3a3a55" opacity="0.9"/>
+  <!-- added -->
+  <rect x="292" y="276" width="164" height="20" rx="8" fill="#00a884" opacity="0.9"/>
+  <!-- context -->
+  <rect x="300" y="310" width="120" height="16" rx="8" fill="#3a3a55" opacity="0.9"/>
+  <rect x="300" y="340" width="148" height="16" rx="8" fill="#3a3a55" opacity="0.9"/>
+  <!-- added -->
+  <rect x="292" y="370" width="172" height="20" rx="8" fill="#00a884" opacity="0.9"/>
+</svg>

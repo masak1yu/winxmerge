@@ -6,6 +6,7 @@ import { TabBar, TabData } from "widgets/tab-bar.slint";
 import { OpenDialog, RecentEntryData } from "dialogs/open-dialog.slint";
 import { OptionsDialog } from "dialogs/options-dialog.slint";
 import { FileBrowserDialog, FileEntryData } from "dialogs/file-browser.slint";
+import { ShortcutsDialog } from "dialogs/shortcuts-dialog.slint";
 import { ThemeColors } from "theme.slint";
 import { ExcelView, ExcelCellData } from "widgets/excel-view.slint";
 import { ImageView } from "widgets/image-view.slint";
@@ -139,6 +140,7 @@ component ConfirmDialog inherits Rectangle {
 export component MainWindow inherits Window {
     in-out property <string> window-title: "WinXMerge";
     title: window-title;
+    icon: @image-url("../assets/icons/app-icon-256.png");
     width: 1200px;
     height: 800px;
 
@@ -365,6 +367,13 @@ export component MainWindow inherits Window {
 
     // Persistent diff stats display
     in-out property <string> diff-stats-text: "";
+    in property <int> diff-stats-added: 0;
+    in property <int> diff-stats-removed: 0;
+    in property <int> diff-stats-modified: 0;
+
+    // Shortcuts dialog
+    in-out property <bool> show-shortcuts-dialog: false;
+    callback shortcuts-dialog-close();
 
     // Folder comparison summary
     in-out property <string> folder-summary-text: "";
@@ -381,6 +390,9 @@ export component MainWindow inherits Window {
     // Diff status filter (0=All, 1=Added, 2=Removed, 3=Modified, 4=Moved)
     in-out property <int> diff-status-filter: 0;
     callback diff-filter-changed(int);
+
+    // Folder status filter (0=All, 1=Identical, 2=Different, 3=LeftOnly, 4=RightOnly)
+    in-out property <int> folder-status-filter: 0;
 
     // Clipboard paste path callbacks
     callback paste-left-path();
@@ -562,6 +574,10 @@ export component MainWindow inherits Window {
                 title: @tr("(No plugins configured)");
                 enabled: false;
             }
+        }
+        Menu {
+            title: @tr("Help");
+            MenuItem { title: @tr("Keyboard Shortcuts"); activated => { root.show-shortcuts-dialog = true; } }
         }
     }
 
@@ -874,6 +890,7 @@ export component MainWindow inherits Window {
             items: root.folder-items;
             selected-index: root.folder-selected-index;
             context-menu-enabled: root.opt-enable-context-menu;
+            folder-status-filter <=> root.folder-status-filter;
             item-double-clicked(idx) => { root.folder-item-double-clicked(idx); }
             copy-to-right(idx) => { root.folder-copy-to-right(idx); }
             copy-to-left(idx) => { root.folder-copy-to-left(idx); }
@@ -1157,6 +1174,34 @@ export component MainWindow inherits Window {
                     font-size: 11px;
                     color: Palette.foreground.transparentize(0.3);
                     vertical-alignment: center;
+                }
+
+                // Mini diff stats bar graph
+                if root.diff-stats-added + root.diff-stats-removed + root.diff-stats-modified > 0 : HorizontalLayout {
+                    spacing: 2px;
+                    width: 120px;
+                    alignment: center;
+                    // Green bar (added)
+                    if root.diff-stats-added > 0 : Rectangle {
+                        height: 12px;
+                        horizontal-stretch: root.diff-stats-added;
+                        background: #22863a;
+                        border-radius: 2px;
+                    }
+                    // Red bar (removed)
+                    if root.diff-stats-removed > 0 : Rectangle {
+                        height: 12px;
+                        horizontal-stretch: root.diff-stats-removed;
+                        background: #cb2431;
+                        border-radius: 2px;
+                    }
+                    // Yellow bar (modified)
+                    if root.diff-stats-modified > 0 : Rectangle {
+                        height: 12px;
+                        horizontal-stretch: root.diff-stats-modified;
+                        background: #b08800;
+                        border-radius: 2px;
+                    }
                 }
 
                 if root.left-eol-type != "" : Text {
@@ -1455,5 +1500,13 @@ export component MainWindow inherits Window {
             root.show-confirm-dialog = false;
             root.pending-action = 0;
         }
+    }
+
+    // Keyboard shortcuts dialog
+    ShortcutsDialog {
+        width: root.width;
+        height: root.height;
+        visible-dialog: root.show-shortcuts-dialog;
+        close => { root.shortcuts-dialog-close(); }
     }
 }
