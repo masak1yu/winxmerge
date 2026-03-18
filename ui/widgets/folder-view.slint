@@ -124,6 +124,7 @@ export component FolderView inherits Rectangle {
     callback copy-to-right(int);
     callback copy-to-left(int);
     callback delete-item(int);
+    callback item-preview(int);
 
     accessible-role: list;
     accessible-label: "Folder comparison results";
@@ -216,7 +217,7 @@ export component FolderView inherits Rectangle {
                 FolderItemRow {
                     item: item;
                     selected: idx == root.selected-index;
-                    clicked => { root.selected-index = idx; }
+                    clicked => { root.selected-index = idx; root.item-preview(idx); }
                     double-clicked => { root.item-double-clicked(idx); }
                 }
             }
@@ -226,7 +227,7 @@ export component FolderView inherits Rectangle {
             for item[idx] in items: FolderItemRow {
                 item: item;
                 selected: idx == root.selected-index;
-                clicked => { root.selected-index = idx; }
+                clicked => { root.selected-index = idx; root.item-preview(idx); }
                 double-clicked => { root.item-double-clicked(idx); }
             }
         }
