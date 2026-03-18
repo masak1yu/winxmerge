@@ -34,6 +34,8 @@ export component OptionsDialog inherits Rectangle {
 
     // Folder exclude patterns
     in-out property <string> opt-folder-exclude-patterns: "";
+    // Folder max recursion depth (0 = unlimited)
+    in-out property <int> opt-folder-max-depth: 0;
 
     // Plugin management (pipe-separated "name:command" pairs)
     in-out property <string> opt-plugin-list: "";
@@ -219,6 +221,18 @@ export component OptionsDialog inherits Rectangle {
                 LineEdit {
                     text <=> root.opt-folder-exclude-patterns;
                     placeholder-text: @tr("e.g. *.log;build/;node_modules");
+                }
+                Text {
+                    text: @tr("Folder max depth (0 = unlimited):");
+                    font-size: 12px;
+                    color: Palette.foreground.transparentize(0.3);
+                }
+                LineEdit {
+                    text: "\{root.opt-folder-max-depth}";
+                    placeholder-text: "0";
+                    edited(v) => {
+                        root.opt-folder-max-depth = v.to-float() >= 0 ? Math.round(v.to-float()) : 0;
+                    }
                 }
 
                 Rectangle { height: 8px; }

@@ -1,6 +1,12 @@
 use chardetng::EncodingDetector;
 use encoding_rs::Encoding;
 
+/// Return true if the byte slice looks like binary (contains null bytes in first 8KB).
+pub fn is_binary(data: &[u8]) -> bool {
+    let check = &data[..data.len().min(8192)];
+    check.contains(&0u8)
+}
+
 /// Detect encoding of raw bytes and decode to String.
 /// Returns (decoded_text, encoding_name).
 pub fn decode_file(bytes: &[u8]) -> (String, &'static str) {

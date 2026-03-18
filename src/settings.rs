@@ -79,6 +79,18 @@ pub struct AppSettings {
 
     #[serde(default)]
     pub recent_files: Vec<RecentEntry>,
+
+    // Session: tabs to restore on next launch
+    #[serde(default)]
+    pub session: Vec<SessionEntry>,
+
+    // Diff-only mode: hide equal lines
+    #[serde(default)]
+    pub diff_only: bool,
+
+    // Folder max recursion depth (0 = unlimited)
+    #[serde(default)]
+    pub folder_max_depth: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +110,14 @@ pub struct RecentEntry {
     pub left_path: String,
     pub right_path: String,
     pub is_folder: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionEntry {
+    pub left_path: String,
+    pub right_path: String,
+    #[serde(default)]
+    pub base_path: String,
 }
 
 fn default_width() -> f32 {
@@ -151,6 +171,9 @@ impl Default for AppSettings {
             show_word_diff: true,
             show_detail_pane: true,
             recent_files: Vec::new(),
+            session: Vec::new(),
+            diff_only: false,
+            folder_max_depth: 0,
         }
     }
 }
