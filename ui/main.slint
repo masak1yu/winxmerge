@@ -8,6 +8,11 @@ import { OptionsDialog } from "dialogs/options-dialog.slint";
 import { FileBrowserDialog, FileEntryData } from "dialogs/file-browser.slint";
 import { ThemeColors } from "theme.slint";
 
+export struct PluginEntryData {
+    name: string,
+    command: string,
+}
+
 export { DiffLineData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors, FileEntryData }
 
 // Toolbar icon button: fixed 32x32 with image icon + optional overlay text
@@ -193,9 +198,10 @@ export component MainWindow inherits Window {
     // Diff detail pane: shows current diff block content
     in-out property <string> detail-left-text: "";
     in-out property <string> detail-right-text: "";
-    in-out property <string> detail-left-highlights: ""; // pipe-separated char indices of changed chars
+    in-out property <string> detail-left-highlights: ""; // word-diff string for detail pane (pipe-separated segments)
     in-out property <string> detail-right-highlights: "";
     in-out property <bool> show-detail-pane: true;
+    in-out property <length> detail-pane-height: 120px;
     in-out property <bool> show-location-pane: true;
     in-out property <bool> show-word-diff: true;
 
@@ -234,6 +240,7 @@ export component MainWindow inherits Window {
     callback redo();
     callback export-html();
     callback export-patch();
+    callback print-diff();
     callback copy-left-text();
     callback copy-right-text();
     callback copy-all-left();
@@ -325,8 +332,10 @@ export component MainWindow inherits Window {
     // Inline editing
     in-out property <bool> opt-inline-edit: true;
 
-    // Plugin list (pipe-separated "name:command" pairs)
+    // Plugin list (pipe-separated "name:command" pairs, for options dialog)
     in-out property <string> plugin-list: "";
+    // Plugin model for dynamic menu generation
+    in property <[PluginEntryData]> plugins;
 
     // Theme: 0=Light, 1=Dark
     in-out property <int> opt-theme: 0;
@@ -373,6 +382,8 @@ export component MainWindow inherits Window {
             MenuItem { title: @tr("Open Right in Editor"); enabled: root.right-path != ""; activated => { root.open-right-in-editor(); } }
             MenuSeparator {}
             MenuItem { title: @tr("Rescan (F5)"); activated => { root.rescan(); } }
+            MenuSeparator {}
+            MenuItem { title: @tr("Print..."); enabled: root.diff-count > 0; activated => { root.print-diff(); } }
             MenuSeparator {}
             MenuItem { title: @tr("Export HTML Report..."); enabled: root.diff-count > 0; activated => { root.export-html(); } }
             MenuItem { title: @tr("Export Patch (Unified Diff)..."); enabled: root.diff-count > 0; activated => { root.export-patch(); } }
@@ -447,7 +458,14 @@ export component MainWindow inherits Window {
         }
         Menu {
             title: @tr("Plugins");
-            MenuItem { title: @tr("Run Plugin Command..."); enabled: root.plugin-list != ""; activated => { root.run-plugin(root.plugin-list); } }
+            for plugin in root.plugins : MenuItem {
+                title: plugin.name;
+                activated => { root.run-plugin(plugin.command); }
+            }
+            if root.plugins.length == 0 : MenuItem {
+                title: @tr("(No plugins configured)");
+                enabled: false;
+            }
         }
     }
 
@@ -692,6 +710,7 @@ export component MainWindow inherits Window {
             show-line-numbers: root.opt-show-line-numbers;
             show-location-pane: root.show-location-pane;
             show-word-diff: root.show-word-diff;
+            word-wrap-mode: root.opt-word-wrap;
             editor-font-size: root.opt-font-size;
             editor-tab-width: root.opt-tab-width;
             copy-to-right(idx) => { root.copy-to-right(idx); }
@@ -730,9 +749,39 @@ export component MainWindow inherits Window {
             use-right(idx) => { root.use-right(idx); }
         }
 
+        // Diff detail pane resize handle
+        if root.show-detail-pane && root.view-mode == 0 && root.current-diff-index >= 0 : Rectangle {
+            height: 5px;
+            background: transparent;
+
+            Rectangle {
+                y: 2px;
+                height: 1px;
+                background: Palette.border;
+            }
+
+            TouchArea {
+                property <length> drag-start-y;
+                property <length> drag-start-height;
+                moved => {
+                    root.detail-pane-height = Math.clamp(
+                        drag-start-height - (self.mouse-y - drag-start-y),
+                        60px,
+                        400px
+                    );
+                }
+                pointer-event(ev) => {
+                    if ev.kind == PointerEventKind.down {
+                        drag-start-y = self.mouse-y;
+                        drag-start-height = root.detail-pane-height;
+                    }
+                }
+            }
+        }
+
         // Diff detail pane (top=left/removed, bottom=right/added)
         if root.show-detail-pane && root.view-mode == 0 && root.current-diff-index >= 0 : Rectangle {
-            height: 120px;
+            height: root.detail-pane-height;
             background: Palette.background;
             border-color: Palette.border;
             border-width: 1px;
@@ -759,11 +808,21 @@ export component MainWindow inherits Window {
                                 color: Palette.foreground.transparentize(0.4);
                                 vertical-alignment: top;
                             }
-                            Text {
-                                text: root.detail-left-text;
-                                font-size: 12px;
-                                font-family: "monospace";
-                                color: Palette.foreground;
+                            VerticalLayout {
+                                spacing: 0;
+                                alignment: start;
+                                Text {
+                                    text: root.detail-left-text;
+                                    font-size: 12px;
+                                    font-family: "monospace";
+                                    color: Palette.foreground;
+                                }
+                                if root.show-word-diff && root.detail-left-highlights != "" : Text {
+                                    text: root.detail-left-highlights;
+                                    font-size: 10px;
+                                    font-family: "monospace";
+                                    color: ThemeColors.removed-fg;
+                                }
                             }
                         }
                     }
@@ -788,11 +847,21 @@ export component MainWindow inherits Window {
                                 color: Palette.foreground.transparentize(0.4);
                                 vertical-alignment: top;
                             }
-                            Text {
-                                text: root.detail-right-text;
-                                font-size: 12px;
-                                font-family: "monospace";
-                                color: Palette.foreground;
+                            VerticalLayout {
+                                spacing: 0;
+                                alignment: start;
+                                Text {
+                                    text: root.detail-right-text;
+                                    font-size: 12px;
+                                    font-family: "monospace";
+                                    color: Palette.foreground;
+                                }
+                                if root.show-word-diff && root.detail-right-highlights != "" : Text {
+                                    text: root.detail-right-highlights;
+                                    font-size: 10px;
+                                    font-family: "monospace";
+                                    color: ThemeColors.added-fg;
+                                }
                             }
                         }
                     }

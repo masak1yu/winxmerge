@@ -12,7 +12,7 @@ use crate::highlight::{detect_file_type, highlight_lines};
 use crate::models::diff_line::LineStatus;
 use crate::models::folder_item::FileCompareStatus;
 use crate::settings::AppSettings;
-use crate::{DiffLineData, FolderItemData, MainWindow, TabData, ThreeWayLineData};
+use crate::{DiffLineData, FolderItemData, MainWindow, PluginEntryData, TabData, ThreeWayLineData};
 
 /// Snapshot for undo/redo
 #[derive(Clone)]
@@ -350,6 +350,7 @@ pub fn recompute_diff_from_text_with_highlights(
 ) {
     let tab = state.current_tab_mut();
     let result = compute_diff_with_options(left_text, right_text, &tab.diff_options);
+    let tab_width = window.get_opt_tab_width().max(1) as usize;
 
     tab.left_lines = left_text.lines().map(String::from).collect();
     tab.right_lines = right_text.lines().map(String::from).collect();
@@ -433,8 +434,8 @@ pub fn recompute_diff_from_text_with_highlights(
                     .right_line_no
                     .map(|n| SharedString::from(n.to_string()))
                     .unwrap_or_default(),
-                left_text: SharedString::from(&line.left_text),
-                right_text: SharedString::from(&line.right_text),
+                left_text: SharedString::from(expand_tabs(&line.left_text, tab_width)),
+                right_text: SharedString::from(expand_tabs(&line.right_text, tab_width)),
                 status,
                 is_current_diff: false,
                 diff_index,
@@ -669,6 +670,8 @@ fn update_detail_pane(
     if diff_index < 0 || diff_index as usize >= tab.diff_positions.len() {
         window.set_detail_left_text(SharedString::default());
         window.set_detail_right_text(SharedString::default());
+        window.set_detail_left_highlights(SharedString::default());
+        window.set_detail_right_highlights(SharedString::default());
         return;
     }
 
@@ -680,6 +683,8 @@ fn update_detail_pane(
     // Collect all lines belonging to this diff block
     let mut left_lines = Vec::new();
     let mut right_lines = Vec::new();
+    let mut left_word_diffs = Vec::new();
+    let mut right_word_diffs = Vec::new();
     for i in 0..vec_model.row_count() {
         let row = vec_model.row_data(i).unwrap();
         if row.diff_index == diff_index {
@@ -687,15 +692,25 @@ fn update_detail_pane(
             let rt = row.right_text.to_string();
             if !lt.is_empty() {
                 left_lines.push(lt);
+                let wd = row.left_word_diff.to_string();
+                if !wd.is_empty() {
+                    left_word_diffs.push(wd);
+                }
             }
             if !rt.is_empty() {
                 right_lines.push(rt);
+                let wd = row.right_word_diff.to_string();
+                if !wd.is_empty() {
+                    right_word_diffs.push(wd);
+                }
             }
         }
     }
 
     window.set_detail_left_text(SharedString::from(left_lines.join("\n")));
     window.set_detail_right_text(SharedString::from(right_lines.join("\n")));
+    window.set_detail_left_highlights(SharedString::from(left_word_diffs.join("\n")));
+    window.set_detail_right_highlights(SharedString::from(right_word_diffs.join("\n")));
 }
 
 fn push_undo_snapshot(state: &mut AppState, vec_model: &VecModel<DiffLineData>) {
@@ -829,6 +844,14 @@ pub fn copy_to_left(window: &MainWindow, state: &mut AppState, diff_index: i32) 
     window.set_can_undo(true);
     window.set_can_redo(false);
     sync_tab_list(window, state);
+}
+
+fn expand_tabs(text: &str, tab_width: usize) -> String {
+    if !text.contains('\t') {
+        return text.to_string();
+    }
+    let spaces = " ".repeat(tab_width);
+    text.replace('\t', &spaces)
 }
 
 fn rebuild_left(vec_model: &VecModel<DiffLineData>) -> String {
@@ -1088,6 +1111,41 @@ pub fn export_html_report(window: &MainWindow, state: &AppState) {
     }
 }
 
+pub fn print_diff(window: &MainWindow, state: &AppState) {
+    let tab = state.current_tab();
+    let left_text = tab.left_lines.join("\n") + "\n";
+    let right_text = tab.right_lines.join("\n") + "\n";
+    let result = compute_diff_with_options(&left_text, &right_text, &tab.diff_options);
+
+    let left_title = tab
+        .left_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Left".to_string());
+    let right_title = tab
+        .right_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Right".to_string());
+
+    let html = crate::export::export_html_for_print(&result, &left_title, &right_title);
+
+    // Write to a temp file and open in default browser
+    let tmp = std::env::temp_dir().join("winxmerge-print.html");
+    match fs::write(&tmp, &html) {
+        Ok(_) => {
+            if let Err(e) = open::that_detached(&tmp) {
+                window.set_status_text(SharedString::from(format!("Print error: {}", e)));
+            } else {
+                window.set_status_text(SharedString::from("Opened in browser for printing"));
+            }
+        }
+        Err(e) => {
+            window.set_status_text(SharedString::from(format!("Print error: {}", e)));
+        }
+    }
+}
+
 pub fn export_patch(window: &MainWindow, state: &AppState) {
     let tab = state.current_tab();
 
@@ -1244,6 +1302,17 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
         .collect();
 
     settings.save();
+
+    // Rebuild plugin model for dynamic menu
+    let plugin_entries: Vec<PluginEntryData> = settings
+        .plugins
+        .iter()
+        .map(|p| PluginEntryData {
+            name: SharedString::from(&p.name),
+            command: SharedString::from(&p.command),
+        })
+        .collect();
+    window.set_plugins(ModelRc::new(VecModel::from(plugin_entries)));
 
     // Apply diff options to current tab and re-run
     let tab = state.current_tab_mut();

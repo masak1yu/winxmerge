@@ -17,11 +17,11 @@ use app::{
     copy_right_and_next, copy_to_left, copy_to_right, discard_and_proceed, edit_line,
     export_html_report, export_patch, first_diff, folder_copy_to_left, folder_copy_to_right,
     folder_delete_item, goto_line, last_diff, navigate_bookmark, navigate_conflict, navigate_diff,
-    navigate_search, open_file_dialog, open_folder_dialog, open_folder_item, open_in_editor, redo,
-    replace_all_text, replace_text, rescan, resolve_conflict_use_left, resolve_conflict_use_right,
-    run_diff, run_folder_compare, run_plugin, save_file, search_text, select_diff, start_compare,
-    start_three_way_compare, switch_tab, toggle_bookmark, toggle_ignore_case,
-    toggle_ignore_whitespace, undo,
+    navigate_search, open_file_dialog, open_folder_dialog, open_folder_item, open_in_editor,
+    print_diff, redo, replace_all_text, replace_text, rescan, resolve_conflict_use_left,
+    resolve_conflict_use_right, run_diff, run_folder_compare, run_plugin, save_file, search_text,
+    select_diff, start_compare, start_three_way_compare, switch_tab, toggle_bookmark,
+    toggle_ignore_case, toggle_ignore_whitespace, undo,
 };
 use slint::{ModelRc, SharedString, VecModel};
 
@@ -86,13 +86,23 @@ fn main() {
         window.set_show_location_pane(s.show_location_pane);
         window.set_show_word_diff(s.show_word_diff);
         window.set_show_detail_pane(s.show_detail_pane);
-        // Load plugin list as pipe-separated "name:command" pairs
+        // Load plugin list as pipe-separated "name:command" pairs (for options dialog)
         let plugin_str: Vec<String> = s
             .plugins
             .iter()
             .map(|p| format!("{}:{}", p.name, p.command))
             .collect();
         window.set_plugin_list(SharedString::from(plugin_str.join("|")));
+        // Build plugin model for dynamic menu
+        let plugin_entries: Vec<PluginEntryData> = s
+            .plugins
+            .iter()
+            .map(|p| PluginEntryData {
+                name: SharedString::from(&p.name),
+                command: SharedString::from(&p.command),
+            })
+            .collect();
+        window.set_plugins(ModelRc::new(VecModel::from(plugin_entries)));
 
         let mut app = state.borrow_mut();
         let tab = app.current_tab_mut();
@@ -829,6 +839,15 @@ fn main() {
         window.on_export_patch(move || {
             let window = window_weak.unwrap();
             export_patch(&window, &state.borrow());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_print_diff(move || {
+            let window = window_weak.unwrap();
+            print_diff(&window, &state.borrow());
         });
     }
 
