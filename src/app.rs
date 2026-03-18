@@ -12,6 +12,7 @@ use crate::diff::three_way::{ThreeWayStatus, compute_three_way_diff};
 use crate::encoding::{decode_file, detect_eol, encode_text, is_binary};
 use crate::excel::{compare_excel, is_excel_path};
 use crate::highlight::{detect_file_type, highlight_lines};
+use crate::image_compare::{compare_images, is_image_path};
 use crate::models::diff_line::DiffResult;
 use crate::models::diff_line::LineStatus;
 use crate::models::folder_item::FileCompareStatus;
@@ -94,6 +95,11 @@ pub struct TabState {
     pub excel_cells: Vec<ExcelCellData>,
     /// Excel sheet names for the selector
     pub excel_sheet_names: Vec<String>,
+    /// Image comparison cached images and stats (view_mode == 5)
+    pub left_image: Option<slint::Image>,
+    pub right_image: Option<slint::Image>,
+    pub diff_image: Option<slint::Image>,
+    pub image_stats: String,
 }
 
 impl TabState {
@@ -136,6 +142,10 @@ impl TabState {
             folder_summary: String::new(),
             excel_cells: Vec::new(),
             excel_sheet_names: Vec::new(),
+            left_image: None,
+            right_image: None,
+            diff_image: None,
+            image_stats: String::new(),
         }
     }
 }
@@ -314,6 +324,19 @@ fn restore_tab(window: &MainWindow, state: &AppState) {
         window.set_folder_summary_text(SharedString::from(&tab.folder_summary));
     }
 
+    if tab.view_mode == 5 {
+        if let Some(img) = tab.left_image.clone() {
+            window.set_left_image(img);
+        }
+        if let Some(img) = tab.right_image.clone() {
+            window.set_right_image(img);
+        }
+        if let Some(img) = tab.diff_image.clone() {
+            window.set_diff_image(img);
+        }
+        window.set_image_stats(SharedString::from(&tab.image_stats));
+    }
+
     if tab.view_mode == 4 {
         let sheet_model: ModelRc<SharedString> = ModelRc::new(VecModel::from(
             std::iter::once(SharedString::from(""))
@@ -400,6 +423,19 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
     // Excel comparison
     if is_excel_path(&left_path) && is_excel_path(&right_path) {
         run_excel_compare(
+            window,
+            state,
+            &left_bytes,
+            &right_bytes,
+            &left_path,
+            &right_path,
+        );
+        return;
+    }
+
+    // Image comparison (must be before binary detection; image files contain non-text bytes)
+    if is_image_path(&left_path) && is_image_path(&right_path) {
+        run_image_compare(
             window,
             state,
             &left_bytes,
@@ -2995,6 +3031,82 @@ fn run_excel_compare(
         left_name, right_name, diff_count
     )));
     sync_tab_list(window, state);
+}
+
+fn rgba_to_slint_image(rgba: &[u8], width: u32, height: u32) -> slint::Image {
+    let mut pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(width, height);
+    pixel_buffer.make_mut_bytes().copy_from_slice(rgba);
+    slint::Image::from_rgba8(pixel_buffer)
+}
+
+fn run_image_compare(
+    window: &MainWindow,
+    state: &mut AppState,
+    left_bytes: &[u8],
+    right_bytes: &[u8],
+    left_path: &std::path::Path,
+    right_path: &std::path::Path,
+) {
+    let left_name = left_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let right_name = right_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    match compare_images(left_bytes, right_bytes) {
+        Err(e) => {
+            window.set_status_text(SharedString::from(format!("Image error: {e}")));
+            sync_tab_list(window, state);
+        }
+        Ok(result) => {
+            let diff_pct = if result.total_pixels > 0 {
+                result.diff_pixels as f64 / result.total_pixels as f64 * 100.0
+            } else {
+                0.0
+            };
+            let stats = format!(
+                "Left: {}×{}  Right: {}×{}  Changed: {} / {} px ({:.2}%)",
+                result.left_width,
+                result.left_height,
+                result.right_width,
+                result.right_height,
+                result.diff_pixels,
+                result.total_pixels,
+                diff_pct,
+            );
+
+            let left_img =
+                rgba_to_slint_image(&result.left_rgba, result.left_width, result.left_height);
+            let right_img =
+                rgba_to_slint_image(&result.right_rgba, result.right_width, result.right_height);
+            let diff_img =
+                rgba_to_slint_image(&result.diff_rgba, result.diff_width, result.diff_height);
+
+            let tab = state.current_tab_mut();
+            tab.view_mode = 5;
+            tab.title = format!("{} ↔ {}", left_name, right_name);
+            tab.image_stats = stats.clone();
+            tab.left_image = Some(left_img.clone());
+            tab.right_image = Some(right_img.clone());
+            tab.diff_image = Some(diff_img.clone());
+
+            window.set_view_mode(5);
+            window.set_left_image(left_img);
+            window.set_right_image(right_img);
+            window.set_diff_image(diff_img);
+            window.set_image_stats(SharedString::from(stats.clone()));
+            window.set_left_path(SharedString::from(left_path.to_string_lossy().to_string()));
+            window.set_right_path(SharedString::from(right_path.to_string_lossy().to_string()));
+            window.set_status_text(SharedString::from(format!(
+                "[Image] {} ↔ {} — {}",
+                left_name, right_name, stats
+            )));
+            sync_tab_list(window, state);
+        }
+    }
 }
 
 fn format_size(bytes: u64) -> String {

@@ -5,6 +5,7 @@ mod encoding;
 mod excel;
 mod export;
 mod highlight;
+mod image_compare;
 mod models;
 mod settings;
 

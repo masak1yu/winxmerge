@@ -7,8 +7,8 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 ## 現在の状態
 
-- **バージョン:** 0.21.0
-- **ブランチ:** `feature/v0.21.0`
+- **バージョン:** 0.22.0
+- **ブランチ:** `feature/v0.22.0`
 - **テスト:** 19件すべてパス
 - **ビルド:** `cargo build` 成功
 - **CI:** GitHub Actions（ubuntu / macOS / Windows）
@@ -37,7 +37,8 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | v0.18.0 | #20 | 差分行のみ表示モード、バイナリファイル検出、検索ハイライト（アンバー色）、セッション復元（前回の全タブを起動時に自動再オープン）、フォルダ比較最大深度設定 |
 | v0.19.0 | #21 | プラグイン非同期実行、差分統計常時表示、エンコーディング/行末文字のステータスバー表示、タブごとのdiffオプション独立化、フォルダ比較サイズ・日付フィルタ |
 | v0.20.0 | #22 | ステータス別差分ナビゲーション、複数行選択+ブロックコピー、CSV/TSVエクスポート+フォルダHTMLレポート、クリップボード比較、タブ並び替え、フォルダ比較サマリー |
-| v0.21.0 | - | ZIPアーカイブ比較（仮想フォルダビューでエントリ差分表示）、Excelファイル比較（テーブルビューでセル差分表示） |
+| v0.21.0 | #23 | ZIPアーカイブ比較（仮想フォルダビューでエントリ差分表示）、Excelファイル比較（テーブルビューでセル差分表示） |
+| v0.22.0 | - | 画像比較（ピクセルレベル差分、左右サイドバイサイド＋差分オーバーレイ表示） |
 
 ## 実装済み機能一覧
 
@@ -241,6 +242,7 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 - **フォルダ比較サイズ/日付フィルタ** — 最小/最大ファイルサイズ、変更日付（YYYY-MM-DD）によるフィルタリング
 - **ZIPアーカイブ比較** — `.zip` ファイルを仮想フォルダとして比較。CRC+サイズ一致チェック、エントリの追加/削除/変更を FolderView に表示
 - **Excelファイル比較** — `.xlsx/.xls/.xlsm/.ods` を calamine で読み込み、セル値を差分比較。変更セルのみを ExcelView（テーブルビュー）に表示、シートセレクタ付き
+- **画像比較** — PNG/JPEG/GIF/BMP/WebP/TIFF/ICO をピクセルレベルで比較（`image` クレート使用）。左右サイドバイサイド＋差分オーバーレイ（変更画素=赤、同一画素=グレースケール）を ImageView（view_mode=5）に表示。変更画素数・率をステータスバーに表示
 
 ## アーキテクチャ
 
@@ -261,6 +263,7 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | `models/folder_item.rs` | FolderItem, FileCompareStatus |
 | `archive.rs` | ZIPアーカイブ比較（magic bytes検出、CRC+サイズベース差分） |
 | `excel.rs` | Excelファイル比較（calamine使用、セル差分抽出） |
+| `image_compare.rs` | 画像比較（image クレート使用、ピクセルレベル差分・RGBA バッファ生成） |
 
 ### Slint UI 側 (ui/)
 
@@ -276,6 +279,7 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | `theme.slint` | テーマカラー定義（ThemeColors グローバル、ライト/ダーク対応） |
 | `dialogs/options-dialog.slint` | オプション設定ダイアログ（テーマ選択含む） |
 | `widgets/excel-view.slint` | Excelセル差分テーブルビュー（シートセレクタ + ListView） |
+| `widgets/image-view.slint` | 画像比較ビュー（左右サイドバイサイド + 差分オーバーレイパネル） |
 
 ### 状態管理の構造
 
@@ -291,7 +295,7 @@ AppState
     ├── undo_stack / redo_stack         # TextSnapshot のスタック
     ├── diff_options                    # 空白/大文字無視
     ├── search_matches                  # 検索結果
-    ├── view_mode                       # 0=diff, 1=folder, 2=open dialog, 3=3-way, 4=excel
+    ├── view_mode                       # 0=diff, 1=folder, 2=open dialog, 3=3-way, 4=excel, 5=image
     ├── diff_line_data                  # UI 表示用キャッシュ
     ├── folder_items / folder_item_data # フォルダ比較結果
     ├── left_encoding / right_encoding  # 検出されたエンコーディング
@@ -323,6 +327,7 @@ AppSettings (永続化)
 - **regex 1** — 行フィルタ・置換フィルタの正規表現
 - **zip 2** — ZIPアーカイブ読み込み・比較
 - **calamine 0.26** — Excel/ODS ファイル読み込み（xlsx, xls, xlsm, ods）
+- **image 0.25** — 画像デコード（PNG, JPEG, GIF, BMP, WebP, TIFF, ICO）
 
 ## 既知の問題・制限
 
@@ -332,12 +337,11 @@ AppSettings (永続化)
 
 ---
 
-## 次にやるべき項目 (v0.22.0+)
+## 次にやるべき項目 (v0.23.0+)
 
-1. **画像比較** — `image` クレートでピクセルレベル差分表示（v0.22.0 候補）
-2. **ドラッグ＆ドロップ** — Slint の D&D サポート待ち
-3. **差分コメント** — 差分ブロックにメモを付ける機能
-4. **比較結果フィルタ** — diff view でステータスを絞り込み表示（差分のみ/追加のみ等）
+1. **ドラッグ＆ドロップ** — Slint の D&D サポート待ち
+2. **差分コメント** — 差分ブロックにメモを付ける機能
+3. **比較結果フィルタ** — diff view でステータスを絞り込み表示（差分のみ/追加のみ等）
 
 ## ビルド・テスト手順
 
