@@ -211,6 +211,19 @@ fn restore_tab(window: &MainWindow, state: &AppState) {
 
     if tab.view_mode == 2 {
         window.set_status_text(SharedString::from("Select files or folders to compare"));
+        // Clear path inputs for a fresh open dialog state
+        window.set_open_left_path_input(SharedString::from(
+            tab.left_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default(),
+        ));
+        window.set_open_right_path_input(SharedString::from(
+            tab.right_path
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default(),
+        ));
     }
 }
 
@@ -1466,7 +1479,11 @@ pub fn start_compare(
     }
 }
 
-pub fn discard_and_proceed(window: &MainWindow, state: &mut AppState) {
+pub fn discard_and_proceed(
+    window: &MainWindow,
+    state: &mut AppState,
+    show_picker: impl Fn(i32, &str),
+) {
     state.current_tab_mut().has_unsaved_changes = false;
     window.set_has_unsaved_changes(false);
 
@@ -1486,6 +1503,8 @@ pub fn discard_and_proceed(window: &MainWindow, state: &mut AppState) {
                 ));
                 window.set_view_mode(0);
                 run_diff(window, state);
+            } else {
+                show_picker(11, "Select left file");
             }
         }
         2 => {
@@ -1500,6 +1519,8 @@ pub fn discard_and_proceed(window: &MainWindow, state: &mut AppState) {
                 ));
                 window.set_view_mode(0);
                 run_diff(window, state);
+            } else {
+                show_picker(12, "Select right file");
             }
         }
         3 => {
@@ -1509,6 +1530,8 @@ pub fn discard_and_proceed(window: &MainWindow, state: &mut AppState) {
                     path.to_string_lossy().to_string(),
                 ));
                 run_folder_compare(window, state);
+            } else {
+                show_picker(13, "Select left folder");
             }
         }
         4 => {
@@ -1518,6 +1541,8 @@ pub fn discard_and_proceed(window: &MainWindow, state: &mut AppState) {
                     path.to_string_lossy().to_string(),
                 ));
                 run_folder_compare(window, state);
+            } else {
+                show_picker(14, "Select right folder");
             }
         }
         5 => {
@@ -2036,20 +2061,42 @@ pub fn run_plugin(window: &MainWindow, state: &AppState, command: &str) {
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    // Replace placeholders in command
     let cmd = command.replace("{LEFT}", &left).replace("{RIGHT}", &right);
 
     #[cfg(target_os = "windows")]
-    let result = std::process::Command::new("cmd").args(["/C", &cmd]).spawn();
+    let result = std::process::Command::new("cmd")
+        .args(["/C", &cmd])
+        .output();
     #[cfg(not(target_os = "windows"))]
-    let result = std::process::Command::new("sh").args(["-c", &cmd]).spawn();
+    let result = std::process::Command::new("sh").args(["-c", &cmd]).output();
 
     match result {
-        Ok(_) => {
-            window.set_status_text(SharedString::from(format!("Plugin executed: {}", command)));
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            let combined = match (stdout.trim().is_empty(), stderr.trim().is_empty()) {
+                (false, false) => format!("{}\n---\n{}", stdout.trim(), stderr.trim()),
+                (false, true) => stdout.trim().to_string(),
+                (true, false) => stderr.trim().to_string(),
+                (true, true) => "(no output)".to_string(),
+            };
+            let title = format!(
+                "Plugin: {} (exit {})",
+                command,
+                output.status.code().unwrap_or(-1)
+            );
+            window.set_plugin_output_title(SharedString::from(title));
+            window.set_plugin_output_text(SharedString::from(combined));
+            window.set_show_plugin_output(true);
+            window.set_status_text(SharedString::from(format!(
+                "Plugin finished: exit {}",
+                output.status.code().unwrap_or(-1)
+            )));
         }
         Err(e) => {
-            window.set_status_text(SharedString::from(format!("Plugin error: {}", e)));
+            window.set_plugin_output_title(SharedString::from(format!("Plugin error")));
+            window.set_plugin_output_text(SharedString::from(e.to_string()));
+            window.set_show_plugin_output(true);
         }
     }
 }

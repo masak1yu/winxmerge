@@ -5,9 +5,10 @@ import { FolderView, FolderItemData } from "widgets/folder-view.slint";
 import { TabBar, TabData } from "widgets/tab-bar.slint";
 import { OpenDialog, RecentEntryData } from "dialogs/open-dialog.slint";
 import { OptionsDialog } from "dialogs/options-dialog.slint";
+import { FileBrowserDialog, FileEntryData } from "dialogs/file-browser.slint";
 import { ThemeColors } from "theme.slint";
 
-export { DiffLineData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors }
+export { DiffLineData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors, FileEntryData }
 
 // Toolbar icon button: fixed 32x32 with image icon + optional overlay text
 component ToolBtn inherits Rectangle {
@@ -195,6 +196,8 @@ export component MainWindow inherits Window {
     in-out property <string> detail-left-highlights: ""; // pipe-separated char indices of changed chars
     in-out property <string> detail-right-highlights: "";
     in-out property <bool> show-detail-pane: true;
+    in-out property <bool> show-location-pane: true;
+    in-out property <bool> show-word-diff: true;
 
     // Bookmarks
     in-out property <string> bookmark-lines: ""; // comma-separated line indices
@@ -278,6 +281,23 @@ export component MainWindow inherits Window {
     callback use-left(int);
     callback use-right(int);
     callback apply-options();
+
+    // File browser dialog (WSL2-safe Browse fallback)
+    in-out property <bool> file-browser-visible: false;
+    in-out property <int> file-browser-ctx: 0; // 1=left-file 2=right-file 3=left-folder 4=right-folder 5=base
+    in-out property <bool> file-browser-is-folder-mode: false;
+    in-out property <string> file-browser-current-dir: "";
+    in property <[FileEntryData]> file-browser-entries;
+    in-out property <int> file-browser-selected-index: -1;
+    callback file-browser-navigate(string);
+    callback file-browser-go-parent();
+    callback file-browser-confirmed(string);
+    callback file-browser-cancelled();
+
+    // Plugin output dialog
+    in-out property <bool> show-plugin-output: false;
+    in-out property <string> plugin-output-title: "";
+    in-out property <string> plugin-output-text: "";
 
     // Options dialog state
     in-out property <bool> show-options-dialog: false;
@@ -378,9 +398,26 @@ export component MainWindow inherits Window {
         Menu {
             title: @tr("View");
             MenuItem {
-                title: root.show-toolbar ? @tr("Hide Toolbar") : @tr("Show Toolbar");
+                title: root.show-toolbar ? @tr("✓ Toolbar") : @tr("  Toolbar");
                 activated => { root.show-toolbar = !root.show-toolbar; }
             }
+            MenuItem {
+                title: root.opt-show-line-numbers ? @tr("✓ Line Numbers") : @tr("  Line Numbers");
+                activated => { root.opt-show-line-numbers = !root.opt-show-line-numbers; }
+            }
+            MenuItem {
+                title: root.show-location-pane ? @tr("✓ Location Pane") : @tr("  Location Pane");
+                activated => { root.show-location-pane = !root.show-location-pane; }
+            }
+            MenuItem {
+                title: root.show-word-diff ? @tr("✓ Word Diff") : @tr("  Word Diff");
+                activated => { root.show-word-diff = !root.show-word-diff; }
+            }
+            MenuItem {
+                title: root.show-detail-pane ? @tr("✓ Diff Detail Pane") : @tr("  Diff Detail Pane");
+                activated => { root.show-detail-pane = !root.show-detail-pane; }
+            }
+            MenuSeparator {}
             MenuItem {
                 title: root.ignore-whitespace ? @tr("✓ Ignore Whitespace") : @tr("  Ignore Whitespace");
                 activated => { root.toggle-ignore-whitespace(); }
@@ -653,6 +690,8 @@ export component MainWindow inherits Window {
             right-title: root.right-path != "" ? root.right-path : @tr("Right file");
             context-menu-enabled: root.opt-enable-context-menu;
             show-line-numbers: root.opt-show-line-numbers;
+            show-location-pane: root.show-location-pane;
+            show-word-diff: root.show-word-diff;
             editor-font-size: root.opt-font-size;
             editor-tab-width: root.opt-tab-width;
             copy-to-right(idx) => { root.copy-to-right(idx); }
@@ -965,6 +1004,86 @@ export component MainWindow inherits Window {
                 }
             }
         }
+    }
+
+    // Plugin output dialog
+    if root.show-plugin-output : Rectangle {
+        width: 100%; height: 100%;
+        background: #00000070;
+        TouchArea { clicked => { root.show-plugin-output = false; } }
+
+        Rectangle {
+            width: Math.min(700px, parent.width - 40px);
+            height: Math.min(500px, parent.height - 40px);
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Palette.background;
+            border-color: Palette.border;
+            border-width: 1px;
+            border-radius: 6px;
+            drop-shadow-blur: 12px;
+            drop-shadow-color: #00000040;
+
+            VerticalLayout {
+                padding: 16px;
+                spacing: 8px;
+
+                HorizontalLayout {
+                    Text {
+                        text: root.plugin-output-title;
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: Palette.foreground;
+                        horizontal-stretch: 1;
+                    }
+                    Button {
+                        text: "✕";
+                        clicked => { root.show-plugin-output = false; }
+                    }
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                    border-color: Palette.border;
+                    border-width: 1px;
+                    border-radius: 4px;
+                    background: Palette.background.darker(0.03);
+
+                    ScrollView {
+                        Text {
+                            text: root.plugin-output-text;
+                            font-size: 12px;
+                            font-family: "monospace";
+                            color: Palette.foreground;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    Button {
+                        text: @tr("Close");
+                        clicked => { root.show-plugin-output = false; }
+                    }
+                }
+            }
+        }
+    }
+
+    // File browser dialog (WSL2-safe Browse fallback)
+    FileBrowserDialog {
+        width: 100%;
+        height: 100%;
+        visible-flag: root.file-browser-visible;
+        is-folder-mode: root.file-browser-is-folder-mode;
+        current-dir <=> root.file-browser-current-dir;
+        entries: root.file-browser-entries;
+        selected-index <=> root.file-browser-selected-index;
+        navigate(path) => { root.file-browser-navigate(path); }
+        go-parent() => { root.file-browser-go-parent(); }
+        confirmed(path) => { root.file-browser-confirmed(path); }
+        cancelled() => { root.file-browser-cancelled(); }
     }
 
     // Unsaved changes confirmation overlay

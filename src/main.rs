@@ -8,7 +8,7 @@ mod settings;
 
 slint::include_modules!();
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use app::{
@@ -19,7 +19,7 @@ use app::{
     folder_delete_item, goto_line, last_diff, navigate_bookmark, navigate_conflict, navigate_diff,
     navigate_search, open_file_dialog, open_folder_dialog, open_folder_item, open_in_editor, redo,
     replace_all_text, replace_text, rescan, resolve_conflict_use_left, resolve_conflict_use_right,
-    run_folder_compare, run_plugin, save_file, search_text, select_diff, start_compare,
+    run_diff, run_folder_compare, run_plugin, save_file, search_text, select_diff, start_compare,
     start_three_way_compare, switch_tab, toggle_bookmark, toggle_ignore_case,
     toggle_ignore_whitespace, undo,
 };
@@ -31,6 +31,10 @@ fn main() {
     let window = MainWindow::new().unwrap();
     let state = Rc::new(RefCell::new(AppState::new()));
     let settings = Rc::new(RefCell::new(settings::AppSettings::load()));
+    // browse_ctx: tracks which Browse action is pending when path picker dialog is shown
+    // 1=open-left-file, 2=open-right-file, 3=open-left-folder, 4=open-right-folder, 5=browse-base
+    // 11=direct-open-left, 12=direct-open-right, 13=direct-open-left-folder, 14=direct-open-right-folder
+    let browse_ctx: Rc<Cell<i32>> = Rc::new(Cell::new(0));
 
     // Restore window size
     {
@@ -79,6 +83,9 @@ fn main() {
         window.set_opt_substitution_replacements(SharedString::from(sub_replacements.join("|")));
         window.set_opt_auto_rescan(s.auto_rescan);
         window.set_opt_folder_exclude_patterns(SharedString::from(&s.folder_exclude_patterns));
+        window.set_show_location_pane(s.show_location_pane);
+        window.set_show_word_diff(s.show_word_diff);
+        window.set_show_detail_pane(s.show_detail_pane);
         // Load plugin list as pipe-separated "name:command" pairs
         let plugin_str: Vec<String> = s
             .plugins
@@ -210,10 +217,76 @@ fn main() {
         });
     }
 
+    // Helper: populate file browser listing from a directory path
+    fn populate_file_browser(window: &MainWindow, dir: &std::path::Path) {
+        let dir_str = dir.to_string_lossy();
+        let display_dir = dir_str.trim_end_matches('/').to_string();
+        window.set_file_browser_current_dir(SharedString::from(display_dir));
+        window.set_file_browser_selected_index(-1);
+
+        let mut dirs: Vec<String> = Vec::new();
+        let mut files: Vec<String> = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            for entry in rd.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') {
+                    continue;
+                }
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    dirs.push(name);
+                } else {
+                    files.push(name);
+                }
+            }
+        }
+        dirs.sort();
+        files.sort();
+        let entries: Vec<FileEntryData> = dirs
+            .into_iter()
+            .map(|n| FileEntryData {
+                name: SharedString::from(n),
+                is_dir: true,
+            })
+            .chain(files.into_iter().map(|n| FileEntryData {
+                name: SharedString::from(n),
+                is_dir: false,
+            }))
+            .collect();
+        window.set_file_browser_entries(ModelRc::new(VecModel::from(entries)));
+    }
+
+    // Helper: show file browser as fallback when native dialog unavailable
+    fn show_file_browser(
+        window: &MainWindow,
+        browse_ctx: &Cell<i32>,
+        ctx: i32,
+        current: SharedString,
+        is_folder: bool,
+    ) {
+        browse_ctx.set(ctx);
+        window.set_file_browser_ctx(ctx);
+        window.set_file_browser_is_folder_mode(is_folder);
+        let start = if current.is_empty() {
+            dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"))
+        } else {
+            let p = std::path::PathBuf::from(current.as_str());
+            if p.is_dir() {
+                p
+            } else {
+                p.parent().map(|x| x.to_path_buf()).unwrap_or_else(|| {
+                    dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"))
+                })
+            }
+        };
+        populate_file_browser(window, &start);
+        window.set_file_browser_visible(true);
+    }
+
     // --- File operations ---
     {
         let window_weak = window.as_weak();
         let state = state.clone();
+        let browse_ctx = browse_ctx.clone();
         window.on_open_left_file(move || {
             let window = window_weak.unwrap();
             let is_folder = window.get_open_is_folder_mode();
@@ -223,14 +296,28 @@ fn main() {
                         path.to_string_lossy().to_string(),
                     ));
                     state.borrow_mut().current_tab_mut().left_folder = Some(path);
+                } else {
+                    show_file_browser(
+                        &window,
+                        &browse_ctx,
+                        3,
+                        window.get_open_left_path_input(),
+                        true,
+                    );
                 }
+            } else if let Some(path) = open_file_dialog("Select left file") {
+                window.set_open_left_path_input(SharedString::from(
+                    path.to_string_lossy().to_string(),
+                ));
+                state.borrow_mut().current_tab_mut().left_path = Some(path);
             } else {
-                if let Some(path) = open_file_dialog("Select left file") {
-                    window.set_open_left_path_input(SharedString::from(
-                        path.to_string_lossy().to_string(),
-                    ));
-                    state.borrow_mut().current_tab_mut().left_path = Some(path);
-                }
+                show_file_browser(
+                    &window,
+                    &browse_ctx,
+                    1,
+                    window.get_open_left_path_input(),
+                    false,
+                );
             }
         });
     }
@@ -238,6 +325,7 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
+        let browse_ctx = browse_ctx.clone();
         window.on_open_right_file(move || {
             let window = window_weak.unwrap();
             let is_folder = window.get_open_is_folder_mode();
@@ -247,14 +335,28 @@ fn main() {
                         path.to_string_lossy().to_string(),
                     ));
                     state.borrow_mut().current_tab_mut().right_folder = Some(path);
+                } else {
+                    show_file_browser(
+                        &window,
+                        &browse_ctx,
+                        4,
+                        window.get_open_right_path_input(),
+                        true,
+                    );
                 }
+            } else if let Some(path) = open_file_dialog("Select right file") {
+                window.set_open_right_path_input(SharedString::from(
+                    path.to_string_lossy().to_string(),
+                ));
+                state.borrow_mut().current_tab_mut().right_path = Some(path);
             } else {
-                if let Some(path) = open_file_dialog("Select right file") {
-                    window.set_open_right_path_input(SharedString::from(
-                        path.to_string_lossy().to_string(),
-                    ));
-                    state.borrow_mut().current_tab_mut().right_path = Some(path);
-                }
+                show_file_browser(
+                    &window,
+                    &browse_ctx,
+                    2,
+                    window.get_open_right_path_input(),
+                    false,
+                );
             }
         });
     }
@@ -262,13 +364,22 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
+        let browse_ctx = browse_ctx.clone();
         window.on_open_folder_left(move || {
+            let window = window_weak.unwrap();
             if let Some(path) = open_folder_dialog("Select left folder") {
-                let window = window_weak.unwrap();
                 window.set_open_left_path_input(SharedString::from(
                     path.to_string_lossy().to_string(),
                 ));
                 state.borrow_mut().current_tab_mut().left_folder = Some(path);
+            } else {
+                show_file_browser(
+                    &window,
+                    &browse_ctx,
+                    3,
+                    window.get_open_left_path_input(),
+                    true,
+                );
             }
         });
     }
@@ -276,13 +387,22 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
+        let browse_ctx = browse_ctx.clone();
         window.on_open_folder_right(move || {
+            let window = window_weak.unwrap();
             if let Some(path) = open_folder_dialog("Select right folder") {
-                let window = window_weak.unwrap();
                 window.set_open_right_path_input(SharedString::from(
                     path.to_string_lossy().to_string(),
                 ));
                 state.borrow_mut().current_tab_mut().right_folder = Some(path);
+            } else {
+                show_file_browser(
+                    &window,
+                    &browse_ctx,
+                    4,
+                    window.get_open_right_path_input(),
+                    true,
+                );
             }
         });
     }
@@ -312,9 +432,16 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
+        let browse_ctx = browse_ctx.clone();
         window.on_discard_and_proceed(move || {
             let window = window_weak.unwrap();
-            discard_and_proceed(&window, &mut state.borrow_mut());
+            let ww = window.as_weak();
+            let bc = browse_ctx.clone();
+            discard_and_proceed(&window, &mut state.borrow_mut(), move |ctx, _title| {
+                let w = ww.unwrap();
+                let is_folder = ctx == 13 || ctx == 14;
+                show_file_browser(&w, &bc, ctx, SharedString::from(""), is_folder);
+            });
         });
     }
 
@@ -708,12 +835,117 @@ fn main() {
     // Browse base file (for 3-way)
     {
         let window_weak = window.as_weak();
+        let browse_ctx = browse_ctx.clone();
         window.on_browse_base(move || {
+            let window = window_weak.unwrap();
             if let Some(path) = open_file_dialog("Select base file") {
-                let window = window_weak.unwrap();
                 window.set_open_base_path_input(SharedString::from(
                     path.to_string_lossy().to_string(),
                 ));
+            } else {
+                show_file_browser(
+                    &window,
+                    &browse_ctx,
+                    5,
+                    window.get_open_base_path_input(),
+                    false,
+                );
+            }
+        });
+    }
+
+    // File browser dialog callbacks
+    {
+        let window_weak = window.as_weak();
+        window.on_file_browser_navigate(move |path| {
+            let window = window_weak.unwrap();
+            let p = std::path::PathBuf::from(path.as_str());
+            if p.is_dir() {
+                populate_file_browser(&window, &p);
+            }
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        window.on_file_browser_go_parent(move || {
+            let window = window_weak.unwrap();
+            let current = window.get_file_browser_current_dir().to_string();
+            let p = std::path::PathBuf::from(&current);
+            if let Some(parent) = p.parent() {
+                populate_file_browser(&window, &parent.to_path_buf());
+            }
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        window.on_file_browser_cancelled(move || {
+            window_weak.unwrap().set_file_browser_visible(false);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        let browse_ctx = browse_ctx.clone();
+        window.on_file_browser_confirmed(move |path| {
+            let window = window_weak.unwrap();
+            window.set_file_browser_visible(false);
+            let path_str = path.to_string();
+            if path_str.is_empty() {
+                return;
+            }
+            // Normalize path (remove double slashes from string concat)
+            let path_buf = std::path::PathBuf::from(&path_str);
+            let normalized = SharedString::from(path_buf.to_string_lossy().to_string());
+            let ctx = browse_ctx.get();
+            browse_ctx.set(0);
+            match ctx {
+                1 => {
+                    window.set_open_left_path_input(normalized);
+                    state.borrow_mut().current_tab_mut().left_path = Some(path_buf);
+                }
+                2 => {
+                    window.set_open_right_path_input(normalized);
+                    state.borrow_mut().current_tab_mut().right_path = Some(path_buf);
+                }
+                3 => {
+                    window.set_open_left_path_input(normalized);
+                    state.borrow_mut().current_tab_mut().left_folder = Some(path_buf);
+                }
+                4 => {
+                    window.set_open_right_path_input(normalized);
+                    state.borrow_mut().current_tab_mut().right_folder = Some(path_buf);
+                }
+                5 => {
+                    window.set_open_base_path_input(normalized);
+                }
+                11 => {
+                    let mut s = state.borrow_mut();
+                    s.current_tab_mut().left_path = Some(path_buf);
+                    s.current_tab_mut().view_mode = 0;
+                    drop(s);
+                    window.set_view_mode(0);
+                    run_diff(&window, &mut state.borrow_mut());
+                }
+                12 => {
+                    let mut s = state.borrow_mut();
+                    s.current_tab_mut().right_path = Some(path_buf);
+                    s.current_tab_mut().view_mode = 0;
+                    drop(s);
+                    window.set_view_mode(0);
+                    run_diff(&window, &mut state.borrow_mut());
+                }
+                13 => {
+                    state.borrow_mut().current_tab_mut().left_folder = Some(path_buf);
+                    run_folder_compare(&window, &mut state.borrow_mut());
+                }
+                14 => {
+                    state.borrow_mut().current_tab_mut().right_folder = Some(path_buf);
+                    run_folder_compare(&window, &mut state.borrow_mut());
+                }
+                _ => {}
             }
         });
     }
@@ -866,6 +1098,10 @@ fn main() {
             let mut s = settings.borrow_mut();
             s.window_width = size.width;
             s.window_height = size.height;
+            s.show_toolbar = window.get_show_toolbar();
+            s.show_location_pane = window.get_show_location_pane();
+            s.show_word_diff = window.get_show_word_diff();
+            s.show_detail_pane = window.get_show_detail_pane();
             s.save();
             slint::CloseRequestResponse::HideWindow
         });

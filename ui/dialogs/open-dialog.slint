@@ -1,4 +1,5 @@
 import { Button, LineEdit, Palette, CheckBox, ListView } from "std-widgets.slint";
+import { FileBrowserIcons } from "file-browser.slint";
 
 export struct RecentEntryData {
     left-path: string,
@@ -202,9 +203,11 @@ export component OpenDialog inherits Rectangle {
 
                             HorizontalLayout {
                                 spacing: 8px;
-                                Text {
-                                    text: entry.is-folder ? "📁" : "📄";
-                                    font-size: 11px;
+                                Image {
+                                    width: 14px;
+                                    height: 14px;
+                                    source: entry.is-folder ? FileBrowserIcons.folder : FileBrowserIcons.file;
+                                    colorize: Palette.foreground.transparentize(0.3);
                                     vertical-alignment: center;
                                 }
                                 Text {
