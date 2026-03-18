@@ -1,0 +1,7 @@
+/target
+/dist
+.env
+*.pem
+*.key
+*.log
+Cargo.lock
