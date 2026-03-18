@@ -8,6 +8,11 @@ import { OptionsDialog } from "dialogs/options-dialog.slint";
 import { FileBrowserDialog, FileEntryData } from "dialogs/file-browser.slint";
 import { ThemeColors } from "theme.slint";
 
+export struct PluginEntryData {
+    name: string,
+    command: string,
+}
+
 export { DiffLineData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors, FileEntryData }
 
 // Toolbar icon button: fixed 32x32 with image icon + optional overlay text
@@ -325,8 +330,10 @@ export component MainWindow inherits Window {
     // Inline editing
     in-out property <bool> opt-inline-edit: true;
 
-    // Plugin list (pipe-separated "name:command" pairs)
+    // Plugin list (pipe-separated "name:command" pairs, for options dialog)
     in-out property <string> plugin-list: "";
+    // Plugin model for dynamic menu generation
+    in property <[PluginEntryData]> plugins;
 
     // Theme: 0=Light, 1=Dark
     in-out property <int> opt-theme: 0;
@@ -447,7 +454,14 @@ export component MainWindow inherits Window {
         }
         Menu {
             title: @tr("Plugins");
-            MenuItem { title: @tr("Run Plugin Command..."); enabled: root.plugin-list != ""; activated => { root.run-plugin(root.plugin-list); } }
+            for plugin in root.plugins : MenuItem {
+                title: plugin.name;
+                activated => { root.run-plugin(plugin.command); }
+            }
+            if root.plugins.length == 0 : MenuItem {
+                title: @tr("(No plugins configured)");
+                enabled: false;
+            }
         }
     }
 
@@ -692,6 +706,7 @@ export component MainWindow inherits Window {
             show-line-numbers: root.opt-show-line-numbers;
             show-location-pane: root.show-location-pane;
             show-word-diff: root.show-word-diff;
+            word-wrap-mode: root.opt-word-wrap;
             editor-font-size: root.opt-font-size;
             editor-tab-width: root.opt-tab-width;
             copy-to-right(idx) => { root.copy-to-right(idx); }

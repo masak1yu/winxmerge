@@ -29,6 +29,7 @@ component DiffLineRow inherits Rectangle {
     in property <bool> show-line-no: true;
     in property <int> text-font-size: 13;
     in property <bool> editable: false;
+    in property <bool> word-wrap-mode: false;
     // Word diff: shows only the changed characters (for Modified lines)
     in property <string> word-diff: "";
 
@@ -102,7 +103,8 @@ component DiffLineRow inherits Rectangle {
                 font-size: root.text-font-size * 1px;
                 font-family: "monospace";
                 vertical-alignment: center;
-                overflow: elide;
+                overflow: root.word-wrap-mode ? clip : elide;
+                wrap: root.word-wrap-mode ? word-wrap : no-wrap;
                 color: parent.text-color;
             }
             if root.editable : TextInput {
@@ -166,6 +168,7 @@ export component DiffView inherits Rectangle {
     in property <bool> inline-edit-enabled: false;
     in property <bool> show-location-pane: true;
     in property <bool> show-word-diff: true;
+    in property <bool> word-wrap-mode: false;
 
     accessible-role: list;
     accessible-label: "File difference view";
@@ -309,7 +312,8 @@ export component DiffView inherits Rectangle {
 
                 left-list := ListView {
                     for line[idx] in diff-lines: DiffLineRow {
-                        height: (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
+                        height: root.word-wrap-mode ? 72px
+                              : (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
                         line-no: line.left-line-no;
                         text: line.left-text;
                         status: line.status == 1 ? 0 : line.status;
@@ -320,6 +324,7 @@ export component DiffView inherits Rectangle {
                         text-font-size: root.editor-font-size;
                         word-diff: root.show-word-diff ? line.left-word-diff : "";
                         editable: root.inline-edit-enabled && line.left-line-no != "";
+                        word-wrap-mode: root.word-wrap-mode;
                         line-clicked(didx) => { root.select-diff(didx); }
                         text-edited(new-text) => { root.edit-left-line(idx, new-text); }
                     }
@@ -335,7 +340,8 @@ export component DiffView inherits Rectangle {
 
                 mid-list := ListView {
                     for line in diff-lines: Rectangle {
-                        height: (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
+                        height: root.word-wrap-mode ? 72px
+                              : (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
                         if line.status != 0 : HorizontalLayout {
                             padding: 1px;
                             spacing: 1px;
@@ -397,7 +403,8 @@ export component DiffView inherits Rectangle {
 
                 right-list := ListView {
                     for line[idx] in diff-lines: DiffLineRow {
-                        height: (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
+                        height: root.word-wrap-mode ? 72px
+                              : (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
                         line-no: line.right-line-no;
                         text: line.right-text;
                         status: line.status == 2 ? 0 : line.status;
@@ -408,6 +415,7 @@ export component DiffView inherits Rectangle {
                         text-font-size: root.editor-font-size;
                         word-diff: root.show-word-diff ? line.right-word-diff : "";
                         editable: root.inline-edit-enabled && line.right-line-no != "";
+                        word-wrap-mode: root.word-wrap-mode;
                         line-clicked(didx) => { root.select-diff(didx); }
                         text-edited(new-text) => { root.edit-right-line(idx, new-text); }
                     }

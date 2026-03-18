@@ -86,13 +86,23 @@ fn main() {
         window.set_show_location_pane(s.show_location_pane);
         window.set_show_word_diff(s.show_word_diff);
         window.set_show_detail_pane(s.show_detail_pane);
-        // Load plugin list as pipe-separated "name:command" pairs
+        // Load plugin list as pipe-separated "name:command" pairs (for options dialog)
         let plugin_str: Vec<String> = s
             .plugins
             .iter()
             .map(|p| format!("{}:{}", p.name, p.command))
             .collect();
         window.set_plugin_list(SharedString::from(plugin_str.join("|")));
+        // Build plugin model for dynamic menu
+        let plugin_entries: Vec<PluginEntryData> = s
+            .plugins
+            .iter()
+            .map(|p| PluginEntryData {
+                name: SharedString::from(&p.name),
+                command: SharedString::from(&p.command),
+            })
+            .collect();
+        window.set_plugins(ModelRc::new(VecModel::from(plugin_entries)));
 
         let mut app = state.borrow_mut();
         let tab = app.current_tab_mut();
