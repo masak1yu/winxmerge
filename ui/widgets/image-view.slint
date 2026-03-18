@@ -1,4 +1,4 @@
-import { Palette } from "std-widgets.slint";
+import { Palette, ScrollView } from "std-widgets.slint";
 import { ThemeColors } from "../theme.slint";
 
 export component ImageView inherits Rectangle {
@@ -8,6 +8,13 @@ export component ImageView inherits Rectangle {
     in property <string> stats: "";
     in property <string> left-title: @tr("Left");
     in property <string> right-title: @tr("Right");
+    in property <int> left-image-width: 0;
+    in property <int> left-image-height: 0;
+    in property <int> right-image-width: 0;
+    in property <int> right-image-height: 0;
+    // 0=Fit, 1=100%, 2=200%
+    in-out property <int> zoom-level: 0;
+    in-out property <bool> show-diff-panel: true;
 
     VerticalLayout {
         // Stats bar
@@ -17,12 +24,45 @@ export component ImageView inherits Rectangle {
             border-color: Palette.border;
             border-width: 1px;
 
-            Text {
-                x: 8px;
-                text: root.stats;
-                font-size: 12px;
-                vertical-alignment: center;
-                color: Palette.foreground;
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 8px;
+                Text {
+                    text: root.stats;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    color: Palette.foreground;
+                    horizontal-stretch: 1;
+                }
+                // Zoom buttons
+                Text {
+                    text: @tr("Zoom:");
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    color: Palette.foreground.transparentize(0.3);
+                }
+                for zlabel[zi] in [@tr("Fit"), @tr("100%"), @tr("200%")] : Rectangle {
+                    width: 48px;
+                    height: 20px;
+                    border-radius: 3px;
+                    border-width: 1px;
+                    border-color: root.zoom-level == zi ? Palette.accent-background : Palette.border;
+                    background: root.zoom-level == zi ? Palette.accent-background.transparentize(0.5) : transparent;
+                    TouchArea { clicked => { root.zoom-level = zi; } }
+                    Text { text: zlabel; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                }
+                // Diff panel toggle
+                Rectangle {
+                    width: 72px;
+                    height: 20px;
+                    border-radius: 3px;
+                    border-width: 1px;
+                    border-color: root.show-diff-panel ? Palette.accent-background : Palette.border;
+                    background: root.show-diff-panel ? Palette.accent-background.transparentize(0.5) : transparent;
+                    TouchArea { clicked => { root.show-diff-panel = !root.show-diff-panel; } }
+                    Text { text: @tr("Diff Panel"); font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                }
             }
         }
 
@@ -53,10 +93,20 @@ export component ImageView inherits Rectangle {
                         }
                     }
 
-                    Image {
+                    if root.zoom-level == 0 : Image {
                         source: root.left-image;
                         image-fit: contain;
                         vertical-stretch: 1;
+                    }
+                    if root.zoom-level > 0 : ScrollView {
+                        vertical-stretch: 1;
+                        Image {
+                            source: root.left-image;
+                            width: (root.left-image-width * (root.zoom-level == 1 ? 1 : 2)) * 1px;
+                            height: (root.left-image-height * (root.zoom-level == 1 ? 1 : 2)) * 1px;
+                            image-fit: fill;
+                            image-rendering: pixelated;
+                        }
                     }
                 }
             }
@@ -83,17 +133,27 @@ export component ImageView inherits Rectangle {
                         }
                     }
 
-                    Image {
+                    if root.zoom-level == 0 : Image {
                         source: root.right-image;
                         image-fit: contain;
                         vertical-stretch: 1;
+                    }
+                    if root.zoom-level > 0 : ScrollView {
+                        vertical-stretch: 1;
+                        Image {
+                            source: root.right-image;
+                            width: (root.right-image-width * (root.zoom-level == 1 ? 1 : 2)) * 1px;
+                            height: (root.right-image-height * (root.zoom-level == 1 ? 1 : 2)) * 1px;
+                            image-fit: fill;
+                            image-rendering: pixelated;
+                        }
                     }
                 }
             }
         }
 
         // Diff image panel
-        Rectangle {
+        if root.show-diff-panel : Rectangle {
             vertical-stretch: 1;
             border-color: Palette.border;
             border-width: 1px;

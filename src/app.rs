@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -100,6 +101,15 @@ pub struct TabState {
     pub right_image: Option<slint::Image>,
     pub diff_image: Option<slint::Image>,
     pub image_stats: String,
+    /// Image dimensions for zoom support
+    pub image_left_w: i32,
+    pub image_left_h: i32,
+    pub image_right_w: i32,
+    pub image_right_h: i32,
+    /// Diff block comments: diff_index -> comment string
+    pub diff_comments: HashMap<usize, String>,
+    /// Status filter for diff view (0=All, 1=Added, 2=Removed, 3=Modified, 4=Moved)
+    pub diff_status_filter: i32,
 }
 
 impl TabState {
@@ -146,6 +156,12 @@ impl TabState {
             right_image: None,
             diff_image: None,
             image_stats: String::new(),
+            image_left_w: 0,
+            image_left_h: 0,
+            image_right_w: 0,
+            image_right_h: 0,
+            diff_comments: HashMap::new(),
+            diff_status_filter: 0,
         }
     }
 }
@@ -335,6 +351,10 @@ fn restore_tab(window: &MainWindow, state: &AppState) {
             window.set_diff_image(img);
         }
         window.set_image_stats(SharedString::from(&tab.image_stats));
+        window.set_image_left_width(tab.image_left_w);
+        window.set_image_left_height(tab.image_left_h);
+        window.set_image_right_width(tab.image_right_w);
+        window.set_image_right_height(tab.image_right_h);
     }
 
     if tab.view_mode == 4 {
@@ -367,6 +387,17 @@ fn restore_tab(window: &MainWindow, state: &AppState) {
                 .unwrap_or_default(),
         ));
     }
+
+    // Restore diff comment for current diff block
+    let comment = tab
+        .diff_comments
+        .get(&(tab.current_diff.max(0) as usize))
+        .cloned()
+        .unwrap_or_default();
+    window.set_current_diff_comment(SharedString::from(comment));
+
+    // Restore status filter
+    window.set_diff_status_filter(tab.diff_status_filter);
 }
 
 pub fn sync_tab_list(window: &MainWindow, state: &AppState) {
@@ -1008,6 +1039,11 @@ fn update_current_diff(window: &MainWindow, state: &mut AppState, new_index: i32
     let current_pos = tab.diff_positions[new_index as usize];
     let total = tab.diff_positions.len();
     let stats = tab.diff_stats.clone();
+    let comment = tab
+        .diff_comments
+        .get(&(new_index as usize))
+        .cloned()
+        .unwrap_or_default();
 
     // Update current diff index (Slint side handles highlighting reactively)
     window.set_current_diff_index(new_index);
@@ -1020,6 +1056,8 @@ fn update_current_diff(window: &MainWindow, state: &mut AppState, new_index: i32
         total,
         stats
     )));
+
+    window.set_current_diff_comment(SharedString::from(comment));
 
     // Update diff detail pane
     let model = window.get_diff_lines();
@@ -3092,12 +3130,20 @@ fn run_image_compare(
             tab.left_image = Some(left_img.clone());
             tab.right_image = Some(right_img.clone());
             tab.diff_image = Some(diff_img.clone());
+            tab.image_left_w = result.left_width as i32;
+            tab.image_left_h = result.left_height as i32;
+            tab.image_right_w = result.right_width as i32;
+            tab.image_right_h = result.right_height as i32;
 
             window.set_view_mode(5);
             window.set_left_image(left_img);
             window.set_right_image(right_img);
             window.set_diff_image(diff_img);
             window.set_image_stats(SharedString::from(stats.clone()));
+            window.set_image_left_width(result.left_width as i32);
+            window.set_image_left_height(result.left_height as i32);
+            window.set_image_right_width(result.right_width as i32);
+            window.set_image_right_height(result.right_height as i32);
             window.set_left_path(SharedString::from(left_path.to_string_lossy().to_string()));
             window.set_right_path(SharedString::from(right_path.to_string_lossy().to_string()));
             window.set_status_text(SharedString::from(format!(
@@ -3117,4 +3163,96 @@ fn format_size(bytes: u64) -> String {
     } else {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     }
+}
+
+// --- Feature: Diff block comments ---
+
+pub fn set_diff_comment(_window: &MainWindow, state: &mut AppState, comment: String) {
+    let tab = state.current_tab_mut();
+    if tab.current_diff < 0 {
+        return;
+    }
+    let idx = tab.current_diff as usize;
+    if comment.is_empty() {
+        tab.diff_comments.remove(&idx);
+    } else {
+        tab.diff_comments.insert(idx, comment);
+    }
+}
+
+// --- Feature: Diff status filter ---
+
+pub fn set_diff_filter(window: &MainWindow, state: &mut AppState, filter: i32) {
+    state.current_tab_mut().diff_status_filter = filter;
+    window.set_diff_status_filter(filter);
+}
+
+// --- Feature: Clipboard paste path ---
+
+pub fn paste_clipboard_path_left(window: &MainWindow) {
+    if let Ok(mut cb) = arboard::Clipboard::new() {
+        if let Ok(text) = cb.get_text() {
+            let path = text.trim().trim_start_matches("file://");
+            window.set_open_left_path_input(SharedString::from(path));
+        }
+    }
+}
+
+pub fn paste_clipboard_path_right(window: &MainWindow) {
+    if let Ok(mut cb) = arboard::Clipboard::new() {
+        if let Ok(text) = cb.get_text() {
+            let path = text.trim().trim_start_matches("file://");
+            window.set_open_right_path_input(SharedString::from(path));
+        }
+    }
+}
+
+// --- Feature: Folder item preview ---
+
+pub fn preview_folder_item(window: &MainWindow, state: &AppState, idx: i32) {
+    let tab = state.current_tab();
+    if idx < 0 || idx as usize >= tab.folder_items.len() {
+        return;
+    }
+    let item = &tab.folder_items[idx as usize];
+    let name = item
+        .relative_path
+        .split('/')
+        .last()
+        .unwrap_or(&item.relative_path)
+        .to_string();
+
+    if item.is_directory {
+        window.set_folder_preview_name(SharedString::from(name));
+        window.set_folder_preview_left(SharedString::from("(directory)"));
+        window.set_folder_preview_right(SharedString::from("(directory)"));
+        return;
+    }
+
+    let (left_folder, right_folder) = match (&tab.left_folder, &tab.right_folder) {
+        (Some(l), Some(r)) => (l.clone(), r.clone()),
+        _ => return,
+    };
+
+    let left_path = left_folder.join(&item.relative_path);
+    let right_path = right_folder.join(&item.relative_path);
+
+    window.set_folder_preview_name(SharedString::from(name));
+    window.set_folder_preview_left(SharedString::from(load_text_preview(&left_path)));
+    window.set_folder_preview_right(SharedString::from(load_text_preview(&right_path)));
+}
+
+fn load_text_preview(path: &std::path::Path) -> String {
+    if !path.exists() {
+        return "(file not found)".to_string();
+    }
+    let bytes = match fs::read(path) {
+        Ok(b) => b,
+        Err(e) => return format!("(read error: {e})"),
+    };
+    if is_binary(&bytes) {
+        return format!("[binary  {} bytes]", bytes.len());
+    }
+    let (text, _) = decode_file(&bytes);
+    text.lines().take(20).collect::<Vec<_>>().join("\n")
 }

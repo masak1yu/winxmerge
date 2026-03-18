@@ -374,11 +374,33 @@ export component MainWindow inherits Window {
     in property <[string]> excel-sheet-names;
     in-out property <string> excel-active-sheet: "";
 
+    // Diff comments
+    in-out property <string> current-diff-comment: "";
+    callback diff-comment-changed(string);
+
+    // Diff status filter (0=All, 1=Added, 2=Removed, 3=Modified, 4=Moved)
+    in-out property <int> diff-status-filter: 0;
+    callback diff-filter-changed(int);
+
+    // Clipboard paste path callbacks
+    callback paste-left-path();
+    callback paste-right-path();
+
+    // Folder preview
+    in-out property <string> folder-preview-name: "";
+    in-out property <string> folder-preview-left: "";
+    in-out property <string> folder-preview-right: "";
+    callback folder-item-preview(int);
+
     // Image comparison (view_mode == 5)
     in property <image> left-image;
     in property <image> right-image;
     in property <image> diff-image;
     in property <string> image-stats: "";
+    in property <int> image-left-width: 0;
+    in property <int> image-left-height: 0;
+    in property <int> image-right-width: 0;
+    in property <int> image-right-height: 0;
 
     // Inline editing
     in-out property <bool> opt-inline-edit: true;
@@ -774,6 +796,48 @@ export component MainWindow inherits Window {
             compare => {
                 root.start-compare(root.open-left-path-input, root.open-right-path-input, root.open-is-folder-mode);
             }
+            paste-left => { root.paste-left-path(); }
+            paste-right => { root.paste-right-path(); }
+        }
+
+        // Diff status filter bar
+        if root.view-mode == 0 : Rectangle {
+            height: 28px;
+            background: Palette.background.darker(0.03);
+            border-color: Palette.border;
+            border-width: 1px;
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 4px;
+                alignment: start;
+                Text {
+                    text: @tr("Filter:");
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    color: Palette.foreground.transparentize(0.3);
+                }
+                for filter-item[idx] in [
+                    @tr("All"), @tr("Added (+)"), @tr("Removed (-)"), @tr("Modified (~)"), @tr("Moved (↕)")
+                ] : Rectangle {
+                    width: 90px;
+                    height: 20px;
+                    border-radius: 3px;
+                    border-width: 1px;
+                    border-color: root.diff-status-filter == idx ? Palette.accent-background : Palette.border;
+                    background: root.diff-status-filter == idx ? Palette.accent-background.transparentize(0.5) : transparent;
+                    ta := TouchArea {
+                        clicked => { root.diff-filter-changed(idx); }
+                    }
+                    Text {
+                        text: filter-item;
+                        font-size: 10px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        color: root.diff-status-filter == idx ? Palette.accent-foreground : Palette.foreground;
+                    }
+                }
+            }
         }
 
         if root.view-mode == 0 : DiffView {
@@ -788,6 +852,7 @@ export component MainWindow inherits Window {
             show-word-diff: root.show-word-diff;
             word-wrap-mode: root.opt-word-wrap;
             diff-only-mode: root.opt-diff-only;
+            diff-status-filter: root.diff-status-filter;
             editor-font-size: root.opt-font-size;
             editor-tab-width: root.opt-tab-width;
             copy-to-right(idx) => { root.copy-to-right(idx); }
@@ -813,6 +878,68 @@ export component MainWindow inherits Window {
             copy-to-right(idx) => { root.folder-copy-to-right(idx); }
             copy-to-left(idx) => { root.folder-copy-to-left(idx); }
             delete-item(idx) => { root.folder-delete-item(idx); }
+            item-preview(idx) => { root.folder-item-preview(idx); }
+        }
+
+        if root.view-mode == 1 && root.folder-preview-name != "" : Rectangle {
+            height: 160px;
+            border-color: Palette.border;
+            border-width: 1px;
+            VerticalLayout {
+                Rectangle {
+                    height: 24px;
+                    background: Palette.background.darker(0.04);
+                    Text {
+                        x: 8px;
+                        text: @tr("Preview: ") + root.folder-preview-name;
+                        font-size: 11px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        color: Palette.foreground;
+                        overflow: elide;
+                    }
+                }
+                HorizontalLayout {
+                    vertical-stretch: 1;
+                    spacing: 2px;
+                    // Left preview
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        background: ThemeColors.removed-bg.transparentize(0.8);
+                        border-color: Palette.border;
+                        border-width: 1px;
+                        ScrollView {
+                            Text {
+                                text: root.folder-preview-left;
+                                font-size: 11px;
+                                font-family: "monospace";
+                                color: Palette.foreground;
+                                x: 4px;
+                                y: 4px;
+                                wrap: no-wrap;
+                            }
+                        }
+                    }
+                    // Right preview
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        background: ThemeColors.added-bg.transparentize(0.8);
+                        border-color: Palette.border;
+                        border-width: 1px;
+                        ScrollView {
+                            Text {
+                                text: root.folder-preview-right;
+                                font-size: 11px;
+                                font-family: "monospace";
+                                color: Palette.foreground;
+                                x: 4px;
+                                y: 4px;
+                                wrap: no-wrap;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         if root.view-mode == 3 : DiffView3Way {
@@ -845,6 +972,10 @@ export component MainWindow inherits Window {
             stats: root.image-stats;
             left-title: root.left-path != "" ? root.left-path : @tr("Left");
             right-title: root.right-path != "" ? root.right-path : @tr("Right");
+            left-image-width: root.image-left-width;
+            left-image-height: root.image-left-height;
+            right-image-width: root.image-right-width;
+            right-image-height: root.image-right-height;
             vertical-stretch: 1;
         }
 
@@ -962,6 +1093,33 @@ export component MainWindow inherits Window {
                                     color: ThemeColors.added-fg;
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Comment row
+                Rectangle {
+                    height: 32px;
+                    background: Palette.background;
+                    border-color: Palette.border;
+                    border-width: 1px;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 6px;
+                        Text {
+                            text: @tr("Note:");
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            color: Palette.foreground.transparentize(0.4);
+                            width: 40px;
+                        }
+                        LineEdit {
+                            horizontal-stretch: 1;
+                            text: root.current-diff-comment;
+                            placeholder-text: @tr("Add a note for this diff block...");
+                            font-size: 11px;
+                            edited(t) => { root.diff-comment-changed(t); }
                         }
                     }
                 }

@@ -20,6 +20,8 @@ export component OpenDialog inherits Rectangle {
     callback browse-base();
     callback compare();
     callback open-recent(int);
+    callback paste-left();
+    callback paste-right();
 
     vertical-stretch: 1;
     horizontal-stretch: 1;
@@ -96,6 +98,11 @@ export component OpenDialog inherits Rectangle {
                         text: @tr("Browse...");
                         clicked => { root.browse-left(); }
                     }
+                    Button {
+                        text: "📋";
+                        width: 36px;
+                        clicked => { root.paste-left(); }
+                    }
                 }
             }
 
@@ -149,6 +156,11 @@ export component OpenDialog inherits Rectangle {
                     Button {
                         text: @tr("Browse...");
                         clicked => { root.browse-right(); }
+                    }
+                    Button {
+                        text: "📋";
+                        width: 36px;
+                        clicked => { root.paste-right(); }
                     }
                 }
             }

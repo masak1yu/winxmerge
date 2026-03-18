@@ -23,11 +23,12 @@ use app::{
     export_html_report, export_patch, first_diff, folder_copy_to_left, folder_copy_to_right,
     folder_delete_item, goto_line, last_diff, navigate_bookmark, navigate_conflict, navigate_diff,
     navigate_diff_by_status, navigate_search, open_file_dialog, open_folder_dialog,
-    open_folder_item, open_in_editor, print_diff, redo, reorder_tab, replace_all_text,
-    replace_text, rescan, resolve_conflict_use_left, resolve_conflict_use_right, run_diff,
-    run_folder_compare, run_plugin, save_file, search_text, select_diff, set_row_selection,
-    start_compare, start_three_way_compare, switch_tab, toggle_bookmark, toggle_ignore_case,
-    toggle_ignore_whitespace, undo,
+    open_folder_item, open_in_editor, paste_clipboard_path_left, paste_clipboard_path_right,
+    preview_folder_item, print_diff, redo, reorder_tab, replace_all_text, replace_text, rescan,
+    resolve_conflict_use_left, resolve_conflict_use_right, run_diff, run_folder_compare,
+    run_plugin, save_file, search_text, select_diff, set_diff_comment, set_diff_filter,
+    set_row_selection, start_compare, start_three_way_compare, switch_tab, toggle_bookmark,
+    toggle_ignore_case, toggle_ignore_whitespace, undo,
 };
 use slint::{ModelRc, SharedString, VecModel};
 
@@ -1278,6 +1279,51 @@ fn main() {
                 drop(s);
                 start_compare(&window, &mut state.borrow_mut(), &left, &right, is_folder);
             }
+        });
+    }
+
+    // Diff block comments
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_diff_comment_changed(move |comment| {
+            let window = window_weak.unwrap();
+            set_diff_comment(&window, &mut state.borrow_mut(), comment.to_string());
+        });
+    }
+
+    // Diff status filter
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_diff_filter_changed(move |filter| {
+            let window = window_weak.unwrap();
+            set_diff_filter(&window, &mut state.borrow_mut(), filter);
+        });
+    }
+
+    // Clipboard paste path
+    {
+        let window_weak = window.as_weak();
+        window.on_paste_left_path(move || {
+            paste_clipboard_path_left(&window_weak.unwrap());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        window.on_paste_right_path(move || {
+            paste_clipboard_path_right(&window_weak.unwrap());
+        });
+    }
+
+    // Folder item preview
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_folder_item_preview(move |idx| {
+            let window = window_weak.unwrap();
+            preview_folder_item(&window, &state.borrow(), idx);
         });
     }
 
