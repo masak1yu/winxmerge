@@ -16,6 +16,7 @@ use app::{
     copy_all_diffs_to_right, copy_all_text, copy_current_line_text, copy_left_and_next,
     copy_right_and_next, copy_to_left, copy_to_right, discard_and_proceed, edit_line,
     export_html_report, export_patch, first_diff, folder_copy_to_left, folder_copy_to_right,
+    print_diff,
     folder_delete_item, goto_line, last_diff, navigate_bookmark, navigate_conflict, navigate_diff,
     navigate_search, open_file_dialog, open_folder_dialog, open_folder_item, open_in_editor,
     print_diff, redo, replace_all_text, replace_text, rescan, resolve_conflict_use_left,
