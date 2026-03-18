@@ -204,6 +204,7 @@ export component MainWindow inherits Window {
     in-out property <length> detail-pane-height: 120px;
     in-out property <bool> show-location-pane: true;
     in-out property <bool> show-word-diff: true;
+    in-out property <bool> opt-diff-only: false;
 
     // Bookmarks
     in-out property <string> bookmark-lines: ""; // comma-separated line indices
@@ -328,6 +329,7 @@ export component MainWindow inherits Window {
 
     // Folder exclude patterns
     in-out property <string> opt-folder-exclude-patterns: "";
+    in-out property <int> opt-folder-max-depth: 0;
 
     // Inline editing
     in-out property <bool> opt-inline-edit: true;
@@ -427,6 +429,11 @@ export component MainWindow inherits Window {
             MenuItem {
                 title: root.show-detail-pane ? @tr("✓ Diff Detail Pane") : @tr("  Diff Detail Pane");
                 activated => { root.show-detail-pane = !root.show-detail-pane; }
+            }
+            MenuItem {
+                title: root.opt-diff-only ? @tr("✓ Diff Only") : @tr("  Diff Only");
+                enabled: root.view-mode == 0;
+                activated => { root.opt-diff-only = !root.opt-diff-only; }
             }
             MenuSeparator {}
             MenuItem {
@@ -711,6 +718,7 @@ export component MainWindow inherits Window {
             show-location-pane: root.show-location-pane;
             show-word-diff: root.show-word-diff;
             word-wrap-mode: root.opt-word-wrap;
+            diff-only-mode: root.opt-diff-only;
             editor-font-size: root.opt-font-size;
             editor-tab-width: root.opt-tab-width;
             copy-to-right(idx) => { root.copy-to-right(idx); }
@@ -996,6 +1004,7 @@ export component MainWindow inherits Window {
         opt-substitution-replacements <=> root.opt-substitution-replacements;
         opt-auto-rescan <=> root.opt-auto-rescan;
         opt-folder-exclude-patterns <=> root.opt-folder-exclude-patterns;
+        opt-folder-max-depth <=> root.opt-folder-max-depth;
         opt-plugin-list <=> root.plugin-list;
         apply => {
             root.show-options-dialog = false;

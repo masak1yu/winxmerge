@@ -8,7 +8,7 @@ use slint::{Model, ModelRc, SharedString, VecModel};
 use crate::diff::engine::{DiffOptions, compute_diff_with_options};
 use crate::diff::folder::{FolderCompareOptions, compare_folders_with_options};
 use crate::diff::three_way::{ThreeWayStatus, compute_three_way_diff};
-use crate::encoding::{decode_file, encode_text};
+use crate::encoding::{decode_file, encode_text, is_binary};
 use crate::highlight::{detect_file_type, highlight_lines};
 use crate::models::diff_line::DiffResult;
 use crate::models::diff_line::LineStatus;
@@ -292,6 +292,26 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
     let left_bytes = fs::read(&left_path).unwrap_or_default();
     let right_bytes = fs::read(&right_path).unwrap_or_default();
 
+    // Binary file detection
+    if is_binary(&left_bytes) || is_binary(&right_bytes) {
+        let msg = format!(
+            "Binary files: Left {} bytes, Right {} bytes — {}",
+            left_bytes.len(),
+            right_bytes.len(),
+            if left_bytes == right_bytes {
+                "identical"
+            } else {
+                "different"
+            }
+        );
+        window.set_diff_lines(ModelRc::new(VecModel::from(Vec::<DiffLineData>::new())));
+        window.set_diff_count(0);
+        window.set_current_diff_index(-1);
+        window.set_status_text(SharedString::from(msg));
+        sync_tab_list(window, state);
+        return;
+    }
+
     let (left_text, left_enc) = decode_file(&left_bytes);
     let (right_text, right_enc) = decode_file(&right_bytes);
 
@@ -541,6 +561,7 @@ fn apply_diff_result(
                 right_highlight: right_hl,
                 left_word_diff: SharedString::from(left_word_diff),
                 right_word_diff: SharedString::from(right_word_diff),
+                is_search_match: false,
             }
         })
         .collect();
@@ -1397,6 +1418,7 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
+    settings.folder_max_depth = window.get_opt_folder_max_depth().max(0) as usize;
 
     // Read filter settings
     let line_filters_str = window.get_opt_line_filters().to_string();
@@ -1497,6 +1519,17 @@ pub fn search_text(window: &MainWindow, state: &mut AppState, query: &str) {
     tab.current_search_match = -1;
 
     if query.is_empty() {
+        // Clear any existing search highlights
+        let model = window.get_diff_lines();
+        if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+            for i in 0..vec_model.row_count() {
+                let mut row = vec_model.row_data(i).unwrap();
+                if row.is_search_match {
+                    row.is_search_match = false;
+                    vec_model.set_row_data(i, row);
+                }
+            }
+        }
         window.set_search_match_count(0);
         window.set_status_text(SharedString::from("Search cleared"));
         return;
@@ -1506,8 +1539,8 @@ pub fn search_text(window: &MainWindow, state: &mut AppState, query: &str) {
     let model = window.get_diff_lines();
     if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
         for i in 0..vec_model.row_count() {
-            let row = vec_model.row_data(i).unwrap();
-            if row
+            let mut row = vec_model.row_data(i).unwrap();
+            let matched = row
                 .left_text
                 .to_string()
                 .to_lowercase()
@@ -1516,9 +1549,13 @@ pub fn search_text(window: &MainWindow, state: &mut AppState, query: &str) {
                     .right_text
                     .to_string()
                     .to_lowercase()
-                    .contains(&query_lower)
-            {
+                    .contains(&query_lower);
+            if matched {
                 tab.search_matches.push(i);
+            }
+            if row.is_search_match != matched {
+                row.is_search_match = matched;
+                vec_model.set_row_data(i, row);
             }
         }
     }
@@ -1780,8 +1817,10 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
         _ => return,
     };
 
+    let folder_max_depth = window.get_opt_folder_max_depth().max(0) as usize;
     let options = FolderCompareOptions {
         exclude_patterns: state.folder_exclude_patterns.clone(),
+        max_depth: folder_max_depth,
         ..Default::default()
     };
     let items = compare_folders_with_options(&left_folder, &right_folder, &options);

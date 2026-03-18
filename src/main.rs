@@ -83,9 +83,11 @@ fn main() {
         window.set_opt_substitution_replacements(SharedString::from(sub_replacements.join("|")));
         window.set_opt_auto_rescan(s.auto_rescan);
         window.set_opt_folder_exclude_patterns(SharedString::from(&s.folder_exclude_patterns));
+        window.set_opt_folder_max_depth(s.folder_max_depth as i32);
         window.set_show_location_pane(s.show_location_pane);
         window.set_show_word_diff(s.show_word_diff);
         window.set_show_detail_pane(s.show_detail_pane);
+        window.set_opt_diff_only(s.diff_only);
         // Load plugin list as pipe-separated "name:command" pairs (for options dialog)
         let plugin_str: Vec<String> = s
             .plugins
@@ -197,6 +199,42 @@ fn main() {
         window.set_view_mode(0);
         app::run_diff(&window, &mut s);
         app::sync_tab_list(&window, &s);
+    } else {
+        // No CLI args: restore previous session
+        let session = settings.borrow().session.clone();
+        if !session.is_empty() {
+            let mut first = true;
+            for entry in &session {
+                if entry.left_path.is_empty() || entry.right_path.is_empty() {
+                    continue;
+                }
+                if !first {
+                    add_tab(&window, &mut state.borrow_mut());
+                }
+                first = false;
+                let mut s = state.borrow_mut();
+                if !entry.base_path.is_empty() {
+                    start_three_way_compare(
+                        &window,
+                        &mut s,
+                        &entry.base_path,
+                        &entry.left_path,
+                        &entry.right_path,
+                    );
+                } else {
+                    let left_p = std::path::PathBuf::from(&entry.left_path);
+                    let is_folder = left_p.is_dir();
+                    start_compare(
+                        &window,
+                        &mut s,
+                        &entry.left_path,
+                        &entry.right_path,
+                        is_folder,
+                    );
+                }
+                app::sync_tab_list(&window, &s);
+            }
+        }
     }
 
     // --- Tab management ---
@@ -1119,6 +1157,7 @@ fn main() {
     // Save window size on close
     {
         let settings = settings.clone();
+        let state = state.clone();
         let window_weak = window.as_weak();
         window.window().on_close_requested(move || {
             let window = window_weak.unwrap();
@@ -1133,6 +1172,46 @@ fn main() {
             s.show_location_pane = window.get_show_location_pane();
             s.show_word_diff = window.get_show_word_diff();
             s.show_detail_pane = window.get_show_detail_pane();
+            s.diff_only = window.get_opt_diff_only();
+            s.folder_max_depth = window.get_opt_folder_max_depth().max(0) as usize;
+            // Save session (open tabs)
+            let app = state.borrow();
+            s.session = app
+                .tabs
+                .iter()
+                .filter_map(|tab| {
+                    let left = match tab.view_mode {
+                        1 => tab
+                            .left_folder
+                            .as_ref()
+                            .map(|p| p.to_string_lossy().to_string()),
+                        _ => tab
+                            .left_path
+                            .as_ref()
+                            .map(|p| p.to_string_lossy().to_string()),
+                    }?;
+                    let right = match tab.view_mode {
+                        1 => tab
+                            .right_folder
+                            .as_ref()
+                            .map(|p| p.to_string_lossy().to_string()),
+                        _ => tab
+                            .right_path
+                            .as_ref()
+                            .map(|p| p.to_string_lossy().to_string()),
+                    }?;
+                    let base = tab
+                        .base_path
+                        .as_ref()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    Some(settings::SessionEntry {
+                        left_path: left,
+                        right_path: right,
+                        base_path: base,
+                    })
+                })
+                .collect();
             s.save();
             slint::CloseRequestResponse::HideWindow
         });
