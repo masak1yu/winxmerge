@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use slint::{Model, ModelRc, SharedString, VecModel};
@@ -9,10 +10,29 @@ use crate::diff::folder::{FolderCompareOptions, compare_folders_with_options};
 use crate::diff::three_way::{ThreeWayStatus, compute_three_way_diff};
 use crate::encoding::{decode_file, encode_text};
 use crate::highlight::{detect_file_type, highlight_lines};
+use crate::models::diff_line::DiffResult;
 use crate::models::diff_line::LineStatus;
 use crate::models::folder_item::FileCompareStatus;
 use crate::settings::AppSettings;
 use crate::{DiffLineData, FolderItemData, MainWindow, PluginEntryData, TabData, ThreeWayLineData};
+
+/// Line count threshold above which diff is computed on a background thread
+const ASYNC_DIFF_THRESHOLD: usize = 30_000;
+
+/// Result produced by the background diff thread, applied on the main thread
+pub struct PendingDiffResult {
+    pub tab_index: usize,
+    pub diff_result: DiffResult,
+    pub left_text: String,
+    pub right_text: String,
+    pub left_highlights: Vec<i32>,
+    pub right_highlights: Vec<i32>,
+    pub tab_width: usize,
+    pub left_path: Option<PathBuf>,
+    pub right_path: Option<PathBuf>,
+    pub left_encoding: String,
+    pub right_encoding: String,
+}
 
 /// Snapshot for undo/redo
 #[derive(Clone)]
@@ -56,6 +76,8 @@ pub struct TabState {
     pub right_mtime: Option<SystemTime>,
     /// Pre-computed diff stats string "+A -R ~M"
     pub diff_stats: String,
+    /// True while a background diff computation is in progress for this tab
+    pub is_computing: bool,
 }
 
 impl TabState {
@@ -90,6 +112,7 @@ impl TabState {
             left_mtime: None,
             right_mtime: None,
             diff_stats: String::new(),
+            is_computing: false,
         }
     }
 }
@@ -99,6 +122,8 @@ pub struct AppState {
     pub tabs: Vec<TabState>,
     pub active_tab: usize,
     pub folder_exclude_patterns: Vec<String>,
+    /// Shared slot for background-computed diff results
+    pub pending_diff: Arc<Mutex<Option<PendingDiffResult>>>,
 }
 
 impl AppState {
@@ -107,6 +132,7 @@ impl AppState {
             tabs: vec![TabState::new()],
             active_tab: 0,
             folder_exclude_patterns: Vec::new(),
+            pending_diff: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -348,9 +374,81 @@ pub fn recompute_diff_from_text_with_highlights(
     left_highlights: &[i32],
     right_highlights: &[i32],
 ) {
+    let tab_width = window.get_opt_tab_width().max(1) as usize;
+    let line_count = left_text.lines().count().max(right_text.lines().count());
+
+    // For large files, offload to a background thread to avoid freezing the UI
+    if line_count > ASYNC_DIFF_THRESHOLD {
+        let tab = state.current_tab_mut();
+        tab.is_computing = true;
+        let options = tab.diff_options.clone();
+        let left_text_owned = left_text.to_string();
+        let right_text_owned = right_text.to_string();
+        let left_highlights_owned = left_highlights.to_vec();
+        let right_highlights_owned = right_highlights.to_vec();
+        let left_path = tab.left_path.clone();
+        let right_path = tab.right_path.clone();
+        let left_encoding = tab.left_encoding.clone();
+        let right_encoding = tab.right_encoding.clone();
+        let tab_index = state.active_tab;
+        let pending_slot = state.pending_diff.clone();
+
+        std::thread::spawn(move || {
+            let diff_result =
+                compute_diff_with_options(&left_text_owned, &right_text_owned, &options);
+            let mut slot = pending_slot.lock().unwrap();
+            *slot = Some(PendingDiffResult {
+                tab_index,
+                diff_result,
+                left_text: left_text_owned,
+                right_text: right_text_owned,
+                left_highlights: left_highlights_owned,
+                right_highlights: right_highlights_owned,
+                tab_width,
+                left_path,
+                right_path,
+                left_encoding,
+                right_encoding,
+            });
+        });
+
+        window.set_status_text(SharedString::from(format!(
+            "Computing diff... ({} lines)",
+            line_count
+        )));
+        window.set_diff_lines(ModelRc::new(VecModel::from(Vec::<DiffLineData>::new())));
+        window.set_diff_count(0);
+        window.set_current_diff_index(-1);
+        return;
+    }
+
     let tab = state.current_tab_mut();
     let result = compute_diff_with_options(left_text, right_text, &tab.diff_options);
-    let tab_width = window.get_opt_tab_width().max(1) as usize;
+    apply_diff_result(
+        window,
+        state,
+        result,
+        left_text,
+        right_text,
+        left_highlights,
+        right_highlights,
+        tab_width,
+    );
+}
+
+/// Apply a computed `DiffResult` to the window and current tab state.
+fn apply_diff_result(
+    window: &MainWindow,
+    state: &mut AppState,
+    result: DiffResult,
+    left_text: &str,
+    right_text: &str,
+    left_highlights: &[i32],
+    right_highlights: &[i32],
+    tab_width: usize,
+) {
+    let tab = state.current_tab_mut();
+    tab.is_computing = false;
 
     tab.left_lines = left_text.lines().map(String::from).collect();
     tab.right_lines = right_text.lines().map(String::from).collect();
@@ -478,8 +576,9 @@ pub fn recompute_diff_from_text_with_highlights(
             _ => {}
         }
     }
+    let tab = state.current_tab_mut();
     tab.diff_stats = format!("+{} -{} ~{}", added, removed, modified);
-    let stats = &tab.diff_stats.clone();
+    let stats = tab.diff_stats.clone();
 
     let status = if result.diff_count == 0 {
         "Files are identical".to_string()
@@ -492,7 +591,43 @@ pub fn recompute_diff_from_text_with_highlights(
 
     // Update detail pane
     let model = window.get_diff_lines();
+    let tab = state.current_tab();
     update_detail_pane(window, &model, tab.current_diff, tab);
+}
+
+/// Poll the shared result slot and apply if a background diff has finished.
+/// Call this from a periodic timer on the main thread.
+pub fn apply_pending_diff_if_ready(window: &MainWindow, state: &mut AppState) {
+    let pending = {
+        let mut slot = state.pending_diff.lock().unwrap();
+        slot.take()
+    };
+    let Some(p) = pending else { return };
+
+    // Only apply if it matches the currently active tab
+    if p.tab_index != state.active_tab {
+        return;
+    }
+
+    // Update tab paths/encoding from the pending result (already set when spawning, but keep in sync)
+    {
+        let tab = state.current_tab_mut();
+        tab.left_path = p.left_path;
+        tab.right_path = p.right_path;
+        tab.left_encoding = p.left_encoding;
+        tab.right_encoding = p.right_encoding;
+    }
+
+    apply_diff_result(
+        window,
+        state,
+        p.diff_result,
+        &p.left_text,
+        &p.right_text,
+        &p.left_highlights,
+        &p.right_highlights,
+        p.tab_width,
+    );
 }
 
 pub fn select_diff(window: &MainWindow, state: &mut AppState, diff_index: i32) {
