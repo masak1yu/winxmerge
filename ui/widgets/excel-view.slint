@@ -1,0 +1,167 @@
+import { ListView, ComboBox, Palette } from "std-widgets.slint";
+import { ThemeColors } from "../theme.slint";
+
+export struct ExcelCellData {
+    sheet-name: string,
+    row: int,
+    col-name: string,
+    left-value: string,
+    right-value: string,
+    // 0=identical, 1=different, 2=left-only, 3=right-only
+    status: int,
+}
+
+export component ExcelView inherits Rectangle {
+    in property <[ExcelCellData]> cells;
+    in property <[string]> sheet-names;
+    in-out property <string> active-sheet: "";
+
+    border-color: Palette.border;
+    border-width: 1px;
+
+    VerticalLayout {
+        // Sheet selector bar
+        Rectangle {
+            height: 36px;
+            background: Palette.background.darker(0.04);
+            border-color: Palette.border;
+            border-width: 1px;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 8px;
+                alignment: start;
+
+                Text {
+                    text: @tr("Sheet:");
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+
+                ComboBox {
+                    width: 200px;
+                    model: root.sheet-names;
+                    current-value: root.active-sheet;
+                    selected(val) => { root.active-sheet = val; }
+                }
+            }
+        }
+
+        // Column header
+        Rectangle {
+            height: 28px;
+            background: Palette.background.darker(0.05);
+            border-color: Palette.border;
+            border-width: 1px;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 0;
+
+                Text {
+                    width: 80px;
+                    text: @tr("Sheet");
+                    font-size: 12px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Text {
+                    width: 60px;
+                    text: @tr("Cell");
+                    font-size: 12px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Text {
+                    width: 70px;
+                    text: @tr("Status");
+                    font-size: 12px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: @tr("Left Value");
+                    font-size: 12px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: @tr("Right Value");
+                    font-size: 12px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // Cell rows
+        ListView {
+            for cell in root.cells: Rectangle {
+                height: 24px;
+                visible: root.active-sheet == "" || root.active-sheet == cell.sheet-name;
+
+                background: ta.has-hover ? Palette.background.darker(0.04) : Palette.background;
+
+                ta := TouchArea {}
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 0;
+
+                    Text {
+                        width: 80px;
+                        text: cell.sheet-name;
+                        font-size: 11px;
+                        color: Palette.foreground.transparentize(0.3);
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        width: 60px;
+                        text: cell.col-name + "\{cell.row}";
+                        font-size: 11px;
+                        font-family: "monospace";
+                        color: Palette.foreground;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        width: 70px;
+                        text: cell.status == 1 ? @tr("Changed") :
+                              cell.status == 2 ? @tr("Left only") :
+                              @tr("Right only");
+                        font-size: 11px;
+                        color: cell.status == 1 ? ThemeColors.modified-fg :
+                               cell.status == 2 ? ThemeColors.removed-fg :
+                               ThemeColors.added-fg;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: cell.left-value;
+                        font-size: 11px;
+                        font-family: "monospace";
+                        color: cell.status == 2 ? ThemeColors.removed-fg : Palette.foreground;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: cell.right-value;
+                        font-size: 11px;
+                        font-family: "monospace";
+                        color: cell.status == 3 ? ThemeColors.added-fg : Palette.foreground;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+    }
+}

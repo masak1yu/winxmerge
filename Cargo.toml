@@ -1,6 +1,6 @@
 [package]
 name = "winxmerge"
-version = "0.20.0"
+version = "0.21.0"
 edition = "2024"
 
 [dependencies]
@@ -31,6 +31,8 @@ tree-sitter-c-sharp = "0.23"
 tree-sitter-yaml = "0.7"
 tree-sitter-toml-ng = "0.7"
 tree-sitter-md = "0.5"
+zip = "2"
+calamine = "0.26"
 
 [build-dependencies]
 slint-build = "1.15.1"

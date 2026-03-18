@@ -1,6 +1,8 @@
 mod app;
+mod archive;
 mod diff;
 mod encoding;
+mod excel;
 mod export;
 mod highlight;
 mod models;
