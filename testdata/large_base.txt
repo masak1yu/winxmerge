@@ -1,0 +1,148 @@
+// base.rs - Core data processing module
+// Version: 0.5.0
+
+use std::collections::HashMap;
+use std::fmt;
+
+/// Represents a data record
+#[derive(Debug, Clone)]
+pub struct Record {
+    pub id: u64,
+    pub name: String,
+    pub value: f64,
+    pub tags: Vec<String>,
+}
+
+impl Record {
+    pub fn new(id: u64, name: &str, value: f64) -> Self {
+        Record {
+            id,
+            name: name.to_string(),
+            value,
+            tags: Vec::new(),
+        }
+    }
+
+    pub fn add_tag(&mut self, tag: &str) {
+        self.tags.push(tag.to_string());
+    }
+}
+
+impl fmt::Display for Record {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Record(id={}, name={}, value={})", self.id, self.name, self.value)
+    }
+}
+
+/// Processor handles batch data operations
+pub struct Processor {
+    records: Vec<Record>,
+    batch_size: usize,
+}
+
+impl Processor {
+    pub fn new(batch_size: usize) -> Self {
+        Processor {
+            records: Vec::new(),
+            batch_size,
+        }
+    }
+
+    pub fn add_record(&mut self, record: Record) {
+        self.records.push(record);
+    }
+
+    pub fn process_batch(&self) -> Vec<Record> {
+        self.records
+            .chunks(self.batch_size)
+            .flat_map(|chunk| chunk.to_vec())
+            .collect()
+    }
+
+    pub fn filter_by_value(&self, threshold: f64) -> Vec<&Record> {
+        self.records
+            .iter()
+            .filter(|r| r.value > threshold)
+            .collect()
+    }
+
+    pub fn total_value(&self) -> f64 {
+        self.records.iter().map(|r| r.value).sum()
+    }
+
+    pub fn average_value(&self) -> f64 {
+        if self.records.is_empty() {
+            return 0.0;
+        }
+        self.total_value() / self.records.len() as f64
+    }
+
+    pub fn group_by_tag(&self) -> HashMap<String, Vec<&Record>> {
+        let mut groups: HashMap<String, Vec<&Record>> = HashMap::new();
+        for record in &self.records {
+            for tag in &record.tags {
+                groups.entry(tag.clone()).or_default().push(record);
+            }
+        }
+        groups
+    }
+}
+
+/// Error types for processing failures
+#[derive(Debug)]
+pub enum ProcessError {
+    InvalidData(String),
+    BatchFailed(usize),
+    Timeout,
+}
+
+impl fmt::Display for ProcessError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProcessError::InvalidData(msg) => write!(f, "Invalid data: {}", msg),
+            ProcessError::BatchFailed(n) => write!(f, "Batch {} failed", n),
+            ProcessError::Timeout => write!(f, "Operation timed out"),
+        }
+    }
+}
+
+/// Validates a record before processing
+pub fn validate_record(record: &Record) -> Result<(), ProcessError> {
+    if record.name.is_empty() {
+        return Err(ProcessError::InvalidData("name cannot be empty".to_string()));
+    }
+    if record.value < 0.0 {
+        return Err(ProcessError::InvalidData("value cannot be negative".to_string()));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_record() {
+        let record = Record::new(1, "test", 42.0);
+        assert_eq!(record.id, 1);
+        assert_eq!(record.name, "test");
+        assert_eq!(record.value, 42.0);
+    }
+
+    #[test]
+    fn test_processor_total() {
+        let mut proc = Processor::new(10);
+        proc.add_record(Record::new(1, "a", 10.0));
+        proc.add_record(Record::new(2, "b", 20.0));
+        assert_eq!(proc.total_value(), 30.0);
+    }
+
+    #[test]
+    fn test_validate_record() {
+        let valid = Record::new(1, "valid", 5.0);
+        assert!(validate_record(&valid).is_ok());
+
+        let invalid = Record::new(2, "", 5.0);
+        assert!(validate_record(&invalid).is_err());
+    }
+}
