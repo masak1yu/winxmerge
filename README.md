@@ -138,6 +138,11 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Diff colors and syntax highlighting colors optimized per theme
 - Settings persisted across sessions
 
+### Built-in File Browser
+- Native-dialog-independent file/folder picker (works on WSL2 and environments without GTK)
+- Directory navigation with folder/file icons, parent button, and editable path bar
+- Falls back automatically when the system file dialog is unavailable
+
 ### Other
 - WinMerge-style initial file selection dialog (with recent files list)
 - WinMerge-style options dialog (Edit → Options...)
@@ -249,6 +254,7 @@ winxmerge/
 │   ├── icons/                  # SVG toolbar icons
 │   ├── dialogs/
 │   │   ├── open-dialog.slint   # File/folder selection dialog
+│   │   ├── file-browser.slint  # Built-in file browser (WSL2-safe)
 │   │   └── options-dialog.slint # Options dialog
 │   └── widgets/
 │       ├── diff-view.slint     # 2-way diff display widget

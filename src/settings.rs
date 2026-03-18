@@ -69,6 +69,14 @@ pub struct AppSettings {
     #[serde(default)]
     pub folder_exclude_patterns: String,
 
+    // View panel visibility
+    #[serde(default = "default_true")]
+    pub show_location_pane: bool,
+    #[serde(default = "default_true")]
+    pub show_word_diff: bool,
+    #[serde(default = "default_true")]
+    pub show_detail_pane: bool,
+
     #[serde(default)]
     pub recent_files: Vec<RecentEntry>,
 }
@@ -139,6 +147,9 @@ impl Default for AppSettings {
             external_editor: String::new(),
             auto_rescan: false,
             folder_exclude_patterns: String::new(),
+            show_location_pane: true,
+            show_word_diff: true,
+            show_detail_pane: true,
             recent_files: Vec::new(),
         }
     }

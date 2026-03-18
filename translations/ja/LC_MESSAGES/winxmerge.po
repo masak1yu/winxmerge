@@ -81,6 +81,42 @@ msgstr "ツールバーを隠す"
 msgid "Show Toolbar"
 msgstr "ツールバーを表示"
 
+msgid "✓ Toolbar"
+msgstr "✓ ツールバー"
+
+msgid "  Toolbar"
+msgstr "  ツールバー"
+
+msgid "✓ Line Numbers"
+msgstr "✓ 行番号"
+
+msgid "  Line Numbers"
+msgstr "  行番号"
+
+msgid "✓ Location Pane"
+msgstr "✓ ロケーションペイン"
+
+msgid "  Location Pane"
+msgstr "  ロケーションペイン"
+
+msgid "✓ Word Diff"
+msgstr "✓ ワードレベル差分"
+
+msgid "  Word Diff"
+msgstr "  ワードレベル差分"
+
+msgid "✓ Diff Detail Pane"
+msgstr "✓ 差分詳細ペイン"
+
+msgid "  Diff Detail Pane"
+msgstr "  差分詳細ペイン"
+
+msgid "Close"
+msgstr "閉じる"
+
+msgid "Plugin error"
+msgstr "プラグインエラー"
+
 msgid "✓ Ignore Whitespace"
 msgstr "✓ 空白を無視"
 
@@ -480,3 +516,25 @@ msgstr "すべて左から右にコピー"
 
 msgid "Copy All Right to Left"
 msgstr "すべて右から左にコピー"
+
+# File browser / path picker dialog
+msgid "OK"
+msgstr "OK"
+
+msgid "Parent"
+msgstr "上のフォルダ"
+
+msgid "Select left file"
+msgstr "左ファイルを選択"
+
+msgid "Select right file"
+msgstr "右ファイルを選択"
+
+msgid "Select left folder"
+msgstr "左フォルダを選択"
+
+msgid "Select right folder"
+msgstr "右フォルダを選択"
+
+msgid "Select base file"
+msgstr "ベースファイルを選択"

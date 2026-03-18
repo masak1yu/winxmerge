@@ -7,8 +7,8 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 ## 現在の状態
 
-- **バージョン:** 0.13.0
-- **ブランチ:** `feature/v0.13.0`
+- **バージョン:** 0.14.0
+- **ブランチ:** `feature/v0.14.0`
 - **テスト:** 16件すべてパス
 - **ビルド:** `cargo build` 成功
 - **CI:** GitHub Actions（ubuntu / macOS / Windows）
@@ -29,7 +29,8 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | v0.10.0 | #10 | 行フィルタ、置換フィルタ（正規表現）、オプション画面拡張 |
 | v0.11.0 | #11 | ワードレベル差分、プラグインシステム、アクセシビリティ、自動再スキャン、フォルダツリー表示、外部エディタ連携 |
 | v0.12.0 | #12 | スプリッター、インライン編集、パッチエクスポート、スクロール同期、差分統計 |
-| v0.13.0 | - | SVGアイコンツールバー、差分詳細ペイン、コピーして次へ、全差分コピー、ウィンドウサイズ保存 |
+| v0.13.0 | #13 | SVGアイコンツールバー、差分詳細ペイン、コピーして次へ、全差分コピー、ウィンドウサイズ保存 |
+| v0.14.0 | - | 組み込みファイルブラウザ（WSL2対応）、左右スクロール双方向同期、絵文字→SVGアイコン化 |
 
 ## 実装済み機能一覧
 
@@ -40,7 +41,7 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 - マージ操作（左→右 / 右→左コピー、ツールバー + インラインボタン）
 - Undo/Redo（スナップショットベース、Cmd+Z / Cmd+Shift+Z）
 - 左右2ペイン + マージボタン列 + ロケーションペイン（ミニマップ）
-- 左右スクロール同期（viewport-y バインド）
+- 左右スクロール双方向同期（どちらのペインをスクロールしても両側が追従）
 - 行番号クリックで差分選択
 
 ### 3-way マージ
@@ -200,6 +201,12 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 - `window().on_close_requested()` でウィンドウサイズを `settings.json` に保存
 - 起動時に `window().set_size()` で復元
 
+### 組み込みファイルブラウザ
+- GTK 非依存のファイル/フォルダピッカー（WSL2 等でネイティブダイアログが使えない環境に対応）
+- ディレクトリナビゲーション（フォルダ/ファイル SVG アイコン、上のフォルダボタン、編集可能パスバー）
+- ネイティブダイアログ（rfd）が利用不可の場合に自動フォールバック
+- シングルクリックで選択、ダブルクリックでフォルダに入る/ファイルを確定
+
 ### その他
 - WinMerge 風の初期選択ダイアログ
 - 未保存変更の確認ダイアログ
@@ -235,6 +242,7 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | `widgets/folder-view.slint` | フォルダ比較リスト表示 |
 | `widgets/tab-bar.slint` | タブバー |
 | `dialogs/open-dialog.slint` | 初期選択ダイアログ |
+| `dialogs/file-browser.slint` | 組み込みファイルブラウザ（WSL2 対応、rfd フォールバック） |
 | `theme.slint` | テーマカラー定義（ThemeColors グローバル、ライト/ダーク対応） |
 | `dialogs/options-dialog.slint` | オプション設定ダイアログ（テーマ選択含む） |
 

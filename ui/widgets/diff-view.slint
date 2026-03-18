@@ -164,12 +164,32 @@ export component DiffView inherits Rectangle {
     in property <int> editor-font-size: 13;
     in property <int> editor-tab-width: 4;
     in property <bool> inline-edit-enabled: false;
+    in property <bool> show-location-pane: true;
+    in property <bool> show-word-diff: true;
 
     accessible-role: list;
     accessible-label: "File difference view";
 
     // Expose viewport-y for external scroll control
     in-out property <length> scroll-y <=> left-list.viewport-y;
+    // Right list scroll — exposed so we can detect user-initiated right-pane scroll
+    in-out property <length> right-scroll-y <=> right-list.viewport-y;
+
+    // Bidirectional sync: left → right (skip if already equal to avoid loops)
+    changed scroll-y => {
+        if right-list.viewport-y != scroll-y {
+            right-list.viewport-y = scroll-y;
+            mid-list.viewport-y = scroll-y;
+        }
+    }
+
+    // Bidirectional sync: right → left (skip if already equal to avoid loops)
+    changed right-scroll-y => {
+        if left-list.viewport-y != right-scroll-y {
+            left-list.viewport-y = right-scroll-y;
+            mid-list.viewport-y = right-scroll-y;
+        }
+    }
 
     callback copy-to-right(/* diff-index */ int);
     callback copy-to-left(/* diff-index */ int);
@@ -189,7 +209,7 @@ export component DiffView inherits Rectangle {
 
     // Computed widths
     property <length> merge-col-width: 32px;
-    property <length> location-pane-width: root.diff-lines.length > 0 ? 14px : 0px;
+    property <length> location-pane-width: root.diff-lines.length > 0 && root.show-location-pane ? 14px : 0px;
     property <length> available-pane-width: root.width - 2px - merge-col-width - location-pane-width;
     property <length> left-pane-width: Math.max(80px, Math.min(available-pane-width - 80px, available-pane-width * root.split-ratio));
 
@@ -289,7 +309,7 @@ export component DiffView inherits Rectangle {
 
                 left-list := ListView {
                     for line[idx] in diff-lines: DiffLineRow {
-                        height: line.left-word-diff != "" ? 36px : 24px;
+                        height: line.left-word-diff != "" && root.show-word-diff ? 36px : 24px;
                         line-no: line.left-line-no;
                         text: line.left-text;
                         status: line.status == 1 ? 0 : line.status;
@@ -298,7 +318,7 @@ export component DiffView inherits Rectangle {
                         diff-idx: line.diff-index;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
-                        word-diff: line.left-word-diff;
+                        word-diff: root.show-word-diff ? line.left-word-diff : "";
                         editable: root.inline-edit-enabled && line.left-line-no != "";
                         line-clicked(didx) => { root.select-diff(didx); }
                         text-edited(new-text) => { root.edit-left-line(idx, new-text); }
@@ -314,9 +334,8 @@ export component DiffView inherits Rectangle {
                 border-width: 1px;
 
                 mid-list := ListView {
-                    viewport-y: left-list.viewport-y;
                     for line in diff-lines: Rectangle {
-                        height: line.left-word-diff != "" || line.right-word-diff != "" ? 36px : 24px;
+                        height: (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
                         if line.status != 0 : HorizontalLayout {
                             padding: 1px;
                             spacing: 1px;
@@ -377,9 +396,8 @@ export component DiffView inherits Rectangle {
                 }
 
                 right-list := ListView {
-                    viewport-y: left-list.viewport-y;
                     for line[idx] in diff-lines: DiffLineRow {
-                        height: line.right-word-diff != "" ? 36px : 24px;
+                        height: line.right-word-diff != "" && root.show-word-diff ? 36px : 24px;
                         line-no: line.right-line-no;
                         text: line.right-text;
                         status: line.status == 2 ? 0 : line.status;
@@ -388,7 +406,7 @@ export component DiffView inherits Rectangle {
                         diff-idx: line.diff-index;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
-                        word-diff: line.right-word-diff;
+                        word-diff: root.show-word-diff ? line.right-word-diff : "";
                         editable: root.inline-edit-enabled && line.right-line-no != "";
                         line-clicked(didx) => { root.select-diff(didx); }
                         text-edited(new-text) => { root.edit-right-line(idx, new-text); }
@@ -396,8 +414,8 @@ export component DiffView inherits Rectangle {
                 }
             }
 
-            // Location pane (minimap) - only show when there are lines
-            if root.diff-lines.length > 0 : LocationPane {
+            // Location pane (minimap)
+            if root.diff-lines.length > 0 && root.show-location-pane : LocationPane {
                 diff-lines: root.diff-lines;
                 current-diff-index: root.current-diff-index;
             }
