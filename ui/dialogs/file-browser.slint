@@ -1,0 +1,166 @@
+import { Button, LineEdit, ListView, Palette } from "std-widgets.slint";
+
+export global FileBrowserIcons {
+    out property <image> folder: @image-url("../icons/folder.svg");
+    out property <image> file: @image-url("../icons/file.svg");
+    out property <image> up: @image-url("../icons/up.svg");
+}
+
+export struct FileEntryData {
+    name: string,
+    is-dir: bool,
+}
+
+export component FileBrowserDialog inherits Rectangle {
+    in property <bool> visible-flag: false;
+    in-out property <string> current-dir: "";
+    in property <[FileEntryData]> entries;
+    in property <bool> is-folder-mode: false;
+    in-out property <int> selected-index: -1;
+
+    callback navigate(string);  // navigate to given path
+    callback go-parent();
+    callback confirmed(string);
+    callback cancelled();
+
+    if visible-flag : Rectangle {
+        background: #00000060;
+
+        TouchArea {
+            clicked => { root.cancelled(); }
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: Math.min(600px, parent.width - 40px);
+            height: Math.min(500px, parent.height - 40px);
+            background: Palette.background;
+            border-color: Palette.border;
+            border-width: 1px;
+            border-radius: 8px;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000050;
+
+            TouchArea { } // absorb backdrop click
+
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+
+                // Path bar
+                HorizontalLayout {
+                    spacing: 6px;
+
+                    LineEdit {
+                        horizontal-stretch: 1;
+                        text: root.current-dir;
+                        edited(t) => { root.current-dir = t; }
+                        accepted(t) => { root.navigate(t); }
+                    }
+
+                    Rectangle {
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 4px;
+                        background: up-ta.has-hover ? Palette.background.darker(0.12) : transparent;
+                        border-color: Palette.border;
+                        border-width: 1px;
+
+                        Image {
+                            width: 18px;
+                            height: 18px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            source: FileBrowserIcons.up;
+                            colorize: Palette.foreground;
+                        }
+
+                        up-ta := TouchArea {
+                            clicked => { root.go-parent(); }
+                        }
+                    }
+                }
+
+                Rectangle { height: 1px; background: Palette.border; }
+
+                // File / folder listing
+                ListView {
+                    vertical-stretch: 1;
+
+                    for entry[idx] in root.entries : Rectangle {
+                        height: 28px;
+                        background: idx == root.selected-index
+                            ? Palette.accent-background
+                            : row-ta.has-hover
+                                ? Palette.background.darker(0.07)
+                                : transparent;
+
+                        row-ta := TouchArea {
+                            clicked => { root.selected-index = idx; }
+                            double-clicked => {
+                                if entry.is-dir {
+                                    root.navigate(root.current-dir + "/" + entry.name);
+                                } else {
+                                    root.confirmed(root.current-dir + "/" + entry.name);
+                                }
+                            }
+                        }
+
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            spacing: 6px;
+                            alignment: start;
+
+                            Image {
+                                width: 16px;
+                                height: 16px;
+                                source: entry.is-dir ? FileBrowserIcons.folder : FileBrowserIcons.file;
+                                colorize: Palette.foreground;
+                                vertical-alignment: center;
+                            }
+
+                            Text {
+                                horizontal-stretch: 1;
+                                text: entry.name;
+                                font-size: 13px;
+                                font-family: "monospace";
+                                vertical-alignment: center;
+                                overflow: elide;
+                                color: entry.is-dir
+                                    ? Palette.foreground
+                                    : Palette.foreground.transparentize(0.2);
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { height: 1px; background: Palette.border; }
+
+                // Footer buttons
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+
+                    Button {
+                        text: @tr("Cancel");
+                        clicked => { root.cancelled(); }
+                    }
+
+                    Button {
+                        text: @tr("OK");
+                        enabled: root.is-folder-mode || root.selected-index >= 0;
+                        clicked => {
+                            if root.is-folder-mode {
+                                root.confirmed(root.current-dir);
+                            } else {
+                                root.confirmed(root.current-dir + "/" + root.entries[root.selected-index].name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
