@@ -214,6 +214,90 @@ pub fn export_unified_diff(
     output
 }
 
+/// Export diff as CSV (or TSV when sep='\t')
+pub fn export_csv(result: &DiffResult, left_title: &str, right_title: &str, sep: char) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "Status{}Left Line{}Right Line{}Left Text{}Right Text\n",
+        sep, sep, sep, sep
+    ));
+    for line in &result.lines {
+        let status = match line.status {
+            LineStatus::Equal => "Equal",
+            LineStatus::Added => "Added",
+            LineStatus::Removed => "Removed",
+            LineStatus::Modified => "Modified",
+            LineStatus::Moved => "Moved",
+        };
+        let left_no = line.left_line_no.map(|n| n.to_string()).unwrap_or_default();
+        let right_no = line
+            .right_line_no
+            .map(|n| n.to_string())
+            .unwrap_or_default();
+        let escape = |s: &str| format!("\"{}\"", s.replace('"', "\"\""));
+        out.push_str(&format!(
+            "{}{}{}{}{}{}{}{}{}\n",
+            status,
+            sep,
+            left_no,
+            sep,
+            right_no,
+            sep,
+            escape(&line.left_text),
+            sep,
+            escape(&line.right_text)
+        ));
+    }
+    let _ = left_title;
+    let _ = right_title;
+    out
+}
+
+/// Export folder comparison as HTML
+pub fn export_folder_html(
+    items: &[crate::models::folder_item::FolderItem],
+    left_title: &str,
+    right_title: &str,
+) -> String {
+    use crate::models::folder_item::FileCompareStatus;
+    let mut rows = String::new();
+    for item in items {
+        let status_text = match item.status {
+            FileCompareStatus::Identical => "Identical",
+            FileCompareStatus::Different => "Different",
+            FileCompareStatus::LeftOnly => "Left only",
+            FileCompareStatus::RightOnly => "Right only",
+        };
+        let color = match item.status {
+            FileCompareStatus::Identical => "#888",
+            FileCompareStatus::Different => "#b08800",
+            FileCompareStatus::LeftOnly => "#cb2431",
+            FileCompareStatus::RightOnly => "#22863a",
+        };
+        rows.push_str(&format!(
+            "<tr><td>{}</td><td style=\"color:{}\">{}</td><td>{}</td><td>{}</td></tr>\n",
+            escape_html(&item.relative_path),
+            color,
+            status_text,
+            item.left_modified.as_deref().unwrap_or(""),
+            item.right_modified.as_deref().unwrap_or("")
+        ));
+    }
+    format!(
+        r#"<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Folder Compare</title>
+<style>body{{font-family:monospace;font-size:13px}} table{{border-collapse:collapse;width:100%}} th,td{{border:1px solid #ddd;padding:4px 8px}} th{{background:#f0f0f0}}</style>
+</head><body>
+<h2>Folder Compare: {} &#x2194; {}</h2>
+<table><tr><th>Path</th><th>Status</th><th>Left Modified</th><th>Right Modified</th></tr>
+{}
+</table></body></html>"#,
+        escape_html(left_title),
+        escape_html(right_title),
+        rows
+    )
+}
+
 fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")

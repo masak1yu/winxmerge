@@ -216,6 +216,8 @@ export component MainWindow inherits Window {
     callback browse-base();
     callback next-diff();
     callback prev-diff();
+    callback next-diff-status(/* status: 1=added 2=removed 3=modified */ int);
+    callback prev-diff-status(int);
     callback first-diff();
     callback last-diff();
     callback copy-to-right(int);
@@ -241,6 +243,9 @@ export component MainWindow inherits Window {
     callback redo();
     callback export-html();
     callback export-patch();
+    callback export-csv();
+    callback export-tsv();
+    callback export-folder-html();
     callback print-diff();
     callback copy-left-text();
     callback copy-right-text();
@@ -262,6 +267,14 @@ export component MainWindow inherits Window {
     callback open-left-in-editor();
     callback open-right-in-editor();
 
+    // Clipboard comparison
+    callback compare-clipboard-left();
+    callback compare-clipboard-right();
+
+    // Tab reorder
+    callback tab-move-left(int);
+    callback tab-move-right(int);
+
     // Plugin execution
     callback run-plugin(/* command */ string);
 
@@ -270,6 +283,11 @@ export component MainWindow inherits Window {
     callback copy-left-and-next();
     callback copy-all-diffs-right();
     callback copy-all-diffs-left();
+
+    // Multi-line selection copy
+    callback row-shift-clicked(int);
+    callback copy-selection-right();
+    callback copy-selection-left();
 
     // Rescan files
     callback rescan();
@@ -346,6 +364,9 @@ export component MainWindow inherits Window {
     // Persistent diff stats display
     in-out property <string> diff-stats-text: "";
 
+    // Folder comparison summary
+    in-out property <string> folder-summary-text: "";
+
     // Inline editing
     in-out property <bool> opt-inline-edit: true;
 
@@ -404,6 +425,9 @@ export component MainWindow inherits Window {
             MenuSeparator {}
             MenuItem { title: @tr("Export HTML Report..."); enabled: root.diff-count > 0; activated => { root.export-html(); } }
             MenuItem { title: @tr("Export Patch (Unified Diff)..."); enabled: root.diff-count > 0; activated => { root.export-patch(); } }
+            MenuItem { title: @tr("Export CSV..."); enabled: root.diff-count > 0; activated => { root.export-csv(); } }
+            MenuItem { title: @tr("Export TSV..."); enabled: root.diff-count > 0; activated => { root.export-tsv(); } }
+            MenuItem { title: @tr("Export Folder Report..."); enabled: root.view-mode == 1; activated => { root.export-folder-html(); } }
         }
         Menu {
             title: @tr("Edit");
@@ -417,6 +441,12 @@ export component MainWindow inherits Window {
             MenuSeparator {}
             MenuItem { title: @tr("Copy All Left Text"); enabled: root.view-mode == 0; activated => { root.copy-all-left(); } }
             MenuItem { title: @tr("Copy All Right Text"); enabled: root.view-mode == 0; activated => { root.copy-all-right(); } }
+            MenuSeparator {}
+            MenuItem { title: @tr("Copy Selection →"); enabled: root.view-mode == 0; activated => { root.copy-selection-right(); } }
+            MenuItem { title: @tr("← Copy Selection"); enabled: root.view-mode == 0; activated => { root.copy-selection-left(); } }
+            MenuSeparator {}
+            MenuItem { title: @tr("Use Clipboard as Left"); activated => { root.compare-clipboard-left(); } }
+            MenuItem { title: @tr("Use Clipboard as Right"); activated => { root.compare-clipboard-right(); } }
             MenuSeparator {}
             MenuItem {
                 title: @tr("Options...");
@@ -477,6 +507,15 @@ export component MainWindow inherits Window {
             MenuItem { title: @tr("Toggle Bookmark"); activated => { root.toggle-bookmark(root.current-diff-index); } }
             MenuItem { title: @tr("Next Bookmark"); activated => { root.next-bookmark(); } }
             MenuItem { title: @tr("Previous Bookmark"); activated => { root.prev-bookmark(); } }
+            MenuSeparator {}
+            MenuItem { title: @tr("Next Added"); activated => { root.next-diff-status(1); } }
+            MenuItem { title: @tr("Prev Added"); activated => { root.prev-diff-status(1); } }
+            MenuSeparator {}
+            MenuItem { title: @tr("Next Removed"); activated => { root.next-diff-status(2); } }
+            MenuItem { title: @tr("Prev Removed"); activated => { root.prev-diff-status(2); } }
+            MenuSeparator {}
+            MenuItem { title: @tr("Next Modified"); activated => { root.next-diff-status(3); } }
+            MenuItem { title: @tr("Prev Modified"); activated => { root.prev-diff-status(3); } }
         }
         Menu {
             title: @tr("Plugins");
@@ -499,6 +538,8 @@ export component MainWindow inherits Window {
             tab-clicked(idx) => { root.switch-tab(idx); }
             tab-close(idx) => { root.close-tab(idx); }
             new-tab => { root.new-tab(); }
+            tab-move-left(idx) => { root.tab-move-left(idx); }
+            tab-move-right(idx) => { root.tab-move-right(idx); }
         }
 
         // Toolbar (single row, image icons)
@@ -746,6 +787,9 @@ export component MainWindow inherits Window {
             inline-edit-enabled: root.opt-inline-edit;
             edit-left-line(idx, text) => { root.edit-left-line(idx, text); }
             edit-right-line(idx, text) => { root.edit-right-line(idx, text); }
+            row-shift-clicked(idx) => { root.row-shift-clicked(idx); }
+            copy-selection-to-right => { root.copy-selection-right(); }
+            copy-selection-to-left => { root.copy-selection-left(); }
         }
 
         if root.view-mode == 1 : FolderView {

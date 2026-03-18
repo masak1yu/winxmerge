@@ -13,15 +13,18 @@ use std::rc::Rc;
 
 use app::{
     AppState, add_tab, apply_options, apply_pending_diff_if_ready, check_files_changed, close_tab,
-    copy_all_diffs_to_left, copy_all_diffs_to_right, copy_all_text, copy_current_line_text,
-    copy_left_and_next, copy_right_and_next, copy_to_left, copy_to_right, discard_and_proceed,
-    edit_line, export_html_report, export_patch, first_diff, folder_copy_to_left,
-    folder_copy_to_right, folder_delete_item, goto_line, last_diff, navigate_bookmark,
-    navigate_conflict, navigate_diff, navigate_search, open_file_dialog, open_folder_dialog,
-    open_folder_item, open_in_editor, print_diff, redo, replace_all_text, replace_text, rescan,
-    resolve_conflict_use_left, resolve_conflict_use_right, run_diff, run_folder_compare,
-    run_plugin, save_file, search_text, select_diff, start_compare, start_three_way_compare,
-    switch_tab, toggle_bookmark, toggle_ignore_case, toggle_ignore_whitespace, undo,
+    compare_clipboard_as_left, compare_clipboard_as_right, copy_all_diffs_to_left,
+    copy_all_diffs_to_right, copy_all_text, copy_current_line_text, copy_left_and_next,
+    copy_right_and_next, copy_selection_to_left, copy_selection_to_right, copy_to_left,
+    copy_to_right, discard_and_proceed, edit_line, export_csv_report, export_folder_html_report,
+    export_html_report, export_patch, first_diff, folder_copy_to_left, folder_copy_to_right,
+    folder_delete_item, goto_line, last_diff, navigate_bookmark, navigate_conflict, navigate_diff,
+    navigate_diff_by_status, navigate_search, open_file_dialog, open_folder_dialog,
+    open_folder_item, open_in_editor, print_diff, redo, reorder_tab, replace_all_text,
+    replace_text, rescan, resolve_conflict_use_left, resolve_conflict_use_right, run_diff,
+    run_folder_compare, run_plugin, save_file, search_text, select_diff, set_row_selection,
+    start_compare, start_three_way_compare, switch_tab, toggle_bookmark, toggle_ignore_case,
+    toggle_ignore_whitespace, undo,
 };
 use slint::{ModelRc, SharedString, VecModel};
 
@@ -539,6 +542,25 @@ fn main() {
         });
     }
 
+    // Status-filtered diff navigation
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_next_diff_status(move |status| {
+            let window = window_weak.unwrap();
+            navigate_diff_by_status(&window, &mut state.borrow_mut(), true, status);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_prev_diff_status(move |status| {
+            let window = window_weak.unwrap();
+            navigate_diff_by_status(&window, &mut state.borrow_mut(), false, status);
+        });
+    }
+
     // Merge
     {
         let window_weak = window.as_weak();
@@ -890,6 +912,104 @@ fn main() {
         window.on_print_diff(move || {
             let window = window_weak.unwrap();
             print_diff(&window, &state.borrow());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_export_csv(move || {
+            let window = window_weak.unwrap();
+            export_csv_report(&window, &state.borrow(), false);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_export_tsv(move || {
+            let window = window_weak.unwrap();
+            export_csv_report(&window, &state.borrow(), true);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_export_folder_html(move || {
+            let window = window_weak.unwrap();
+            export_folder_html_report(&window, &state.borrow());
+        });
+    }
+
+    // Row selection (multi-line)
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_row_shift_clicked(move |idx| {
+            let window = window_weak.unwrap();
+            set_row_selection(&window, &mut state.borrow_mut(), idx, true);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_copy_selection_right(move || {
+            let window = window_weak.unwrap();
+            copy_selection_to_right(&window, &mut state.borrow_mut());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_copy_selection_left(move || {
+            let window = window_weak.unwrap();
+            copy_selection_to_left(&window, &mut state.borrow_mut());
+        });
+    }
+
+    // Clipboard comparison
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_compare_clipboard_left(move || {
+            let window = window_weak.unwrap();
+            compare_clipboard_as_left(&window, &mut state.borrow_mut());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_compare_clipboard_right(move || {
+            let window = window_weak.unwrap();
+            compare_clipboard_as_right(&window, &mut state.borrow_mut());
+        });
+    }
+
+    // Tab reorder
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_tab_move_left(move |idx| {
+            let window = window_weak.unwrap();
+            let from = idx as usize;
+            if from > 0 {
+                reorder_tab(&window, &mut state.borrow_mut(), from, from - 1);
+            }
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_tab_move_right(move |idx| {
+            let window = window_weak.unwrap();
+            let from = idx as usize;
+            let to = from + 1;
+            reorder_tab(&window, &mut state.borrow_mut(), from, to);
         });
     }
 

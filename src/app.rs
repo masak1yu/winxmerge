@@ -80,6 +80,11 @@ pub struct TabState {
     pub diff_stats: String,
     /// True while a background diff computation is in progress for this tab
     pub is_computing: bool,
+    /// Multi-line selection start/end row indices (-1 = no selection)
+    pub selection_start: i32,
+    pub selection_end: i32,
+    /// Folder comparison summary text
+    pub folder_summary: String,
 }
 
 impl TabState {
@@ -117,6 +122,9 @@ impl TabState {
             right_mtime: None,
             diff_stats: String::new(),
             is_computing: false,
+            selection_start: -1,
+            selection_end: -1,
+            folder_summary: String::new(),
         }
     }
 }
@@ -290,6 +298,10 @@ fn restore_tab(window: &MainWindow, state: &AppState) {
     // Restore folder data
     let folder_model = ModelRc::new(VecModel::from(tab.folder_item_data.clone()));
     window.set_folder_items(folder_model);
+
+    if tab.view_mode == 1 {
+        window.set_folder_summary_text(SharedString::from(&tab.folder_summary));
+    }
 
     if tab.view_mode == 2 {
         window.set_status_text(SharedString::from("Select files or folders to compare"));
@@ -621,6 +633,7 @@ fn apply_diff_result(
                 left_word_diff: SharedString::from(left_word_diff),
                 right_word_diff: SharedString::from(right_word_diff),
                 is_search_match: false,
+                is_selected: false,
             }
         })
         .collect();
@@ -738,6 +751,54 @@ pub fn navigate_diff(window: &MainWindow, state: &mut AppState, forward: bool) {
     };
 
     update_current_diff(window, state, new_index);
+}
+
+/// Navigate to the next/prev diff of a specific status type.
+/// status_filter: 1=Added, 2=Removed, 3=Modified, 4=Moved, 0=all (same as navigate_diff)
+pub fn navigate_diff_by_status(
+    window: &MainWindow,
+    state: &mut AppState,
+    forward: bool,
+    status_filter: i32,
+) {
+    if status_filter == 0 {
+        navigate_diff(window, state, forward);
+        return;
+    }
+    let tab = state.current_tab();
+    if tab.diff_positions.is_empty() {
+        return;
+    }
+    let n = tab.diff_positions.len() as i32;
+    let start = tab.current_diff;
+    let candidates: Vec<i32> = if forward {
+        let mut v: Vec<i32> = ((start + 1)..n).collect();
+        v.extend(0..=start);
+        v
+    } else {
+        let mut v: Vec<i32> = (0..start).rev().collect();
+        v.extend((start..n).rev());
+        v
+    };
+    let diff_line_data = tab.diff_line_data.clone();
+    let diff_positions = tab.diff_positions.clone();
+    for idx in candidates {
+        let pos = diff_positions[idx as usize];
+        if let Some(line) = diff_line_data.get(pos) {
+            if line.status == status_filter {
+                update_current_diff(window, state, idx);
+                return;
+            }
+        }
+    }
+    let label = match status_filter {
+        1 => "Added",
+        2 => "Removed",
+        3 => "Modified",
+        4 => "Moved",
+        _ => "status",
+    };
+    window.set_status_text(SharedString::from(format!("No more {} diffs", label)));
 }
 
 pub fn first_diff(window: &MainWindow, state: &mut AppState) {
@@ -1285,6 +1346,94 @@ pub fn copy_current_line_text(window: &MainWindow, state: &AppState, is_left: bo
     }
 }
 
+pub fn set_row_selection(window: &MainWindow, state: &mut AppState, row_idx: i32, extend: bool) {
+    let model = window.get_diff_lines();
+    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+
+    let tab = state.current_tab_mut();
+    if !extend || tab.selection_start < 0 {
+        tab.selection_start = row_idx;
+    }
+    tab.selection_end = row_idx;
+
+    let sel_min = tab.selection_start.min(tab.selection_end) as usize;
+    let sel_max = tab.selection_start.max(tab.selection_end) as usize;
+
+    for i in 0..vec_model.row_count() {
+        let mut row = vec_model.row_data(i).unwrap();
+        let selected = i >= sel_min && i <= sel_max;
+        if row.is_selected != selected {
+            row.is_selected = selected;
+            vec_model.set_row_data(i, row);
+        }
+    }
+}
+
+pub fn copy_selection_to_right(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab();
+    if tab.selection_start < 0 {
+        return;
+    }
+    let sel_min = tab.selection_start.min(tab.selection_end) as usize;
+    let sel_max = tab.selection_start.max(tab.selection_end) as usize;
+
+    let model = window.get_diff_lines();
+    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+
+    let count = sel_max.min(vec_model.row_count().saturating_sub(1)) + 1 - sel_min;
+    for i in sel_min..=sel_max.min(vec_model.row_count().saturating_sub(1)) {
+        let mut row = vec_model.row_data(i).unwrap();
+        if row.status != 0 {
+            row.right_text = row.left_text.clone();
+            row.status = 0;
+            vec_model.set_row_data(i, row);
+        }
+    }
+    state.current_tab_mut().has_unsaved_changes = true;
+    window.set_has_unsaved_changes(true);
+    window.set_status_text(SharedString::from(format!(
+        "Copied {} lines to right",
+        count
+    )));
+}
+
+pub fn copy_selection_to_left(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab();
+    if tab.selection_start < 0 {
+        return;
+    }
+    let sel_min = tab.selection_start.min(tab.selection_end) as usize;
+    let sel_max = tab.selection_start.max(tab.selection_end) as usize;
+
+    let model = window.get_diff_lines();
+    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+
+    let count = sel_max.min(vec_model.row_count().saturating_sub(1)) + 1 - sel_min;
+    for i in sel_min..=sel_max.min(vec_model.row_count().saturating_sub(1)) {
+        let mut row = vec_model.row_data(i).unwrap();
+        if row.status != 0 {
+            row.left_text = row.right_text.clone();
+            row.status = 0;
+            vec_model.set_row_data(i, row);
+        }
+    }
+    state.current_tab_mut().has_unsaved_changes = true;
+    window.set_has_unsaved_changes(true);
+    window.set_status_text(SharedString::from(format!(
+        "Copied {} lines to left",
+        count
+    )));
+}
+
 pub fn export_html_report(window: &MainWindow, state: &AppState) {
     let tab = state.current_tab();
 
@@ -1398,6 +1547,73 @@ pub fn export_patch(window: &MainWindow, state: &AppState) {
             Err(e) => {
                 window.set_status_text(SharedString::from(format!("Export error: {}", e)));
             }
+        }
+    }
+}
+
+pub fn export_csv_report(window: &MainWindow, state: &AppState, use_tab: bool) {
+    let tab = state.current_tab();
+    let left_text = tab.left_lines.join("\n") + if tab.left_lines.is_empty() { "" } else { "\n" };
+    let right_text =
+        tab.right_lines.join("\n") + if tab.right_lines.is_empty() { "" } else { "\n" };
+    let result = compute_diff_with_options(&left_text, &right_text, &tab.diff_options);
+    let sep = if use_tab { '\t' } else { ',' };
+    let ext = if use_tab { "tsv" } else { "csv" };
+    let left_title = tab
+        .left_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Left".to_string());
+    let right_title = tab
+        .right_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Right".to_string());
+    let content = crate::export::export_csv(&result, &left_title, &right_title, sep);
+    if let Some(path) = rfd::FileDialog::new()
+        .set_title("Export CSV")
+        .set_file_name(&format!("diff-report.{}", ext))
+        .add_filter(ext.to_uppercase().as_str(), &[ext])
+        .save_file()
+    {
+        match fs::write(&path, content.as_bytes()) {
+            Ok(_) => window.set_status_text(SharedString::from(format!(
+                "Exported to {}",
+                path.to_string_lossy()
+            ))),
+            Err(e) => window.set_status_text(SharedString::from(format!("Export error: {}", e))),
+        }
+    }
+}
+
+pub fn export_folder_html_report(window: &MainWindow, state: &AppState) {
+    let tab = state.current_tab();
+    if tab.folder_items.is_empty() {
+        return;
+    }
+    let left_title = tab
+        .left_folder
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Left".to_string());
+    let right_title = tab
+        .right_folder
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Right".to_string());
+    let html = crate::export::export_folder_html(&tab.folder_items, &left_title, &right_title);
+    if let Some(path) = rfd::FileDialog::new()
+        .set_title("Export Folder Report")
+        .set_file_name("folder-report.html")
+        .add_filter("HTML", &["html"])
+        .save_file()
+    {
+        match fs::write(&path, html.as_bytes()) {
+            Ok(_) => window.set_status_text(SharedString::from(format!(
+                "Folder report exported to {}",
+                path.to_string_lossy()
+            ))),
+            Err(e) => window.set_status_text(SharedString::from(format!("Export error: {}", e))),
         }
     }
 }
@@ -1935,10 +2151,27 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
         })
         .collect();
 
-    let different_count = items
+    let identical = items
         .iter()
-        .filter(|i| i.status != FileCompareStatus::Identical)
+        .filter(|i| i.status == FileCompareStatus::Identical)
         .count();
+    let different = items
+        .iter()
+        .filter(|i| i.status == FileCompareStatus::Different)
+        .count();
+    let left_only = items
+        .iter()
+        .filter(|i| i.status == FileCompareStatus::LeftOnly)
+        .count();
+    let right_only = items
+        .iter()
+        .filter(|i| i.status == FileCompareStatus::RightOnly)
+        .count();
+    let total = items.len();
+    let summary = format!(
+        "Identical: {} | Different: {} | Left only: {} | Right only: {} | Total: {}",
+        identical, different, left_only, right_only, total
+    );
 
     let left_name = left_folder
         .file_name()
@@ -1954,13 +2187,14 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
     tab.folder_item_data = folder_item_data.clone();
     tab.view_mode = 1;
     tab.title = format!("{} ↔ {}", left_name, right_name);
+    tab.folder_summary = summary.clone();
 
     window.set_folder_items(ModelRc::new(VecModel::from(folder_item_data)));
     window.set_view_mode(1);
+    window.set_folder_summary_text(SharedString::from(summary.clone()));
     window.set_status_text(SharedString::from(format!(
-        "{} items, {} differences",
-        tab.folder_items.len(),
-        different_count
+        "Folder: {} ↔ {} — {}",
+        left_name, right_name, summary
     )));
 
     sync_tab_list(window, state);
@@ -2445,6 +2679,99 @@ pub fn rescan(window: &MainWindow, state: &mut AppState) {
         run_folder_compare(window, state);
         window.set_status_text(SharedString::from("Folders rescanned"));
     }
+}
+
+pub fn compare_clipboard_as_left(window: &MainWindow, state: &mut AppState) {
+    let text = match arboard::Clipboard::new().and_then(|mut c| c.get_text()) {
+        Ok(t) => t,
+        Err(_) => {
+            window.set_status_text(SharedString::from("Clipboard is empty or unavailable"));
+            return;
+        }
+    };
+    {
+        let tab = state.current_tab_mut();
+        tab.left_path = None;
+        tab.view_mode = 0;
+    }
+    window.set_view_mode(0);
+    window.set_left_path(SharedString::from("(Clipboard)"));
+    window.set_left_encoding_display(SharedString::from("UTF-8"));
+    window.set_left_eol_type(SharedString::from(""));
+
+    let tab = state.current_tab();
+    let right_text = tab.right_lines.join("\n");
+    let right_text = if right_text.is_empty() {
+        if let Some(rp) = tab.right_path.clone() {
+            let bytes = fs::read(&rp).unwrap_or_default();
+            let (t, _) = crate::encoding::decode_file(&bytes);
+            t
+        } else {
+            String::new()
+        }
+    } else {
+        right_text
+    };
+
+    recompute_diff_from_text(window, state, &text, &right_text);
+    state.current_tab_mut().left_lines = text.lines().map(String::from).collect();
+    state.current_tab_mut().title = "(Clipboard) ↔ right".to_string();
+    sync_tab_list(window, state);
+}
+
+pub fn compare_clipboard_as_right(window: &MainWindow, state: &mut AppState) {
+    let text = match arboard::Clipboard::new().and_then(|mut c| c.get_text()) {
+        Ok(t) => t,
+        Err(_) => {
+            window.set_status_text(SharedString::from("Clipboard is empty or unavailable"));
+            return;
+        }
+    };
+    {
+        let tab = state.current_tab_mut();
+        tab.right_path = None;
+        tab.view_mode = 0;
+    }
+    window.set_view_mode(0);
+    window.set_right_path(SharedString::from("(Clipboard)"));
+    window.set_right_encoding_display(SharedString::from("UTF-8"));
+    window.set_right_eol_type(SharedString::from(""));
+
+    let tab = state.current_tab();
+    let left_text = tab.left_lines.join("\n");
+    let left_text = if left_text.is_empty() {
+        if let Some(lp) = tab.left_path.clone() {
+            let bytes = fs::read(&lp).unwrap_or_default();
+            let (t, _) = crate::encoding::decode_file(&bytes);
+            t
+        } else {
+            String::new()
+        }
+    } else {
+        left_text
+    };
+
+    recompute_diff_from_text(window, state, &left_text, &text);
+    state.current_tab_mut().right_lines = text.lines().map(String::from).collect();
+    state.current_tab_mut().title = "left ↔ (Clipboard)".to_string();
+    sync_tab_list(window, state);
+}
+
+pub fn reorder_tab(window: &MainWindow, state: &mut AppState, from: usize, to: usize) {
+    if from >= state.tabs.len() || to >= state.tabs.len() || from == to {
+        return;
+    }
+    let tab = state.tabs.remove(from);
+    state.tabs.insert(to, tab);
+    // Update active_tab index
+    if state.active_tab == from {
+        state.active_tab = to;
+    } else if from < state.active_tab && to >= state.active_tab {
+        state.active_tab -= 1;
+    } else if from > state.active_tab && to <= state.active_tab {
+        state.active_tab += 1;
+    }
+    sync_tab_list(window, state);
 }
 
 fn format_size(bytes: u64) -> String {
