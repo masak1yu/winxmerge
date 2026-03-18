@@ -183,6 +183,8 @@ export component DiffView inherits Rectangle {
     in property <bool> show-word-diff: true;
     in property <bool> word-wrap-mode: false;
     in property <bool> diff-only-mode: false;
+    // 0=All, 1=Added, 2=Removed, 3=Modified, 4=Moved
+    in property <int> diff-status-filter: 0;
 
     accessible-role: list;
     accessible-label: "File difference view";
@@ -332,7 +334,8 @@ export component DiffView inherits Rectangle {
 
                 left-list := ListView {
                     for line[idx] in diff-lines: DiffLineRow {
-                        height: root.diff-only-mode && line.status == 0 ? 0px
+                        height: (root.diff-only-mode || root.diff-status-filter != 0) && line.status == 0 ? 0px
+                              : root.diff-status-filter != 0 && line.status != 0 && line.status != root.diff-status-filter ? 0px
                               : root.word-wrap-mode ? 72px
                               : (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
                         line-no: line.left-line-no;
@@ -363,7 +366,8 @@ export component DiffView inherits Rectangle {
 
                 mid-list := ListView {
                     for line in diff-lines: Rectangle {
-                        height: root.diff-only-mode && line.status == 0 ? 0px
+                        height: (root.diff-only-mode || root.diff-status-filter != 0) && line.status == 0 ? 0px
+                              : root.diff-status-filter != 0 && line.status != 0 && line.status != root.diff-status-filter ? 0px
                               : root.word-wrap-mode ? 72px
                               : (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
                         if line.status != 0 : HorizontalLayout {
@@ -430,7 +434,8 @@ export component DiffView inherits Rectangle {
 
                 right-list := ListView {
                     for line[idx] in diff-lines: DiffLineRow {
-                        height: root.diff-only-mode && line.status == 0 ? 0px
+                        height: (root.diff-only-mode || root.diff-status-filter != 0) && line.status == 0 ? 0px
+                              : root.diff-status-filter != 0 && line.status != 0 && line.status != root.diff-status-filter ? 0px
                               : root.word-wrap-mode ? 72px
                               : (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
                         line-no: line.right-line-no;
