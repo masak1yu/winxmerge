@@ -50,6 +50,28 @@ fn try_bom(bytes: &[u8]) -> Option<(String, &'static str)> {
     None
 }
 
+/// Detect the dominant line ending type from raw file bytes.
+pub fn detect_eol(bytes: &[u8]) -> &'static str {
+    let check = &bytes[..bytes.len().min(65536)];
+    let has_crlf = check.windows(2).any(|w| w == b"\r\n");
+    let has_cr_only = check
+        .iter()
+        .zip(check.iter().skip(1))
+        .any(|(&a, &b)| a == b'\r' && b != b'\n');
+    let has_lf = check.contains(&b'\n');
+    if has_crlf && !has_cr_only && !has_lf {
+        "CRLF"
+    } else if has_crlf {
+        "Mixed"
+    } else if has_cr_only {
+        "CR"
+    } else if has_lf {
+        "LF"
+    } else {
+        ""
+    }
+}
+
 /// Encode text back to the specified encoding.
 pub fn encode_text(text: &str, encoding_name: &str) -> Vec<u8> {
     if encoding_name.starts_with("UTF-8") {

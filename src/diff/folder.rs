@@ -16,6 +16,14 @@ pub struct FolderCompareOptions {
     pub exclude_patterns: Vec<String>,
     /// Maximum recursion depth (0 = unlimited)
     pub max_depth: usize,
+    /// Minimum file size in bytes (0 = no limit)
+    pub min_size: u64,
+    /// Maximum file size in bytes (0 = no limit)
+    pub max_size: u64,
+    /// Only include files modified after this date (format "YYYY-MM-DD", empty = no filter)
+    pub modified_after: String,
+    /// Only include files modified before this date (format "YYYY-MM-DD", empty = no filter)
+    pub modified_before: String,
 }
 
 pub fn compare_folders_with_options(
@@ -163,6 +171,30 @@ fn collect_entries(
                     .extension_filter
                     .iter()
                     .any(|f| f.to_lowercase() == ext)
+                {
+                    continue;
+                }
+            }
+
+            // Size filter (only for files)
+            if !is_dir {
+                if options.min_size > 0 && size < options.min_size {
+                    continue;
+                }
+                if options.max_size > 0 && size > options.max_size {
+                    continue;
+                }
+            }
+            // Date filter
+            if !is_dir && modified.is_some() {
+                let mod_str = modified.as_deref().unwrap_or("");
+                let date_part = &mod_str[..mod_str.len().min(10)]; // "YYYY-MM-DD"
+                if !options.modified_after.is_empty() && date_part < options.modified_after.as_str()
+                {
+                    continue;
+                }
+                if !options.modified_before.is_empty()
+                    && date_part > options.modified_before.as_str()
                 {
                     continue;
                 }

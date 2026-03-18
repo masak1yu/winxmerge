@@ -331,6 +331,21 @@ export component MainWindow inherits Window {
     in-out property <string> opt-folder-exclude-patterns: "";
     in-out property <int> opt-folder-max-depth: 0;
 
+    // Folder size/date filters
+    in-out property <int> opt-folder-min-size: 0;
+    in-out property <int> opt-folder-max-size: 0;
+    in-out property <string> opt-folder-modified-after: "";
+    in-out property <string> opt-folder-modified-before: "";
+
+    // Encoding and EOL display
+    in-out property <string> left-encoding-display: "";
+    in-out property <string> right-encoding-display: "";
+    in-out property <string> left-eol-type: "";
+    in-out property <string> right-eol-type: "";
+
+    // Persistent diff stats display
+    in-out property <string> diff-stats-text: "";
+
     // Inline editing
     in-out property <bool> opt-inline-edit: true;
 
@@ -886,18 +901,41 @@ export component MainWindow inherits Window {
 
             HorizontalLayout {
                 padding-left: 8px;
-                spacing: 16px;
+                padding-right: 8px;
+                spacing: 8px;
 
                 Text {
                     text: root.status-text;
                     font-size: 12px;
                     vertical-alignment: center;
+                    horizontal-stretch: 1;
                 }
 
                 Text {
                     text: root.has-unsaved-changes ? @tr("● Modified") : "";
                     font-size: 12px;
                     color: #b08800;
+                    vertical-alignment: center;
+                }
+
+                if root.diff-stats-text != "" : Text {
+                    text: root.diff-stats-text;
+                    font-size: 11px;
+                    color: Palette.foreground.transparentize(0.3);
+                    vertical-alignment: center;
+                }
+
+                if root.left-eol-type != "" : Text {
+                    text: root.left-eol-type + " | " + root.right-eol-type;
+                    font-size: 11px;
+                    color: Palette.foreground.transparentize(0.3);
+                    vertical-alignment: center;
+                }
+
+                if root.left-encoding-display != "" : Text {
+                    text: root.left-encoding-display + " | " + root.right-encoding-display;
+                    font-size: 11px;
+                    color: Palette.foreground.transparentize(0.3);
                     vertical-alignment: center;
                 }
             }
@@ -1005,6 +1043,10 @@ export component MainWindow inherits Window {
         opt-auto-rescan <=> root.opt-auto-rescan;
         opt-folder-exclude-patterns <=> root.opt-folder-exclude-patterns;
         opt-folder-max-depth <=> root.opt-folder-max-depth;
+        opt-folder-min-size <=> root.opt-folder-min-size;
+        opt-folder-max-size <=> root.opt-folder-max-size;
+        opt-folder-modified-after <=> root.opt-folder-modified-after;
+        opt-folder-modified-before <=> root.opt-folder-modified-before;
         opt-plugin-list <=> root.plugin-list;
         apply => {
             root.show-options-dialog = false;
