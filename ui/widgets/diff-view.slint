@@ -309,11 +309,11 @@ export component DiffView inherits Rectangle {
 
                 left-list := ListView {
                     for line[idx] in diff-lines: DiffLineRow {
-                        height: line.left-word-diff != "" && root.show-word-diff ? 36px : 24px;
+                        height: (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
                         line-no: line.left-line-no;
                         text: line.left-text;
                         status: line.status == 1 ? 0 : line.status;
-                        is-current: line.is-current-diff;
+                        is-current: line.diff-index >= 0 && line.diff-index == root.current-diff-index;
                         highlight-type: line.left-highlight;
                         diff-idx: line.diff-index;
                         show-line-no: root.show-line-numbers;
@@ -397,11 +397,11 @@ export component DiffView inherits Rectangle {
 
                 right-list := ListView {
                     for line[idx] in diff-lines: DiffLineRow {
-                        height: line.right-word-diff != "" && root.show-word-diff ? 36px : 24px;
+                        height: (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
                         line-no: line.right-line-no;
                         text: line.right-text;
                         status: line.status == 2 ? 0 : line.status;
-                        is-current: line.is-current-diff;
+                        is-current: line.diff-index >= 0 && line.diff-index == root.current-diff-index;
                         highlight-type: line.right-highlight;
                         diff-idx: line.diff-index;
                         show-line-no: root.show-line-numbers;

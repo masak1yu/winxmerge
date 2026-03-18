@@ -7,9 +7,10 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 ## Features
 
 ### File Comparison (2-way)
+- Block-level diff grouping: consecutive changes merged into one diff block (WinMerge-style)
 - Line-level diff display (additions/deletions/changes/moves with color coding)
 - Word-level (character-level) diff display for modified lines
-- Diff navigation (first/previous/next/last diff)
+- Diff navigation (first/previous/next/last diff block)
 - Merge operations (block-level copy: left→right / right→left, copy & advance, copy all)
 - Two-pane display with inline diff markers
 - Location pane (minimap of diff positions)
