@@ -37,3 +37,19 @@ image = "0.25"
 
 [build-dependencies]
 slint-build = "1.15.1"
+winres = { version = "0.1", optional = true }
+
+[features]
+# Enable on Windows builds to embed the .ico into the executable
+embed-icon = ["winres"]
+
+[package.metadata.bundle]
+name = "WinXMerge"
+identifier = "io.github.masak1yu.winxmerge"
+icon = ["assets/icons/app-icon-32.png", "assets/icons/app-icon-64.png",
+        "assets/icons/app-icon-128.png", "assets/icons/app-icon-256.png",
+        "assets/icons/app-icon-512.png", "assets/icons/app-icon.icns"]
+version = "0.24.0"
+copyright = "WinXMerge contributors"
+category = "Developer Tool"
+short_description = "Cross-platform file diff and merge tool"
