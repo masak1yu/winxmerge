@@ -1,4 +1,4 @@
-import { Palette, ScrollView } from "std-widgets.slint";
+import { Palette, ScrollView, Slider } from "std-widgets.slint";
 import { ThemeColors } from "../theme.slint";
 
 export component ImageView inherits Rectangle {
@@ -12,8 +12,8 @@ export component ImageView inherits Rectangle {
     in property <int> left-image-height: 0;
     in property <int> right-image-width: 0;
     in property <int> right-image-height: 0;
-    // 0=Fit, 1=100%, 2=200%
-    in-out property <int> zoom-level: 0;
+    // 0 = Fit, >0 = zoom percentage (10..400)
+    in-out property <float> zoom-percent: 0;
     in-out property <bool> show-diff-panel: true;
 
     VerticalLayout {
@@ -35,22 +35,40 @@ export component ImageView inherits Rectangle {
                     color: Palette.foreground;
                     horizontal-stretch: 1;
                 }
-                // Zoom buttons
+                // Zoom label
                 Text {
                     text: @tr("Zoom:");
                     font-size: 11px;
                     vertical-alignment: center;
                     color: Palette.foreground.transparentize(0.3);
                 }
-                for zlabel[zi] in [@tr("Fit"), @tr("100%"), @tr("200%")] : Rectangle {
-                    width: 48px;
+                // Fit button
+                Rectangle {
+                    width: 36px;
                     height: 20px;
                     border-radius: 3px;
                     border-width: 1px;
-                    border-color: root.zoom-level == zi ? Palette.accent-background : Palette.border;
-                    background: root.zoom-level == zi ? Palette.accent-background.transparentize(0.5) : transparent;
-                    TouchArea { clicked => { root.zoom-level = zi; } }
-                    Text { text: zlabel; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                    border-color: root.zoom-percent == 0 ? Palette.accent-background : Palette.border;
+                    background: root.zoom-percent == 0 ? Palette.accent-background.transparentize(0.5) : transparent;
+                    TouchArea { clicked => { root.zoom-percent = 0; } }
+                    Text { text: @tr("Fit"); font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                }
+                // Zoom slider
+                Slider {
+                    minimum: 10;
+                    maximum: 400;
+                    value <=> root.zoom-percent;
+                    width: 120px;
+                    height: 20px;
+                    enabled: root.zoom-percent > 0 || true; // always enabled
+                }
+                // Zoom percent display
+                Text {
+                    text: root.zoom-percent > 0 ? round(root.zoom-percent) + "%" : @tr("Fit");
+                    font-size: 10px;
+                    width: 40px;
+                    vertical-alignment: center;
+                    color: Palette.foreground.transparentize(0.3);
                 }
                 // Diff panel toggle
                 Rectangle {
@@ -93,17 +111,17 @@ export component ImageView inherits Rectangle {
                         }
                     }
 
-                    if root.zoom-level == 0 : Image {
+                    if root.zoom-percent == 0 : Image {
                         source: root.left-image;
                         image-fit: contain;
                         vertical-stretch: 1;
                     }
-                    if root.zoom-level > 0 : ScrollView {
+                    if root.zoom-percent > 0 : ScrollView {
                         vertical-stretch: 1;
                         Image {
                             source: root.left-image;
-                            width: (root.left-image-width * (root.zoom-level == 1 ? 1 : 2)) * 1px;
-                            height: (root.left-image-height * (root.zoom-level == 1 ? 1 : 2)) * 1px;
+                            width: (root.left-image-width * root.zoom-percent / 100) * 1px;
+                            height: (root.left-image-height * root.zoom-percent / 100) * 1px;
                             image-fit: fill;
                             image-rendering: pixelated;
                         }
@@ -133,17 +151,17 @@ export component ImageView inherits Rectangle {
                         }
                     }
 
-                    if root.zoom-level == 0 : Image {
+                    if root.zoom-percent == 0 : Image {
                         source: root.right-image;
                         image-fit: contain;
                         vertical-stretch: 1;
                     }
-                    if root.zoom-level > 0 : ScrollView {
+                    if root.zoom-percent > 0 : ScrollView {
                         vertical-stretch: 1;
                         Image {
                             source: root.right-image;
-                            width: (root.right-image-width * (root.zoom-level == 1 ? 1 : 2)) * 1px;
-                            height: (root.right-image-height * (root.zoom-level == 1 ? 1 : 2)) * 1px;
+                            width: (root.right-image-width * root.zoom-percent / 100) * 1px;
+                            height: (root.right-image-height * root.zoom-percent / 100) * 1px;
                             image-fit: fill;
                             image-rendering: pixelated;
                         }

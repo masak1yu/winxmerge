@@ -1,0 +1,134 @@
+import { Button, ScrollView, Palette } from "std-widgets.slint";
+
+export component ShortcutsDialog inherits Rectangle {
+    in property <bool> visible-dialog: false;
+    callback close();
+
+    visible: root.visible-dialog;
+    // Overlay
+    background: #00000080;
+
+    Rectangle {
+        width: 500px;
+        height: 500px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: Palette.background;
+        border-color: Palette.border;
+        border-width: 1px;
+        border-radius: 8px;
+        drop-shadow-blur: 20px;
+        drop-shadow-color: #00000040;
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 8px;
+
+            // Title bar
+            HorizontalLayout {
+                Text { text: @tr("Keyboard Shortcuts"); font-size: 16px; font-weight: 700; horizontal-stretch: 1; vertical-alignment: center; }
+                Rectangle {
+                    width: 24px; height: 24px;
+                    border-radius: 4px;
+                    background: ta-close.has-hover ? Palette.background.darker(0.1) : transparent;
+                    ta-close := TouchArea { clicked => { root.close(); } }
+                    Text { text: "✕"; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; }
+                }
+            }
+
+            ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    spacing: 2px;
+                    padding: 4px;
+
+                    // Section: File
+                    Text { text: @tr("File"); font-size: 12px; font-weight: 700; color: Palette.foreground.transparentize(0.3); }
+                    for row in [
+                        {key: "Ctrl+O", desc: @tr("Open files")},
+                        {key: "Ctrl+W", desc: @tr("Close tab")},
+                        {key: "Ctrl+T", desc: @tr("New tab")},
+                        {key: "Ctrl+S", desc: @tr("Save right file")},
+                        {key: "Ctrl+Shift+S", desc: @tr("Save left file")},
+                    ] : HorizontalLayout {
+                        padding-left: 8px;
+                        spacing: 8px;
+                        Rectangle {
+                            width: 140px;
+                            height: 22px;
+                            background: Palette.background.darker(0.05);
+                            border-radius: 3px;
+                            Text { text: row.key; font-size: 11px; font-family: "monospace"; horizontal-alignment: center; vertical-alignment: center; }
+                        }
+                        Text { text: row.desc; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+                    }
+
+                    Rectangle { height: 8px; }
+                    Text { text: @tr("Navigation"); font-size: 12px; font-weight: 700; color: Palette.foreground.transparentize(0.3); }
+                    for row in [
+                        {key: "F7 / Alt+Up", desc: @tr("Previous diff")},
+                        {key: "F8 / Alt+Down", desc: @tr("Next diff")},
+                        {key: "Ctrl+Home", desc: @tr("First diff")},
+                        {key: "Ctrl+End", desc: @tr("Last diff")},
+                        {key: "Ctrl+Tab", desc: @tr("Next tab")},
+                        {key: "Ctrl+Shift+Tab", desc: @tr("Previous tab")},
+                    ] : HorizontalLayout {
+                        padding-left: 8px;
+                        spacing: 8px;
+                        Rectangle {
+                            width: 140px;
+                            height: 22px;
+                            background: Palette.background.darker(0.05);
+                            border-radius: 3px;
+                            Text { text: row.key; font-size: 11px; font-family: "monospace"; horizontal-alignment: center; vertical-alignment: center; }
+                        }
+                        Text { text: row.desc; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+                    }
+
+                    Rectangle { height: 8px; }
+                    Text { text: @tr("Merge"); font-size: 12px; font-weight: 700; color: Palette.foreground.transparentize(0.3); }
+                    for row in [
+                        {key: "Ctrl+Right", desc: @tr("Copy block to right")},
+                        {key: "Ctrl+Left", desc: @tr("Copy block to left")},
+                        {key: "Ctrl+Z", desc: @tr("Undo")},
+                        {key: "Ctrl+Y", desc: @tr("Redo")},
+                    ] : HorizontalLayout {
+                        padding-left: 8px;
+                        spacing: 8px;
+                        Rectangle {
+                            width: 140px;
+                            height: 22px;
+                            background: Palette.background.darker(0.05);
+                            border-radius: 3px;
+                            Text { text: row.key; font-size: 11px; font-family: "monospace"; horizontal-alignment: center; vertical-alignment: center; }
+                        }
+                        Text { text: row.desc; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+                    }
+
+                    Rectangle { height: 8px; }
+                    Text { text: @tr("View"); font-size: 12px; font-weight: 700; color: Palette.foreground.transparentize(0.3); }
+                    for row in [
+                        {key: "Ctrl+F", desc: @tr("Find/search")},
+                        {key: "Ctrl+D", desc: @tr("Toggle diff-only mode")},
+                        {key: "F5", desc: @tr("Rescan/refresh")},
+                        {key: "Ctrl++", desc: @tr("Increase font size")},
+                        {key: "Ctrl+-", desc: @tr("Decrease font size")},
+                    ] : HorizontalLayout {
+                        padding-left: 8px;
+                        spacing: 8px;
+                        Rectangle {
+                            width: 140px;
+                            height: 22px;
+                            background: Palette.background.darker(0.05);
+                            border-radius: 3px;
+                            Text { text: row.key; font-size: 11px; font-family: "monospace"; horizontal-alignment: center; vertical-alignment: center; }
+                        }
+                        Text { text: row.desc; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+                    }
+                }
+            }
+
+            Button { text: @tr("Close"); clicked => { root.close(); } }
+        }
+    }
+}

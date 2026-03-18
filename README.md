@@ -34,6 +34,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Double-click to open file diff view
 - Right-click context menu (copy to left/right, delete)
 - "< Back" button to return to folder view
+- **Status filter bar**: All / Identical / Different / Left only / Right only filter buttons above the file list
 
 ### Tabs
 - Manage multiple comparisons with tabs
@@ -144,12 +145,41 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Directory navigation with folder/file icons, parent button, and editable path bar
 - Falls back automatically when the system file dialog is unavailable
 
+### ZIP Archive Comparison
+- Compare `.zip` files as virtual folders showing added/removed/changed entries
+- CRC + size based change detection per entry
+
+### Excel / Spreadsheet Comparison
+- Compare `.xlsx`, `.xls`, `.xlsm`, `.ods` files with table-view cell diff display
+- Changed cells highlighted; sheet selector for multi-sheet files
+
+### Image Comparison
+- Pixel-level comparison for PNG, JPEG, GIF, BMP, WebP, TIFF, ICO
+- Side-by-side left/right panels + diff overlay (changed pixels in red, identical pixels in gray)
+- Continuous zoom slider (10–400%) with Fit mode and diff panel toggle
+
+### Diff Comments
+- Add per-block notes in the detail pane (Note field)
+- Comments persisted to session and embedded in HTML export reports
+
+### App Icon
+- Custom "Diff Panels" icon (cross-platform): embedded in the Windows executable (.ico) and macOS bundle (.icns)
+
+### Diff Stats Bar Graph
+- Status bar shows proportional mini bar graph (green=added, red=removed, yellow=modified) alongside `+A -R ~M` counts
+
+### Keyboard Shortcuts Dialog
+- Help → Keyboard Shortcuts: scrollable reference of all shortcuts grouped by File / Navigation / Merge / View
+
+### Session Persistence Improvements
+- Tabs restored with encoding, EOL type, tab width, diff-only mode, status filter, and diff comments
+
 ### Other
 - WinMerge-style initial file selection dialog (with recent files list)
 - WinMerge-style options dialog (Edit → Options...)
 - Right-click context menu (copy, merge, navigation)
 - Unsaved changes confirmation dialog
-- HTML diff report export (File → Export HTML Report...)
+- HTML diff report export (File → Export HTML Report...) with embedded diff comments
 - Native menu bar (macOS / Windows)
 - Settings persistence (~/.config/winxmerge/settings.json)
 - Performance optimizations for large files
@@ -168,6 +198,9 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 | Encoding Detection | [chardetng](https://crates.io/crates/chardetng) + [encoding_rs](https://crates.io/crates/encoding_rs) |
 | Clipboard | [arboard](https://crates.io/crates/arboard) |
 | Settings Persistence | [serde](https://crates.io/crates/serde) + [serde_json](https://crates.io/crates/serde_json) |
+| ZIP Comparison | [zip](https://crates.io/crates/zip) |
+| Excel Comparison | [calamine](https://crates.io/crates/calamine) |
+| Image Comparison | [image](https://crates.io/crates/image) |
 
 ## Setup
 
@@ -254,21 +287,27 @@ winxmerge/
 │   ├── theme.slint             # Theme color definitions (light/dark)
 │   ├── icons/                  # SVG toolbar icons
 │   ├── dialogs/
-│   │   ├── open-dialog.slint   # File/folder selection dialog
-│   │   ├── file-browser.slint  # Built-in file browser (WSL2-safe)
-│   │   └── options-dialog.slint # Options dialog
+│   │   ├── open-dialog.slint      # File/folder selection dialog
+│   │   ├── file-browser.slint     # Built-in file browser (WSL2-safe)
+│   │   ├── options-dialog.slint   # Options dialog
+│   │   └── shortcuts-dialog.slint # Keyboard shortcuts reference dialog
 │   └── widgets/
-│       ├── diff-view.slint     # 2-way diff display widget
-│       ├── diff-view-3way.slint # 3-way merge display widget
-│       ├── folder-view.slint   # Folder comparison widget
-│       └── tab-bar.slint       # Tab bar widget
+│       ├── diff-view.slint        # 2-way diff display widget
+│       ├── diff-view-3way.slint   # 3-way merge display widget
+│       ├── folder-view.slint      # Folder comparison widget (with status filter)
+│       ├── tab-bar.slint          # Tab bar widget
+│       ├── excel-view.slint       # Excel cell diff table view
+│       └── image-view.slint       # Image comparison widget (continuous zoom)
 ├── src/
 │   ├── main.rs                 # Entry point, CLI argument handling
 │   ├── app.rs                  # Application state management (tab support)
 │   ├── encoding.rs             # Encoding detection and conversion
-│   ├── export.rs               # HTML report export
+│   ├── export.rs               # HTML/CSV/patch report export (with comment support)
 │   ├── highlight.rs            # Syntax highlighting (15 languages)
-│   ├── settings.rs             # Settings persistence
+│   ├── settings.rs             # Settings persistence (SessionEntry with full tab state)
+│   ├── archive.rs              # ZIP archive comparison
+│   ├── excel.rs                # Excel file comparison (calamine)
+│   ├── image_compare.rs        # Image comparison (pixel-level diff)
 │   ├── diff/
 │   │   ├── engine.rs           # 2-way diff engine
 │   │   ├── three_way.rs        # 3-way merge engine
