@@ -19,8 +19,8 @@ use crate::models::diff_line::LineStatus;
 use crate::models::folder_item::FileCompareStatus;
 use crate::settings::AppSettings;
 use crate::{
-    DiffLineData, ExcelCellData, FolderItemData, MainWindow, PluginEntryData, TabData,
-    ThreeWayLineData,
+    DetailLineData, DiffLineData, ExcelCellData, FolderItemData, MainWindow, PluginEntryData,
+    TabData, ThreeWayLineData, WordSegment,
 };
 
 /// Line count threshold above which diff is computed on a background thread
@@ -710,29 +710,12 @@ fn apply_diff_result(
                 .and_then(|n| right_highlights.get((n - 1) as usize).copied())
                 .unwrap_or(-1);
 
-            // Build word-diff display strings for modified lines
-            let left_word_diff =
-                if line.status == LineStatus::Modified && !line.left_word_segments.is_empty() {
-                    line.left_word_segments
-                        .iter()
-                        .filter(|s| s.changed)
-                        .map(|s| s.text.as_str())
-                        .collect::<Vec<&str>>()
-                        .join("")
-                } else {
-                    String::new()
-                };
-            let right_word_diff =
-                if line.status == LineStatus::Modified && !line.right_word_segments.is_empty() {
-                    line.right_word_segments
-                        .iter()
-                        .filter(|s| s.changed)
-                        .map(|s| s.text.as_str())
-                        .collect::<Vec<&str>>()
-                        .join("")
-                } else {
-                    String::new()
-                };
+            // Build word-diff segment strings for the detail pane.
+            // Format: \x01-separated list of ALL segments (changed and unchanged),
+            // where even indices (0,2,4,...) = unchanged, odd indices (1,3,5,...) = changed.
+            // If the first segment is changed, an empty unchanged prefix is prepended.
+            let left_word_diff = build_word_diff_string(&line.left_word_segments);
+            let right_word_diff = build_word_diff_string(&line.right_word_segments);
 
             DiffLineData {
                 left_line_no: line
@@ -1065,56 +1048,100 @@ fn update_current_diff(window: &MainWindow, state: &mut AppState, new_index: i32
     update_detail_pane(window, &model, new_index, tab);
 }
 
+/// Build a \x01-separated segment string from word diff segments.
+/// Even indices = unchanged, odd indices = changed.
+/// If the first segment is changed, an empty unchanged prefix is prepended.
+fn build_word_diff_string(segments: &[crate::models::diff_line::WordDiffSegment]) -> String {
+    if segments.is_empty() {
+        return String::new();
+    }
+    let mut parts: Vec<&str> = Vec::with_capacity(segments.len() + 1);
+    if segments[0].changed {
+        parts.push(""); // empty unchanged prefix so odd indices = changed
+    }
+    for seg in segments {
+        parts.push(&seg.text);
+    }
+    parts.join("\x01")
+}
+
+fn parse_word_diff_segments(text: &str, word_diff: &str) -> ModelRc<WordSegment> {
+    if word_diff.is_empty() {
+        return ModelRc::new(VecModel::from(vec![WordSegment {
+            text: SharedString::from(text),
+            is_changed: false,
+        }]));
+    }
+    let parts: Vec<&str> = word_diff.split('\x01').collect();
+    let segments: Vec<WordSegment> = parts
+        .iter()
+        .enumerate()
+        .map(|(i, part)| WordSegment {
+            text: SharedString::from(*part),
+            is_changed: i % 2 == 1,
+        })
+        .collect();
+    ModelRc::new(VecModel::from(segments))
+}
+
 fn update_detail_pane(
     window: &MainWindow,
     model: &ModelRc<DiffLineData>,
     diff_index: i32,
-    tab: &TabState,
+    _tab: &TabState,
 ) {
-    if diff_index < 0 || diff_index as usize >= tab.diff_positions.len() {
-        window.set_detail_left_text(SharedString::default());
-        window.set_detail_right_text(SharedString::default());
-        window.set_detail_left_highlights(SharedString::default());
-        window.set_detail_right_highlights(SharedString::default());
+    if diff_index < 0 {
+        window.set_detail_has_left(false);
+        window.set_detail_has_right(false);
+        window.set_detail_left_lines(ModelRc::new(VecModel::from(Vec::<DetailLineData>::new())));
+        window.set_detail_right_lines(ModelRc::new(VecModel::from(Vec::<DetailLineData>::new())));
         return;
     }
 
-    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let mut left_lines: Vec<DetailLineData> = Vec::new();
+    let mut right_lines: Vec<DetailLineData> = Vec::new();
 
-    // Collect all lines belonging to this diff block
-    let mut left_lines = Vec::new();
-    let mut right_lines = Vec::new();
-    let mut left_word_diffs = Vec::new();
-    let mut right_word_diffs = Vec::new();
-    for i in 0..vec_model.row_count() {
-        let row = vec_model.row_data(i).unwrap();
-        if row.diff_index == diff_index {
-            let lt = row.left_text.to_string();
-            let rt = row.right_text.to_string();
-            if !lt.is_empty() {
-                left_lines.push(lt);
-                let wd = row.left_word_diff.to_string();
-                if !wd.is_empty() {
-                    left_word_diffs.push(wd);
-                }
-            }
-            if !rt.is_empty() {
-                right_lines.push(rt);
-                let wd = row.right_word_diff.to_string();
-                if !wd.is_empty() {
-                    right_word_diffs.push(wd);
-                }
-            }
+    let count = model.row_count();
+    for i in 0..count {
+        let dl = model.row_data(i).unwrap();
+        if dl.diff_index != diff_index {
+            continue;
+        }
+        let status = dl.status; // 1=added, 2=removed, 3=modified, 4=moved
+
+        // Left side: removed(2), modified(3), moved(4)
+        if status == 2 || status == 3 || status == 4 {
+            let segments =
+                parse_word_diff_segments(&dl.left_text.to_string(), &dl.left_word_diff.to_string());
+            left_lines.push(DetailLineData {
+                segments,
+                is_current: true,
+                status,
+            });
+        }
+
+        // Right side: added(1), modified(3), moved(4)
+        if status == 1 || status == 3 || status == 4 {
+            let segments = parse_word_diff_segments(
+                &dl.right_text.to_string(),
+                &dl.right_word_diff.to_string(),
+            );
+            right_lines.push(DetailLineData {
+                segments,
+                is_current: true,
+                status,
+            });
         }
     }
 
-    window.set_detail_left_text(SharedString::from(left_lines.join("\n")));
-    window.set_detail_right_text(SharedString::from(right_lines.join("\n")));
-    window.set_detail_left_highlights(SharedString::from(left_word_diffs.join("\n")));
-    window.set_detail_right_highlights(SharedString::from(right_word_diffs.join("\n")));
+    let has_left = !left_lines.is_empty();
+    let has_right = !right_lines.is_empty();
+    window.set_detail_left_lines(ModelRc::new(VecModel::from(left_lines)));
+    window.set_detail_right_lines(ModelRc::new(VecModel::from(right_lines)));
+    window.set_detail_has_left(has_left);
+    window.set_detail_has_right(has_right);
+    window.set_detail_left_scroll_y(0.0);
+    window.set_detail_right_scroll_y(0.0);
 }
 
 fn push_undo_snapshot(state: &mut AppState, vec_model: &VecModel<DiffLineData>) {

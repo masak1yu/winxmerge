@@ -158,6 +158,13 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Side-by-side left/right panels + diff overlay (changed pixels in red, identical pixels in gray)
 - Continuous zoom slider (10–400%) with Fit mode and diff panel toggle
 
+### Diff Detail Pane (WinMerge-style)
+- Shows only the currently selected diff block (not the whole file)
+- Left panel for removed/modified lines, Right panel for added/modified lines
+- Single panel when only one side has changes; both panels with inner resize handle when both sides differ
+- Character-level background highlighting on changed segments within modified lines
+- Pane height resizable by dragging the top handle; inner split resizable by dragging between panels
+
 ### Diff Comments
 - Add per-block notes in the detail pane (Note field)
 - Comments persisted to session and embedded in HTML export reports
@@ -173,6 +180,15 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 
 ### Session Persistence Improvements
 - Tabs restored with encoding, EOL type, tab width, diff-only mode, status filter, and diff comments
+
+### View Menu Enhancements
+- **Zoom In / Zoom Out / Reset Zoom**: adjust editor font size from the View menu (range 8–32pt)
+- **Wrap Lines**: toggle line wrapping at the window edge (View → Wrap Lines, default off)
+- Row height adapts to font size in both normal and wrap modes
+
+### Window Resizing
+- Window is now properly resizable (initial size 1200×800, minimum 600×400)
+- Diff view panes use proportional layout (no fixed-width binding loops)
 
 ### Other
 - WinMerge-style initial file selection dialog (with recent files list)

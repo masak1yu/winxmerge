@@ -5,6 +5,7 @@ use std::io::Cursor;
 pub struct ExcelCellDiff {
     pub sheet: String,
     pub row: usize, // 1-based
+    #[allow(dead_code)]
     pub col: usize, // 1-based
     pub col_name: String,
     pub left_value: String,

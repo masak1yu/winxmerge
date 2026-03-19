@@ -111,6 +111,27 @@ msgstr "✓ 差分詳細ペイン"
 msgid "  Diff Detail Pane"
 msgstr "  差分詳細ペイン"
 
+msgid "✓ Diff Only"
+msgstr "✓ 差分のみ表示"
+
+msgid "  Diff Only"
+msgstr "  差分のみ表示"
+
+msgid "✓ Wrap Lines"
+msgstr "✓ 行を右端で折り返す"
+
+msgid "  Wrap Lines"
+msgstr "  行を右端で折り返す"
+
+msgid "Zoom In"
+msgstr "拡大"
+
+msgid "Zoom Out"
+msgstr "縮小"
+
+msgid "Reset Zoom"
+msgstr "ズームをリセット"
+
 msgid "Close"
 msgstr "閉じる"
 
