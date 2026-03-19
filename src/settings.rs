@@ -189,7 +189,7 @@ impl Default for AppSettings {
             font_size: default_font_size(),
             tab_width: default_tab_width(),
             show_line_numbers: true,
-            word_wrap: true,
+            word_wrap: false,
             syntax_highlighting: true,
             enable_context_menu: true,
             theme: default_theme(),

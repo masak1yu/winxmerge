@@ -1,5 +1,5 @@
-import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit, ScrollView } from "std-widgets.slint";
-import { DiffView, DiffLineData } from "widgets/diff-view.slint";
+import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit, ScrollView, ListView } from "std-widgets.slint";
+import { DiffView, DiffLineData, WordSegment } from "widgets/diff-view.slint";
 import { DiffView3Way, ThreeWayLineData } from "widgets/diff-view-3way.slint";
 import { FolderView, FolderItemData } from "widgets/folder-view.slint";
 import { TabBar, TabData } from "widgets/tab-bar.slint";
@@ -16,7 +16,13 @@ export struct PluginEntryData {
     command: string,
 }
 
-export { DiffLineData, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors, FileEntryData }
+export struct DetailLineData {
+    segments: [WordSegment],
+    is-current: bool,
+    status: int,  // 1=added, 2=removed, 3=modified, 4=moved
+}
+
+export { DiffLineData, WordSegment, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors, FileEntryData }
 
 // Toolbar icon button: fixed 32x32 with image icon + optional overlay text
 component ToolBtn inherits Rectangle {
@@ -141,8 +147,10 @@ export component MainWindow inherits Window {
     in-out property <string> window-title: "WinXMerge";
     title: window-title;
     icon: @image-url("../assets/icons/app-icon-256.png");
-    width: 1200px;
-    height: 800px;
+    preferred-width: 1200px;
+    preferred-height: 800px;
+    min-width: 600px;
+    min-height: 400px;
 
     // File diff properties
     in-out property <[DiffLineData]> diff-lines;
@@ -199,13 +207,21 @@ export component MainWindow inherits Window {
     // Scroll control for diff view (in pixels, negative = scroll down)
     in-out property <length> diff-scroll-y: 0px;
 
-    // Diff detail pane: shows current diff block content
-    in-out property <string> detail-left-text: "";
-    in-out property <string> detail-right-text: "";
-    in-out property <string> detail-left-highlights: ""; // word-diff string for detail pane (pipe-separated segments)
-    in-out property <string> detail-right-highlights: "";
+    // Detail pane: current diff block lines with word-diff segment highlighting
+    in property <[DetailLineData]> detail-left-lines: [];
+    in property <[DetailLineData]> detail-right-lines: [];
+    in-out property <length> detail-left-scroll-y: 0px;
+    in-out property <length> detail-right-scroll-y: 0px;
     in-out property <bool> show-detail-pane: true;
-    in-out property <length> detail-pane-height: 120px;
+    in-out property <length> detail-pane-height: 180px;
+    // Split ratio between top (Left/removed) and bottom (Right/added) in detail pane
+    in-out property <float> detail-inner-split: 0.5;
+    // Explicitly set from Rust when detail lines change (avoids model-length reactivity issues)
+    in-out property <bool> detail-has-left: false;
+    in-out property <bool> detail-has-right: false;
+    property <bool> detail-has-both: detail-has-left && detail-has-right;
+    // Available height for content panes (total minus comment row, minus inner handle if both shown)
+    property <length> detail-content-height: detail-pane-height - 32px - (detail-has-both ? 5px : 0px);
     in-out property <bool> show-location-pane: true;
     in-out property <bool> show-word-diff: true;
     in-out property <bool> opt-diff-only: false;
@@ -335,7 +351,7 @@ export component MainWindow inherits Window {
     in-out property <bool> opt-ignore-eol: false;
     in-out property <bool> opt-detect-moved-lines: true;
     in-out property <bool> opt-show-line-numbers: true;
-    in-out property <bool> opt-word-wrap: true;
+    in-out property <bool> opt-word-wrap: false;
     in-out property <bool> opt-syntax-highlighting: true;
     in-out property <int> opt-font-size: 13;
     in-out property <int> opt-tab-width: 4;
@@ -526,6 +542,24 @@ export component MainWindow inherits Window {
                 title: root.opt-diff-only ? @tr("✓ Diff Only") : @tr("  Diff Only");
                 enabled: root.view-mode == 0;
                 activated => { root.opt-diff-only = !root.opt-diff-only; }
+            }
+            MenuItem {
+                title: root.opt-word-wrap ? @tr("✓ Wrap Lines") : @tr("  Wrap Lines");
+                enabled: root.view-mode == 0;
+                activated => { root.opt-word-wrap = !root.opt-word-wrap; }
+            }
+            MenuSeparator {}
+            MenuItem {
+                title: @tr("Zoom In");
+                activated => { root.opt-font-size = Math.min(root.opt-font-size + 1, 32); }
+            }
+            MenuItem {
+                title: @tr("Zoom Out");
+                activated => { root.opt-font-size = Math.max(root.opt-font-size - 1, 8); }
+            }
+            MenuItem {
+                title: @tr("Reset Zoom");
+                activated => { root.opt-font-size = 13; }
             }
             MenuSeparator {}
             MenuItem {
@@ -1036,78 +1070,133 @@ export component MainWindow inherits Window {
             VerticalLayout {
                 spacing: 0;
 
-                // Top: Left (removed)
-                Rectangle {
-                    vertical-stretch: 1;
-                    background: root.detail-left-text != "" ? ThemeColors.removed-bg : Palette.background;
+                // Left panel: removed/modified lines of the current block
+                if root.detail-has-left : Rectangle {
+                    height: root.detail-has-both
+                        ? root.detail-content-height * root.detail-inner-split
+                        : root.detail-content-height;
                     border-color: Palette.border;
                     border-width: 1px;
+                    clip: true;
 
-                    ScrollView {
-                        HorizontalLayout {
-                            padding: 4px;
-                            spacing: 4px;
-                            alignment: start;
+                    VerticalLayout {
+                        spacing: 0;
+                        Rectangle {
+                            height: 14px;
+                            background: ThemeColors.removed-bg;
                             Text {
+                                x: 4px;
                                 text: @tr("Left");
                                 font-size: 10px;
                                 font-weight: 600;
-                                color: Palette.foreground.transparentize(0.4);
-                                vertical-alignment: top;
+                                color: ThemeColors.removed-fg;
+                                vertical-alignment: center;
                             }
-                            VerticalLayout {
-                                spacing: 0;
-                                alignment: start;
-                                Text {
-                                    text: root.detail-left-text;
-                                    font-size: 12px;
-                                    font-family: "monospace";
-                                    color: Palette.foreground;
-                                }
-                                if root.show-word-diff && root.detail-left-highlights != "" : Text {
-                                    text: root.detail-left-highlights;
-                                    font-size: 10px;
-                                    font-family: "monospace";
-                                    color: ThemeColors.removed-fg;
+                        }
+                        ListView {
+                            viewport-y: root.detail-left-scroll-y;
+                            for line in root.detail-left-lines: Rectangle {
+                                height: (root.opt-font-size + 2) * 1px;
+                                background: line.status == 3 ? ThemeColors.modified-bg-current :
+                                            line.status == 4 ? ThemeColors.moved-bg-current :
+                                            ThemeColors.removed-bg-current;
+                                HorizontalLayout {
+                                    spacing: 0;
+                                    alignment: start;
+                                    padding-left: 4px;
+                                    for seg in line.segments: Rectangle {
+                                        background: seg.is-changed ? ThemeColors.removed-fg.transparentize(0.7) : transparent;
+                                        border-radius: 2px;
+                                        Text {
+                                            text: seg.text;
+                                            font-size: root.opt-font-size * 1px;
+                                            font-family: "monospace";
+                                            color: Palette.foreground;
+                                            vertical-alignment: center;
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
 
-                // Bottom: Right (added)
-                Rectangle {
-                    vertical-stretch: 1;
-                    background: root.detail-right-text != "" ? ThemeColors.added-bg : Palette.background;
+                // Inner resize handle: only when both panels are visible
+                if root.detail-has-both : Rectangle {
+                    height: 5px;
+                    background: inner-handle-drag.has-hover ? Palette.background.darker(0.12) : transparent;
+
+                    Rectangle {
+                        y: 2px;
+                        height: 1px;
+                        background: Palette.border;
+                    }
+
+                    inner-handle-drag := TouchArea {
+                        mouse-cursor: row-resize;
+                        property <length> drag-start-y;
+                        property <float> drag-start-split;
+                        moved => {
+                            root.detail-inner-split = Math.clamp(
+                                drag-start-split + (self.mouse-y - drag-start-y) / root.detail-content-height,
+                                0.1,
+                                0.9
+                            );
+                        }
+                        pointer-event(ev) => {
+                            if ev.kind == PointerEventKind.down {
+                                drag-start-y = self.mouse-y;
+                                drag-start-split = root.detail-inner-split;
+                            }
+                        }
+                    }
+                }
+
+                // Right panel: added/modified lines of the current block
+                if root.detail-has-right : Rectangle {
+                    height: root.detail-has-both
+                        ? root.detail-content-height * (1.0 - root.detail-inner-split)
+                        : root.detail-content-height;
                     border-color: Palette.border;
                     border-width: 1px;
+                    clip: true;
 
-                    ScrollView {
-                        HorizontalLayout {
-                            padding: 4px;
-                            spacing: 4px;
-                            alignment: start;
+                    VerticalLayout {
+                        spacing: 0;
+                        Rectangle {
+                            height: 14px;
+                            background: ThemeColors.added-bg;
                             Text {
+                                x: 4px;
                                 text: @tr("Right");
                                 font-size: 10px;
                                 font-weight: 600;
-                                color: Palette.foreground.transparentize(0.4);
-                                vertical-alignment: top;
+                                color: ThemeColors.added-fg;
+                                vertical-alignment: center;
                             }
-                            VerticalLayout {
-                                spacing: 0;
-                                alignment: start;
-                                Text {
-                                    text: root.detail-right-text;
-                                    font-size: 12px;
-                                    font-family: "monospace";
-                                    color: Palette.foreground;
-                                }
-                                if root.show-word-diff && root.detail-right-highlights != "" : Text {
-                                    text: root.detail-right-highlights;
-                                    font-size: 10px;
-                                    font-family: "monospace";
-                                    color: ThemeColors.added-fg;
+                        }
+                        ListView {
+                            viewport-y: root.detail-right-scroll-y;
+                            for line in root.detail-right-lines: Rectangle {
+                                height: (root.opt-font-size + 2) * 1px;
+                                background: line.status == 3 ? ThemeColors.modified-bg-current :
+                                            line.status == 4 ? ThemeColors.moved-bg-current :
+                                            ThemeColors.added-bg-current;
+                                HorizontalLayout {
+                                    spacing: 0;
+                                    alignment: start;
+                                    padding-left: 4px;
+                                    for seg in line.segments: Rectangle {
+                                        background: seg.is-changed ? ThemeColors.added-fg.transparentize(0.7) : transparent;
+                                        border-radius: 2px;
+                                        Text {
+                                            text: seg.text;
+                                            font-size: root.opt-font-size * 1px;
+                                            font-family: "monospace";
+                                            color: Palette.foreground;
+                                            vertical-alignment: center;
+                                        }
+                                    }
                                 }
                             }
                         }
