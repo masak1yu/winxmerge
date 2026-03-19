@@ -1,6 +1,30 @@
 import { Button, LineEdit, Palette, CheckBox, ListView } from "std-widgets.slint";
 import { FileBrowserIcons } from "file-browser.slint";
 
+component PasteButton inherits Rectangle {
+    callback clicked();
+
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    background: ta.has-hover ? Palette.background.darker(0.12) : transparent;
+    border-color: Palette.border;
+    border-width: 1px;
+
+    Image {
+        width: 16px;
+        height: 16px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        source: @image-url("../icons/paste.svg");
+        colorize: Palette.foreground;
+    }
+
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
 export struct RecentEntryData {
     left-path: string,
     right-path: string,
@@ -98,9 +122,7 @@ export component OpenDialog inherits Rectangle {
                         text: @tr("Browse...");
                         clicked => { root.browse-left(); }
                     }
-                    Button {
-                        text: "📋";
-                        width: 36px;
+                    PasteButton {
                         clicked => { root.paste-left(); }
                     }
                 }
@@ -157,9 +179,7 @@ export component OpenDialog inherits Rectangle {
                         text: @tr("Browse...");
                         clicked => { root.browse-right(); }
                     }
-                    Button {
-                        text: "📋";
-                        width: 36px;
+                    PasteButton {
                         clicked => { root.paste-right(); }
                     }
                 }

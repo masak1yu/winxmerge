@@ -85,6 +85,9 @@ export component FileBrowserDialog inherits Rectangle {
                 Rectangle { height: 1px; background: Palette.border; }
 
                 // File / folder listing
+                list-fs := FocusScope {
+                    vertical-stretch: 1;
+
                 ListView {
                     vertical-stretch: 1;
 
@@ -97,7 +100,7 @@ export component FileBrowserDialog inherits Rectangle {
                                 : transparent;
 
                         row-ta := TouchArea {
-                            clicked => { root.selected-index = idx; }
+                            clicked => { root.selected-index = idx; list-fs.focus(); }
                             double-clicked => {
                                 if entry.is-dir {
                                     root.navigate(root.current-dir + "/" + entry.name);
@@ -135,6 +138,7 @@ export component FileBrowserDialog inherits Rectangle {
                         }
                     }
                 }
+                } // list-fs FocusScope
 
                 Rectangle { height: 1px; background: Palette.border; }
 

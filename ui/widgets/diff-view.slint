@@ -181,7 +181,6 @@ export component DiffView inherits Rectangle {
     changed scroll-y => {
         if right-list.viewport-y != scroll-y {
             right-list.viewport-y = scroll-y;
-            mid-list.viewport-y = scroll-y;
         }
     }
 
@@ -189,7 +188,6 @@ export component DiffView inherits Rectangle {
     changed right-scroll-y => {
         if left-list.viewport-y != right-scroll-y {
             left-list.viewport-y = right-scroll-y;
-            mid-list.viewport-y = right-scroll-y;
         }
     }
 
@@ -210,18 +208,14 @@ export component DiffView inherits Rectangle {
     border-width: 1px;
 
     // Splitter ratio (0.0 to 1.0)
-    in-out property <float> split-ratio: 0.5;
-
-    // Fixed widths only – no derived properties that depend on root.width (avoids binding loop)
-    property <length> merge-col-width: 32px;
 
     VerticalLayout {
         // Header
         HorizontalLayout {
             height: 28px;
 
-            left-header-rect := Rectangle {
-                horizontal-stretch: root.split-ratio;
+            Rectangle {
+                horizontal-stretch: 1;
                 min-width: 80px;
                 background: Palette.background.darker(0.05);
                 border-color: Palette.border;
@@ -238,37 +232,8 @@ export component DiffView inherits Rectangle {
                 }
             }
 
-            // Merge column header (drag handle for splitter)
             Rectangle {
-                width: root.merge-col-width;
-                background: splitter-header-drag.has-hover ? Palette.background.darker(0.12) : Palette.background.darker(0.05);
-                border-color: Palette.border;
-                border-width: 1px;
-
-                // Drag grip indicator
-                Text {
-                    text: "⋮";
-                    font-size: 14px;
-                    color: Palette.foreground.transparentize(0.5);
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-
-                splitter-header-drag := TouchArea {
-                    mouse-cursor: col-resize;
-                    moved => {
-                        if self.pressed {
-                            root.split-ratio = Math.max(0.1, Math.min(0.9,
-                                (left-header-rect.width + self.mouse-x - self.pressed-x) /
-                                (left-header-rect.width + right-header-rect.width)
-                            ));
-                        }
-                    }
-                }
-            }
-
-            right-header-rect := Rectangle {
-                horizontal-stretch: 1.0 - root.split-ratio;
+                horizontal-stretch: 1;
                 min-width: 80px;
                 background: Palette.background.darker(0.05);
                 border-color: Palette.border;
@@ -285,9 +250,9 @@ export component DiffView inherits Rectangle {
                 }
             }
 
-            // Spacer for location pane
+            // Spacer for location pane (must match LocationPane width: 12px)
             if root.diff-lines.length > 0 && root.show-location-pane : Rectangle {
-                width: 14px;
+                width: 12px;
                 background: Palette.background.darker(0.05);
                 border-color: Palette.border;
                 border-width: 1px;
@@ -298,7 +263,7 @@ export component DiffView inherits Rectangle {
         HorizontalLayout {
             // Left pane
             Rectangle {
-                horizontal-stretch: root.split-ratio;
+                horizontal-stretch: 1;
                 min-width: 80px;
 
                 if root.context-menu-enabled : ContextMenuArea {
@@ -341,65 +306,9 @@ export component DiffView inherits Rectangle {
                 }
             }
 
-            // Merge buttons column
-            Rectangle {
-                width: root.merge-col-width;
-                background: Palette.background.darker(0.01);
-                border-color: Palette.border;
-                border-width: 1px;
-
-                mid-list := ListView {
-                    for line in diff-lines: Rectangle {
-                        height: (root.diff-only-mode || root.diff-status-filter != 0) && line.status == 0 ? 0px
-                              : root.diff-status-filter != 0 && line.status != 0 && line.status != root.diff-status-filter ? 0px
-                              : (root.editor-font-size + 2) * 1px;
-                        if line.status != 0 : HorizontalLayout {
-                            padding: 1px;
-                            spacing: 1px;
-
-                            // Copy left to right
-                            Rectangle {
-                                width: 14px;
-                                height: 20px;
-                                background: touch-r.has-hover ? Palette.background.darker(0.15) : transparent;
-                                border-radius: 2px;
-                                Text {
-                                    text: "▶";
-                                    font-size: 9px;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                    color: Palette.foreground.transparentize(0.3);
-                                }
-                                touch-r := TouchArea {
-                                    clicked => { root.copy-to-right(line.diff-index); }
-                                }
-                            }
-
-                            // Copy right to left
-                            Rectangle {
-                                width: 14px;
-                                height: 20px;
-                                background: touch-l.has-hover ? Palette.background.darker(0.15) : transparent;
-                                border-radius: 2px;
-                                Text {
-                                    text: "◀";
-                                    font-size: 9px;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                    color: Palette.foreground.transparentize(0.3);
-                                }
-                                touch-l := TouchArea {
-                                    clicked => { root.copy-to-left(line.diff-index); }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
             // Right pane
             Rectangle {
-                horizontal-stretch: 1.0 - root.split-ratio;
+                horizontal-stretch: 1;
                 min-width: 80px;
                 if root.context-menu-enabled : ContextMenuArea {
                     Menu {
