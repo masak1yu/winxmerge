@@ -1,6 +1,11 @@
 import { VerticalBox, HorizontalBox, ListView, Palette } from "std-widgets.slint";
 import { ThemeColors } from "../theme.slint";
 
+export struct WordSegment {
+    text: string,
+    is-changed: bool,
+}
+
 export struct DiffLineData {
     left-line-no: string,
     right-line-no: string,
@@ -56,7 +61,7 @@ component DiffLineRow inherits Rectangle {
     HorizontalLayout {
         padding-left: 4px;
         padding-right: 4px;
-        spacing: 8px;
+        spacing: 4px;
 
         // Line number (clickable for diff selection)
         if show-line-no : Rectangle {
@@ -81,20 +86,7 @@ component DiffLineRow inherits Rectangle {
             }
         }
 
-        // Status marker
-        Rectangle {
-            width: 16px;
-            Text {
-                text: status == 1 ? "+" : status == 2 ? "-" : status == 3 ? "~" : status == 4 ? "↕" : " ";
-                font-size: 12px;
-                font-family: "monospace";
-                color: status == 1 ? ThemeColors.added-fg : status == 2 ? ThemeColors.removed-fg : status == 3 ? ThemeColors.modified-fg : status == 4 ? ThemeColors.moved-fg : Palette.foreground.transparentize(0.5);
-                vertical-alignment: center;
-                horizontal-alignment: center;
-            }
-        }
-
-        // Text content with word-level diff indicator
+        // Text content
         VerticalLayout {
             spacing: 0;
 
@@ -131,15 +123,6 @@ component DiffLineRow inherits Rectangle {
                 }
             }
 
-            // Word diff underline: shows changed characters with highlighting
-            if word-diff != "" : Text {
-                text: word-diff;
-                font-size: (text-font-size - 2) * 1px;
-                font-family: "monospace";
-                color: ThemeColors.modified-fg;
-                overflow: elide;
-                height: 12px;
-            }
         }
     }
 }
@@ -229,19 +212,17 @@ export component DiffView inherits Rectangle {
     // Splitter ratio (0.0 to 1.0)
     in-out property <float> split-ratio: 0.5;
 
-    // Computed widths
+    // Fixed widths only – no derived properties that depend on root.width (avoids binding loop)
     property <length> merge-col-width: 32px;
-    property <length> location-pane-width: root.diff-lines.length > 0 && root.show-location-pane ? 14px : 0px;
-    property <length> available-pane-width: root.width - 2px - merge-col-width - location-pane-width;
-    property <length> left-pane-width: Math.max(80px, Math.min(available-pane-width - 80px, available-pane-width * root.split-ratio));
 
     VerticalLayout {
         // Header
         HorizontalLayout {
             height: 28px;
 
-            Rectangle {
-                width: root.left-pane-width;
+            left-header-rect := Rectangle {
+                horizontal-stretch: root.split-ratio;
+                min-width: 80px;
                 background: Palette.background.darker(0.05);
                 border-color: Palette.border;
                 border-width: 1px;
@@ -278,14 +259,17 @@ export component DiffView inherits Rectangle {
                     moved => {
                         if self.pressed {
                             root.split-ratio = Math.max(0.1, Math.min(0.9,
-                                (root.left-pane-width + self.mouse-x - self.pressed-x) / root.available-pane-width
+                                (left-header-rect.width + self.mouse-x - self.pressed-x) /
+                                (left-header-rect.width + right-header-rect.width)
                             ));
                         }
                     }
                 }
             }
 
-            Rectangle {
+            right-header-rect := Rectangle {
+                horizontal-stretch: 1.0 - root.split-ratio;
+                min-width: 80px;
                 background: Palette.background.darker(0.05);
                 border-color: Palette.border;
                 border-width: 1px;
@@ -302,8 +286,8 @@ export component DiffView inherits Rectangle {
             }
 
             // Spacer for location pane
-            if root.diff-lines.length > 0 : Rectangle {
-                width: root.location-pane-width;
+            if root.diff-lines.length > 0 && root.show-location-pane : Rectangle {
+                width: 14px;
                 background: Palette.background.darker(0.05);
                 border-color: Palette.border;
                 border-width: 1px;
@@ -314,7 +298,8 @@ export component DiffView inherits Rectangle {
         HorizontalLayout {
             // Left pane
             Rectangle {
-                width: root.left-pane-width;
+                horizontal-stretch: root.split-ratio;
+                min-width: 80px;
 
                 if root.context-menu-enabled : ContextMenuArea {
                     Menu {
@@ -336,8 +321,7 @@ export component DiffView inherits Rectangle {
                     for line[idx] in diff-lines: DiffLineRow {
                         height: (root.diff-only-mode || root.diff-status-filter != 0) && line.status == 0 ? 0px
                               : root.diff-status-filter != 0 && line.status != 0 && line.status != root.diff-status-filter ? 0px
-                              : root.word-wrap-mode ? 72px
-                              : (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
+                              : (root.editor-font-size + 2) * 1px;
                         line-no: line.left-line-no;
                         text: line.left-text;
                         status: line.status == 1 ? 0 : line.status;
@@ -368,8 +352,7 @@ export component DiffView inherits Rectangle {
                     for line in diff-lines: Rectangle {
                         height: (root.diff-only-mode || root.diff-status-filter != 0) && line.status == 0 ? 0px
                               : root.diff-status-filter != 0 && line.status != 0 && line.status != root.diff-status-filter ? 0px
-                              : root.word-wrap-mode ? 72px
-                              : (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
+                              : (root.editor-font-size + 2) * 1px;
                         if line.status != 0 : HorizontalLayout {
                             padding: 1px;
                             spacing: 1px;
@@ -416,6 +399,8 @@ export component DiffView inherits Rectangle {
 
             // Right pane
             Rectangle {
+                horizontal-stretch: 1.0 - root.split-ratio;
+                min-width: 80px;
                 if root.context-menu-enabled : ContextMenuArea {
                     Menu {
                         title: @tr("Context");
@@ -436,8 +421,7 @@ export component DiffView inherits Rectangle {
                     for line[idx] in diff-lines: DiffLineRow {
                         height: (root.diff-only-mode || root.diff-status-filter != 0) && line.status == 0 ? 0px
                               : root.diff-status-filter != 0 && line.status != 0 && line.status != root.diff-status-filter ? 0px
-                              : root.word-wrap-mode ? 72px
-                              : (line.left-word-diff != "" || line.right-word-diff != "") && root.show-word-diff ? 36px : 24px;
+                              : (root.editor-font-size + 2) * 1px;
                         line-no: line.right-line-no;
                         text: line.right-text;
                         status: line.status == 2 ? 0 : line.status;
