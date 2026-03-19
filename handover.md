@@ -7,11 +7,11 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 ## 現在の状態
 
-- **バージョン:** 0.24.0
-- **ブランチ:** `feature/v0.24.0`
+- **バージョン:** 0.26.0
+- **ブランチ:** `feature/v0.26.0`
 - **テスト:** 19件すべてパス
-- **ビルド:** `cargo build` 成功（警告: `excel.rs` の未使用フィールド `col` のみ）
-- **CI:** GitHub Actions（ubuntu / macOS / Windows）
+- **ビルド:** `cargo build` 成功（警告なし）
+- **CI:** GitHub Actions（Ubuntu / macOS (aarch64) / Windows）
 
 ## リリース履歴
 
@@ -41,6 +41,8 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | v0.22.0 | #24 | 画像比較（ピクセルレベル差分、左右サイドバイサイド＋差分オーバーレイ表示） |
 | v0.23.0 | #25 | 差分コメント、比較結果ステータスフィルタ、クリップボードパス貼り付け、画像比較ズーム＋差分パネル切替、フォルダ比較ファイルプレビュー |
 | v0.24.0 | - | アプリアイコン、差分コメントHTMLエクスポート、画像連続ズームスライダー、差分コメントセッション保存、フォルダステータスフィルタUI、ショートカットダイアログ、セッション保存改善、差分統計ミニグラフ |
+| v0.25.0 | - | 差分詳細ペイン改善（現在ブロックのみ表示・片方のみ対応・文字レベルハイライト）、View メニュー拡張（Zoom In/Out/Reset・行折り返し）、ウィンドウリサイズ対応、マージ列削除、GitHub Actions リリースワークフロー追加 |
+| v0.26.0 | - | UIアイコン修正（📋ペーストボタン→SVGアイコン化、フォルダ一覧ファイルアイコン→SVG化）、ファイルブラウザフォーカスバグ修正、リリース対象からmacOS Intel除外 |
 
 ## 実装済み機能一覧
 
@@ -130,7 +132,7 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 ### リリースバイナリ自動ビルド
 - GitHub Actions でタグ push 時に自動ビルド
-- Linux (x86_64), macOS (x86_64 + aarch64), Windows (x86_64)
+- Linux (x86_64), macOS (aarch64), Windows (x86_64)
 - GitHub Releases への自動アップロード
 
 ### 行フィルタ / 置換フィルタ
