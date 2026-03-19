@@ -1,5 +1,6 @@
 import { ListView, Palette } from "std-widgets.slint";
 import { ThemeColors } from "../theme.slint";
+import { FileBrowserIcons } from "../dialogs/file-browser.slint";
 
 export struct FolderItemData {
     relative-path: string,
@@ -36,10 +37,11 @@ component FolderItemRow inherits Rectangle {
         spacing: 8px;
 
         // Icon
-        Text {
+        Image {
             width: 16px;
-            text: item.is-directory ? "📁" : "📄";
-            font-size: 12px;
+            height: 16px;
+            source: item.is-directory ? FileBrowserIcons.folder : FileBrowserIcons.file;
+            colorize: Palette.foreground;
             vertical-alignment: center;
         }
 

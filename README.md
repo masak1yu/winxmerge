@@ -200,7 +200,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Settings persistence (~/.config/winxmerge/settings.json)
 - Performance optimizations for large files
 - GitHub Actions CI (build, test, lint on Ubuntu / macOS / Windows)
-- Automated release builds for Linux, macOS (x86_64 + aarch64), and Windows
+- Automated release builds for Linux, macOS (aarch64), and Windows
 
 ## Tech Stack
 
