@@ -100,6 +100,7 @@ pub struct TabState {
     pub left_image: Option<slint::Image>,
     pub right_image: Option<slint::Image>,
     pub diff_image: Option<slint::Image>,
+    pub overlay_image: Option<slint::Image>,
     pub image_stats: String,
     /// Image dimensions for zoom support
     pub image_left_w: i32,
@@ -110,6 +111,9 @@ pub struct TabState {
     pub diff_comments: HashMap<usize, String>,
     /// Status filter for diff view (0=All, 1=Added, 2=Removed, 3=Modified, 4=Moved)
     pub diff_status_filter: i32,
+    /// Folder sort column: -1=none, 0=Name, 1=Status, 2=LeftSize, 3=RightSize, 4=LeftModified, 5=RightModified
+    pub folder_sort_column: i32,
+    pub folder_sort_ascending: bool,
 }
 
 impl TabState {
@@ -155,6 +159,7 @@ impl TabState {
             left_image: None,
             right_image: None,
             diff_image: None,
+            overlay_image: None,
             image_stats: String::new(),
             image_left_w: 0,
             image_left_h: 0,
@@ -162,6 +167,8 @@ impl TabState {
             image_right_h: 0,
             diff_comments: HashMap::new(),
             diff_status_filter: 0,
+            folder_sort_column: -1,
+            folder_sort_ascending: true,
         }
     }
 }
@@ -1630,6 +1637,135 @@ pub fn export_html_report(window: &MainWindow, state: &AppState) {
     }
 }
 
+pub fn export_xlsx_report(window: &MainWindow, state: &AppState) {
+    let tab = state.current_tab();
+
+    let left_text = tab.left_lines.join("\n") + "\n";
+    let right_text = tab.right_lines.join("\n") + "\n";
+    let result = compute_diff_with_options(&left_text, &right_text, &tab.diff_options);
+
+    let left_title = tab
+        .left_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Left".to_string());
+    let right_title = tab
+        .right_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Right".to_string());
+
+    match crate::export::export_xlsx(&result, &left_title, &right_title, &tab.diff_comments) {
+        Ok(bytes) => {
+            if let Some(path) = rfd::FileDialog::new()
+                .set_title("Export Excel Report")
+                .set_file_name("diff-report.xlsx")
+                .add_filter("Excel", &["xlsx"])
+                .save_file()
+            {
+                match fs::write(&path, &bytes) {
+                    Ok(_) => {
+                        window.set_status_text(SharedString::from(format!(
+                            "Exported to {}",
+                            path.to_string_lossy()
+                        )));
+                    }
+                    Err(e) => {
+                        window.set_status_text(SharedString::from(format!("Export error: {}", e)));
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            window.set_status_text(SharedString::from(format!("Excel export error: {}", e)));
+        }
+    }
+}
+
+/// Collect all non-empty comments from every tab
+fn collect_all_comments(state: &AppState) -> Vec<crate::export::CommentEntry> {
+    let mut entries = Vec::new();
+    for tab in &state.tabs {
+        if tab.diff_comments.is_empty() {
+            continue;
+        }
+        let left_file = tab
+            .left_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let right_file = tab
+            .right_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let tab_title = tab.title.clone();
+        let mut indices: Vec<usize> = tab.diff_comments.keys().copied().collect();
+        indices.sort_unstable();
+        for idx in indices {
+            let comment = &tab.diff_comments[&idx];
+            if comment.is_empty() {
+                continue;
+            }
+            entries.push(crate::export::CommentEntry {
+                tab_title: tab_title.clone(),
+                left_file: left_file.clone(),
+                right_file: right_file.clone(),
+                diff_block: idx,
+                comment: comment.clone(),
+            });
+        }
+    }
+    entries
+}
+
+pub fn export_all_comments(window: &MainWindow, state: &AppState, use_json: bool) {
+    let entries = collect_all_comments(state);
+    if entries.is_empty() {
+        window.set_status_text(SharedString::from("No comments to export"));
+        return;
+    }
+
+    let (content, ext, filter_name) = if use_json {
+        (
+            crate::export::export_all_comments_json(&entries),
+            "json",
+            "JSON",
+        )
+    } else {
+        (
+            crate::export::export_all_comments_csv(&entries),
+            "csv",
+            "CSV",
+        )
+    };
+
+    let filename = if use_json {
+        "diff-comments.json"
+    } else {
+        "diff-comments.csv"
+    };
+    if let Some(path) = rfd::FileDialog::new()
+        .set_title("Export All Comments")
+        .set_file_name(filename)
+        .add_filter(filter_name, &[ext])
+        .save_file()
+    {
+        match fs::write(&path, &content) {
+            Ok(_) => {
+                window.set_status_text(SharedString::from(format!(
+                    "Exported {} comment(s) to {}",
+                    entries.len(),
+                    path.to_string_lossy()
+                )));
+            }
+            Err(e) => {
+                window.set_status_text(SharedString::from(format!("Export error: {}", e)));
+            }
+        }
+    }
+}
+
 pub fn print_diff(window: &MainWindow, state: &AppState) {
     let tab = state.current_tab();
     let left_text = tab.left_lines.join("\n") + "\n";
@@ -1647,7 +1783,12 @@ pub fn print_diff(window: &MainWindow, state: &AppState) {
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| "Right".to_string());
 
-    let html = crate::export::export_html_for_print(&result, &left_title, &right_title);
+    let html = crate::export::export_html_for_print(
+        &result,
+        &left_title,
+        &right_title,
+        &tab.diff_comments,
+    );
 
     // Write to a temp file and open in default browser
     let tmp = std::env::temp_dir().join("winxmerge-print.html");
@@ -3149,6 +3290,8 @@ fn run_image_compare(
                 rgba_to_slint_image(&result.right_rgba, result.right_width, result.right_height);
             let diff_img =
                 rgba_to_slint_image(&result.diff_rgba, result.diff_width, result.diff_height);
+            let overlay_img =
+                rgba_to_slint_image(&result.overlay_rgba, result.diff_width, result.diff_height);
 
             let tab = state.current_tab_mut();
             tab.view_mode = 5;
@@ -3157,6 +3300,7 @@ fn run_image_compare(
             tab.left_image = Some(left_img.clone());
             tab.right_image = Some(right_img.clone());
             tab.diff_image = Some(diff_img.clone());
+            tab.overlay_image = Some(overlay_img.clone());
             tab.image_left_w = result.left_width as i32;
             tab.image_left_h = result.left_height as i32;
             tab.image_right_w = result.right_width as i32;
@@ -3166,6 +3310,7 @@ fn run_image_compare(
             window.set_left_image(left_img);
             window.set_right_image(right_img);
             window.set_diff_image(diff_img);
+            window.set_overlay_image(overlay_img);
             window.set_image_stats(SharedString::from(stats.clone()));
             window.set_image_left_width(result.left_width as i32);
             window.set_image_left_height(result.left_height as i32);
@@ -3190,6 +3335,114 @@ fn format_size(bytes: u64) -> String {
     } else {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     }
+}
+
+// --- Feature: Folder sort ---
+
+/// Helper: convert folder_items to folder_item_data
+fn folder_items_to_data(items: &[crate::models::folder_item::FolderItem]) -> Vec<FolderItemData> {
+    use crate::models::folder_item::FileCompareStatus;
+    items
+        .iter()
+        .map(|item| {
+            let status: i32 = match item.status {
+                FileCompareStatus::Identical => 0,
+                FileCompareStatus::Different => 1,
+                FileCompareStatus::LeftOnly => 2,
+                FileCompareStatus::RightOnly => 3,
+            };
+            let depth = item
+                .relative_path
+                .chars()
+                .filter(|&c| c == '/' || c == '\\')
+                .count() as i32;
+            FolderItemData {
+                relative_path: SharedString::from(&item.relative_path),
+                is_directory: item.is_directory,
+                status,
+                left_size: item
+                    .left_size
+                    .map(|s| SharedString::from(format_size(s)))
+                    .unwrap_or_default(),
+                right_size: item
+                    .right_size
+                    .map(|s| SharedString::from(format_size(s)))
+                    .unwrap_or_default(),
+                left_modified: item
+                    .left_modified
+                    .as_ref()
+                    .map(|s| SharedString::from(s.as_str()))
+                    .unwrap_or_default(),
+                right_modified: item
+                    .right_modified
+                    .as_ref()
+                    .map(|s| SharedString::from(s.as_str()))
+                    .unwrap_or_default(),
+                depth,
+            }
+        })
+        .collect()
+}
+
+pub fn sort_folder(window: &MainWindow, state: &mut AppState, column: i32) {
+    use crate::models::folder_item::FileCompareStatus;
+
+    let tab = state.current_tab_mut();
+    if tab.view_mode != 1 || tab.folder_items.is_empty() {
+        return;
+    }
+
+    // Toggle direction if same column, else reset to ascending
+    if tab.folder_sort_column == column {
+        tab.folder_sort_ascending = !tab.folder_sort_ascending;
+    } else {
+        tab.folder_sort_column = column;
+        tab.folder_sort_ascending = true;
+    }
+
+    let ascending = tab.folder_sort_ascending;
+
+    tab.folder_items.sort_by(|a, b| {
+        let ord = match column {
+            0 => a
+                .relative_path
+                .to_lowercase()
+                .cmp(&b.relative_path.to_lowercase()),
+            1 => {
+                let status_ord = |s: &FileCompareStatus| match s {
+                    FileCompareStatus::Identical => 0,
+                    FileCompareStatus::Different => 1,
+                    FileCompareStatus::LeftOnly => 2,
+                    FileCompareStatus::RightOnly => 3,
+                };
+                status_ord(&a.status).cmp(&status_ord(&b.status))
+            }
+            2 => a.left_size.unwrap_or(0).cmp(&b.left_size.unwrap_or(0)),
+            3 => a.right_size.unwrap_or(0).cmp(&b.right_size.unwrap_or(0)),
+            4 => a
+                .left_modified
+                .as_deref()
+                .unwrap_or("")
+                .cmp(b.left_modified.as_deref().unwrap_or("")),
+            5 => a
+                .right_modified
+                .as_deref()
+                .unwrap_or("")
+                .cmp(b.right_modified.as_deref().unwrap_or("")),
+            _ => std::cmp::Ordering::Equal,
+        };
+        if ascending { ord } else { ord.reverse() }
+    });
+
+    let data = folder_items_to_data(&tab.folder_items);
+    tab.folder_item_data = data.clone();
+    let sort_col = tab.folder_sort_column;
+    let sort_asc = tab.folder_sort_ascending;
+
+    window.set_folder_items(ModelRc::new(VecModel::from(data)));
+    window.set_folder_selected_index(-1);
+    window.set_folder_sort_column(sort_col);
+    window.set_folder_sort_ascending(sort_asc);
 }
 
 // --- Feature: Diff block comments ---

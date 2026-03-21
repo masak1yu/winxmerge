@@ -4330,6 +4330,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust_xlsxwriter"
+version = "0.80.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "442eafa04d985ae671e027481e07a5b70fdb1b2cb5e46d9e074b67ca98e01a0a"
+dependencies = [
+ "zip",
+]
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6549,7 +6558,7 @@ dependencies = [
 
 [[package]]
 name = "winxmerge"
-version = "0.26.0"
+version = "0.27.0"
 dependencies = [
  "arboard",
  "calamine",
@@ -6560,6 +6569,7 @@ dependencies = [
  "open",
  "regex",
  "rfd",
+ "rust_xlsxwriter",
  "serde",
  "serde_json",
  "similar",
