@@ -7,8 +7,8 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 ## 現在の状態
 
-- **バージョン:** 0.26.0
-- **ブランチ:** `feature/v0.26.0`
+- **バージョン:** 0.27.0
+- **ブランチ:** `feature/v0.27.0`
 - **テスト:** 19件すべてパス
 - **ビルド:** `cargo build` 成功（警告なし）
 - **CI:** GitHub Actions（Ubuntu / macOS (aarch64) / Windows）
@@ -43,6 +43,7 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | v0.24.0 | - | アプリアイコン、差分コメントHTMLエクスポート、画像連続ズームスライダー、差分コメントセッション保存、フォルダステータスフィルタUI、ショートカットダイアログ、セッション保存改善、差分統計ミニグラフ |
 | v0.25.0 | - | 差分詳細ペイン改善（現在ブロックのみ表示・片方のみ対応・文字レベルハイライト）、View メニュー拡張（Zoom In/Out/Reset・行折り返し）、ウィンドウリサイズ対応、マージ列削除、GitHub Actions リリースワークフロー追加 |
 | v0.26.0 | - | UIアイコン修正（📋ペーストボタン→SVGアイコン化、フォルダ一覧ファイルアイコン→SVG化）、ファイルブラウザフォーカスバグ修正、リリース対象からmacOS Intel除外 |
+| v0.27.0 | - | Excel差分エクスポート（.xlsx、色分け+コメント列）、差分コメント印刷対応、フォルダ比較列ヘッダソート、画像比較オーバーレイ透明度スライダー、全タブコメント一括エクスポート（CSV/JSON） |
 
 ## 実装済み機能一覧
 
@@ -260,6 +261,11 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 - **キーボードショートカット一覧ダイアログ** — `ui/dialogs/shortcuts-dialog.slint` 新規作成。Help メニュー → "Keyboard Shortcuts" で表示。File/Navigation/Merge/View セクション
 - **タブのセッション保存改善** — `SessionEntry` に `left_encoding`, `right_encoding`, `left_eol`, `right_eol`, `tab_width`, `diff_only`, `diff_status_filter` 追加。復元時に TabState へ反映
 - **差分統計ミニグラフ表示** — ステータスバーに緑/赤/黄の比例バー（`horizontal-stretch` 使用）を追加。`parse_diff_stats()` + `sync_diff_stats()` ヘルパーで `+A -R ~M` テキストと同時に3プロパティを更新
+- **Excelエクスポート** — `rust_xlsxwriter` で `.xlsx` 生成。ヘッダ固定・オートフィルタ・差分色付き（追加=緑/削除=赤/変更=黄/移動=青）・コメント列付き
+- **差分コメント印刷対応** — `export_html_for_print` に `comments` を渡すよう修正。印刷HTMLにもコメント行を含める
+- **フォルダ比較列ヘッダソート** — Name/Status/Left Size/Right Size/Left Modified/Right Modified の各列ヘッダをクリックでソート。同列再クリックで昇順↔降順切り替え（▲▼インジケーター表示）
+- **画像比較オーバーレイ透明度スライダー** — Blend スライダー（0〜100%）で変更画素（赤）を左右パネル上にオーバーレイ表示。fit/zoom 両モード対応。`overlay_rgba` は同一画素をα=0（透明）で生成
+- **全タブコメント一括エクスポート** — File → Export All Comments (CSV/JSON) で全タブの差分コメントをタブタイトル・ファイルパス・差分ブロック番号付きで出力
 
 ## アーキテクチャ
 
@@ -360,13 +366,9 @@ AppSettings (永続化)
 
 ---
 
-## 次にやるべき項目 (v0.25.0+)
+## 次にやるべき項目 (v0.28.0+)
 
 1. **ドラッグ＆ドロップ** — Slint の OS ファイル D&D サポート待ち（winit の DroppedFile が Slint 公開 API に未公開）
-2. **差分コメントの印刷対応** — `export_html_for_print` にもコメントを渡すよう改善
-3. **フォルダ比較のソート** — 列ヘッダクリックでの Name/Status/Size/Date ソート
-4. **画像比較のオーバーレイ透明度調整** — diff overlay の blend 強度スライダー
-5. **差分コメントの全体エクスポート** — 全タブのコメントを一括 CSV/JSON 出力
 
 ## ビルド・テスト手順
 

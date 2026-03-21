@@ -19,16 +19,17 @@ use app::{
     compare_clipboard_as_left, compare_clipboard_as_right, copy_all_diffs_to_left,
     copy_all_diffs_to_right, copy_all_text, copy_current_line_text, copy_left_and_next,
     copy_right_and_next, copy_selection_to_left, copy_selection_to_right, copy_to_left,
-    copy_to_right, discard_and_proceed, edit_line, export_csv_report, export_folder_html_report,
-    export_html_report, export_patch, first_diff, folder_copy_to_left, folder_copy_to_right,
-    folder_delete_item, goto_line, last_diff, navigate_bookmark, navigate_conflict, navigate_diff,
-    navigate_diff_by_status, navigate_search, open_file_dialog, open_folder_dialog,
-    open_folder_item, open_in_editor, paste_clipboard_path_left, paste_clipboard_path_right,
-    preview_folder_item, print_diff, redo, reorder_tab, replace_all_text, replace_text, rescan,
-    resolve_conflict_use_left, resolve_conflict_use_right, run_diff, run_folder_compare,
-    run_plugin, save_file, search_text, select_diff, set_diff_comment, set_diff_filter,
-    set_row_selection, start_compare, start_three_way_compare, switch_tab, toggle_bookmark,
-    toggle_ignore_case, toggle_ignore_whitespace, undo,
+    copy_to_right, discard_and_proceed, edit_line, export_all_comments, export_csv_report,
+    export_folder_html_report, export_html_report, export_patch, export_xlsx_report, first_diff,
+    folder_copy_to_left, folder_copy_to_right, folder_delete_item, goto_line, last_diff,
+    navigate_bookmark, navigate_conflict, navigate_diff, navigate_diff_by_status, navigate_search,
+    open_file_dialog, open_folder_dialog, open_folder_item, open_in_editor,
+    paste_clipboard_path_left, paste_clipboard_path_right, preview_folder_item, print_diff, redo,
+    reorder_tab, replace_all_text, replace_text, rescan, resolve_conflict_use_left,
+    resolve_conflict_use_right, run_diff, run_folder_compare, run_plugin, save_file, search_text,
+    select_diff, set_diff_comment, set_diff_filter, set_row_selection, sort_folder, start_compare,
+    start_three_way_compare, switch_tab, toggle_bookmark, toggle_ignore_case,
+    toggle_ignore_whitespace, undo,
 };
 use slint::{ModelRc, SharedString, VecModel};
 
@@ -810,6 +811,16 @@ fn main() {
         });
     }
 
+    // Folder sort
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_folder_sort(move |col| {
+            let window = window_weak.unwrap();
+            sort_folder(&window, &mut state.borrow_mut(), col);
+        });
+    }
+
     // Copy text to clipboard (from context menu)
     {
         let window_weak = window.as_weak();
@@ -919,6 +930,36 @@ fn main() {
         window.on_export_html(move || {
             let window = window_weak.unwrap();
             export_html_report(&window, &state.borrow());
+        });
+    }
+
+    // Export All Comments CSV
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_export_comments_csv(move || {
+            let window = window_weak.unwrap();
+            export_all_comments(&window, &state.borrow(), false);
+        });
+    }
+
+    // Export All Comments JSON
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_export_comments_json(move || {
+            let window = window_weak.unwrap();
+            export_all_comments(&window, &state.borrow(), true);
+        });
+    }
+
+    // Export Excel
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_export_xlsx(move || {
+            let window = window_weak.unwrap();
+            export_xlsx_report(&window, &state.borrow());
         });
     }
 

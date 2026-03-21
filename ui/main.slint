@@ -265,6 +265,9 @@ export component MainWindow inherits Window {
     callback export-patch();
     callback export-csv();
     callback export-tsv();
+    callback export-xlsx();
+    callback export-comments-csv();
+    callback export-comments-json();
     callback export-folder-html();
     callback print-diff();
     callback copy-left-text();
@@ -410,6 +413,11 @@ export component MainWindow inherits Window {
     // Folder status filter (0=All, 1=Identical, 2=Different, 3=LeftOnly, 4=RightOnly)
     in-out property <int> folder-status-filter: 0;
 
+    // Folder sort state (-1=none, 0=Name, 1=Status, 2=LeftSize, 3=RightSize, 4=LeftModified, 5=RightModified)
+    in-out property <int> folder-sort-column: -1;
+    in-out property <bool> folder-sort-ascending: true;
+    callback folder-sort(int);
+
     // Clipboard paste path callbacks
     callback paste-left-path();
     callback paste-right-path();
@@ -424,6 +432,7 @@ export component MainWindow inherits Window {
     in property <image> left-image;
     in property <image> right-image;
     in property <image> diff-image;
+    in property <image> overlay-image;
     in property <string> image-stats: "";
     in property <int> image-left-width: 0;
     in property <int> image-left-height: 0;
@@ -490,7 +499,11 @@ export component MainWindow inherits Window {
             MenuItem { title: @tr("Export Patch (Unified Diff)..."); enabled: root.diff-count > 0; activated => { root.export-patch(); } }
             MenuItem { title: @tr("Export CSV..."); enabled: root.diff-count > 0; activated => { root.export-csv(); } }
             MenuItem { title: @tr("Export TSV..."); enabled: root.diff-count > 0; activated => { root.export-tsv(); } }
+            MenuItem { title: @tr("Export Excel (.xlsx)..."); enabled: root.diff-count > 0; activated => { root.export-xlsx(); } }
             MenuItem { title: @tr("Export Folder Report..."); enabled: root.view-mode == 1; activated => { root.export-folder-html(); } }
+            MenuSeparator {}
+            MenuItem { title: @tr("Export All Comments (CSV)..."); activated => { root.export-comments-csv(); } }
+            MenuItem { title: @tr("Export All Comments (JSON)..."); activated => { root.export-comments-json(); } }
         }
         Menu {
             title: @tr("Edit");
@@ -925,11 +938,14 @@ export component MainWindow inherits Window {
             selected-index: root.folder-selected-index;
             context-menu-enabled: root.opt-enable-context-menu;
             folder-status-filter <=> root.folder-status-filter;
+            sort-column: root.folder-sort-column;
+            sort-ascending: root.folder-sort-ascending;
             item-double-clicked(idx) => { root.folder-item-double-clicked(idx); }
             copy-to-right(idx) => { root.folder-copy-to-right(idx); }
             copy-to-left(idx) => { root.folder-copy-to-left(idx); }
             delete-item(idx) => { root.folder-delete-item(idx); }
             item-preview(idx) => { root.folder-item-preview(idx); }
+            sort-by(col) => { root.folder-sort(col); }
         }
 
         if root.view-mode == 1 && root.folder-preview-name != "" : Rectangle {
@@ -1020,6 +1036,7 @@ export component MainWindow inherits Window {
             left-image: root.left-image;
             right-image: root.right-image;
             diff-image: root.diff-image;
+            overlay-image: root.overlay-image;
             stats: root.image-stats;
             left-title: root.left-path != "" ? root.left-path : @tr("Left");
             right-title: root.right-path != "" ? root.right-path : @tr("Right");

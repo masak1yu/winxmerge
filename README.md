@@ -35,6 +35,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Right-click context menu (copy to left/right, delete)
 - "< Back" button to return to folder view
 - **Status filter bar**: All / Identical / Different / Left only / Right only filter buttons above the file list
+- **Column sort**: click any column header (Name / Status / Left Size / Right Size / Left Modified / Right Modified) to sort; click again to toggle ascending/descending (▲▼ indicator)
 
 ### Tabs
 - Manage multiple comparisons with tabs
@@ -157,6 +158,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Pixel-level comparison for PNG, JPEG, GIF, BMP, WebP, TIFF, ICO
 - Side-by-side left/right panels + diff overlay (changed pixels in red, identical pixels in gray)
 - Continuous zoom slider (10–400%) with Fit mode and diff panel toggle
+- **Blend slider** (0–100%): overlay changed-pixel highlights directly on the left/right panels at adjustable opacity
 
 ### Diff Detail Pane (WinMerge-style)
 - Shows only the currently selected diff block (not the whole file)
@@ -167,7 +169,8 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 
 ### Diff Comments
 - Add per-block notes in the detail pane (Note field)
-- Comments persisted to session and embedded in HTML export reports
+- Comments persisted to session and embedded in HTML / Excel export reports
+- **Export All Comments**: File → Export All Comments (CSV/JSON)... — collects all comments across all tabs and saves as CSV or JSON
 
 ### App Icon
 - Custom "Diff Panels" icon (cross-platform): embedded in the Windows executable (.ico) and macOS bundle (.icns)
@@ -195,7 +198,8 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - WinMerge-style options dialog (Edit → Options...)
 - Right-click context menu (copy, merge, navigation)
 - Unsaved changes confirmation dialog
-- HTML diff report export (File → Export HTML Report...) with embedded diff comments
+- HTML diff report export (File → Export HTML Report...) with embedded diff comments (also included in Print)
+- Excel diff report export (File → Export Excel (.xlsx)...) with color-coded rows and comments column
 - Native menu bar (macOS / Windows)
 - Settings persistence (~/.config/winxmerge/settings.json)
 - Performance optimizations for large files
@@ -216,6 +220,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 | Settings Persistence | [serde](https://crates.io/crates/serde) + [serde_json](https://crates.io/crates/serde_json) |
 | ZIP Comparison | [zip](https://crates.io/crates/zip) |
 | Excel Comparison | [calamine](https://crates.io/crates/calamine) |
+| Excel Export | [rust_xlsxwriter](https://crates.io/crates/rust_xlsxwriter) |
 | Image Comparison | [image](https://crates.io/crates/image) |
 
 ## Setup

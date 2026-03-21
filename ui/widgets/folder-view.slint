@@ -123,12 +123,16 @@ export component FolderView inherits Rectangle {
     in property <bool> context-menu-enabled: true;
     // 0=All, 1=Identical, 2=Different, 3=LeftOnly, 4=RightOnly
     in-out property <int> folder-status-filter: 0;
+    // sort-column: -1=none, 0=Name, 1=Status, 2=LeftSize, 3=RightSize, 4=LeftModified, 5=RightModified
+    in property <int> sort-column: -1;
+    in property <bool> sort-ascending: true;
 
     callback item-double-clicked(int);
     callback copy-to-right(int);
     callback copy-to-left(int);
     callback delete-item(int);
     callback item-preview(int);
+    callback sort-by(int);
 
     accessible-role: list;
     accessible-label: "Folder comparison results";
@@ -181,52 +185,118 @@ export component FolderView inherits Rectangle {
 
                 Rectangle { width: 16px; }
 
-                Text {
+                // Name header
+                Rectangle {
                     horizontal-stretch: 1;
-                    text: @tr("Name");
-                    font-size: 12px;
-                    font-weight: 600;
-                    vertical-alignment: center;
+                    background: col-name-ta.has-hover ? Palette.background.darker(0.1) : transparent;
+                    col-name-ta := TouchArea { clicked => { root.sort-by(0); } }
+                    HorizontalLayout {
+                        spacing: 4px;
+                        Text {
+                            text: @tr("Name");
+                            font-size: 12px; font-weight: 600; vertical-alignment: center;
+                        }
+                        Text {
+                            text: root.sort-column == 0 ? (root.sort-ascending ? "▲" : "▼") : "";
+                            font-size: 10px; vertical-alignment: center;
+                            color: Palette.accent-background;
+                        }
+                    }
                 }
-                Text {
+
+                // Status header
+                Rectangle {
                     width: 80px;
-                    text: @tr("Status");
-                    font-size: 12px;
-                    font-weight: 600;
-                    vertical-alignment: center;
-                    horizontal-alignment: center;
+                    background: col-status-ta.has-hover ? Palette.background.darker(0.1) : transparent;
+                    col-status-ta := TouchArea { clicked => { root.sort-by(1); } }
+                    HorizontalLayout {
+                        alignment: center; spacing: 4px;
+                        Text {
+                            text: @tr("Status");
+                            font-size: 12px; font-weight: 600; vertical-alignment: center; horizontal-alignment: center;
+                        }
+                        Text {
+                            text: root.sort-column == 1 ? (root.sort-ascending ? "▲" : "▼") : "";
+                            font-size: 10px; vertical-alignment: center;
+                            color: Palette.accent-background;
+                        }
+                    }
                 }
-                Text {
+
+                // Left Size header
+                Rectangle {
                     width: 70px;
-                    text: @tr("Left Size");
-                    font-size: 12px;
-                    font-weight: 600;
-                    horizontal-alignment: right;
-                    vertical-alignment: center;
+                    background: col-lsize-ta.has-hover ? Palette.background.darker(0.1) : transparent;
+                    col-lsize-ta := TouchArea { clicked => { root.sort-by(2); } }
+                    HorizontalLayout {
+                        alignment: end; spacing: 4px;
+                        Text {
+                            text: @tr("Left Size");
+                            font-size: 12px; font-weight: 600; vertical-alignment: center; horizontal-alignment: right;
+                        }
+                        Text {
+                            text: root.sort-column == 2 ? (root.sort-ascending ? "▲" : "▼") : "";
+                            font-size: 10px; vertical-alignment: center;
+                            color: Palette.accent-background;
+                        }
+                    }
                 }
-                Text {
+
+                // Right Size header
+                Rectangle {
                     width: 70px;
-                    text: @tr("Right Size");
-                    font-size: 12px;
-                    font-weight: 600;
-                    horizontal-alignment: right;
-                    vertical-alignment: center;
+                    background: col-rsize-ta.has-hover ? Palette.background.darker(0.1) : transparent;
+                    col-rsize-ta := TouchArea { clicked => { root.sort-by(3); } }
+                    HorizontalLayout {
+                        alignment: end; spacing: 4px;
+                        Text {
+                            text: @tr("Right Size");
+                            font-size: 12px; font-weight: 600; vertical-alignment: center; horizontal-alignment: right;
+                        }
+                        Text {
+                            text: root.sort-column == 3 ? (root.sort-ascending ? "▲" : "▼") : "";
+                            font-size: 10px; vertical-alignment: center;
+                            color: Palette.accent-background;
+                        }
+                    }
                 }
-                Text {
+
+                // Left Modified header
+                Rectangle {
                     width: 110px;
-                    text: @tr("Left Modified");
-                    font-size: 12px;
-                    font-weight: 600;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
+                    background: col-lmod-ta.has-hover ? Palette.background.darker(0.1) : transparent;
+                    col-lmod-ta := TouchArea { clicked => { root.sort-by(4); } }
+                    HorizontalLayout {
+                        alignment: center; spacing: 4px;
+                        Text {
+                            text: @tr("Left Modified");
+                            font-size: 12px; font-weight: 600; vertical-alignment: center; horizontal-alignment: center;
+                        }
+                        Text {
+                            text: root.sort-column == 4 ? (root.sort-ascending ? "▲" : "▼") : "";
+                            font-size: 10px; vertical-alignment: center;
+                            color: Palette.accent-background;
+                        }
+                    }
                 }
-                Text {
+
+                // Right Modified header
+                Rectangle {
                     width: 110px;
-                    text: @tr("Right Modified");
-                    font-size: 12px;
-                    font-weight: 600;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
+                    background: col-rmod-ta.has-hover ? Palette.background.darker(0.1) : transparent;
+                    col-rmod-ta := TouchArea { clicked => { root.sort-by(5); } }
+                    HorizontalLayout {
+                        alignment: center; spacing: 4px;
+                        Text {
+                            text: @tr("Right Modified");
+                            font-size: 12px; font-weight: 600; vertical-alignment: center; horizontal-alignment: center;
+                        }
+                        Text {
+                            text: root.sort-column == 5 ? (root.sort-ascending ? "▲" : "▼") : "";
+                            font-size: 10px; vertical-alignment: center;
+                            color: Palette.accent-background;
+                        }
+                    }
                 }
             }
         }
