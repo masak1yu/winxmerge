@@ -29,6 +29,8 @@ pub struct ImageCompareResult {
     pub diff_height: u32,
     /// Diff image: differing pixels → red, identical pixels → dimmed grayscale
     pub diff_rgba: Vec<u8>,
+    /// Overlay image: differing pixels → red (alpha=255), identical pixels → transparent (alpha=0)
+    pub overlay_rgba: Vec<u8>,
 }
 
 /// Decode both images and compute a pixel-level diff.
@@ -52,6 +54,7 @@ pub fn compare_images(left_data: &[u8], right_data: &[u8]) -> Result<ImageCompar
     let total = (dw as u64) * (dh as u64);
 
     let mut diff_rgba = vec![255u8; (dw * dh * 4) as usize];
+    let mut overlay_rgba = vec![0u8; (dw * dh * 4) as usize];
     let mut diff_pixels = 0u64;
 
     for y in 0..dh {
@@ -76,6 +79,11 @@ pub fn compare_images(left_data: &[u8], right_data: &[u8]) -> Result<ImageCompar
                 diff_rgba[idx + 1] = 0;
                 diff_rgba[idx + 2] = 0;
                 diff_rgba[idx + 3] = 255;
+                // Overlay: red with full alpha
+                overlay_rgba[idx] = 220;
+                overlay_rgba[idx + 1] = 30;
+                overlay_rgba[idx + 2] = 30;
+                overlay_rgba[idx + 3] = 255;
                 if in_left || in_right {
                     diff_pixels += 1;
                 }
@@ -104,5 +112,6 @@ pub fn compare_images(left_data: &[u8], right_data: &[u8]) -> Result<ImageCompar
         diff_width: dw,
         diff_height: dh,
         diff_rgba,
+        overlay_rgba,
     })
 }

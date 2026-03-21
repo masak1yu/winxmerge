@@ -1,17 +1,62 @@
 use crate::models::diff_line::{DiffResult, LineStatus};
 
+/// One comment entry across all tabs
+pub struct CommentEntry {
+    pub tab_title: String,
+    pub left_file: String,
+    pub right_file: String,
+    pub diff_block: usize,
+    pub comment: String,
+}
+
+/// Export all comment entries as CSV
+pub fn export_all_comments_csv(entries: &[CommentEntry]) -> String {
+    let mut out = String::from("Tab,Left File,Right File,Diff Block,Comment\n");
+    for e in entries {
+        let esc = |s: &str| format!("\"{}\"", s.replace('"', "\"\""));
+        out.push_str(&format!(
+            "{},{},{},{},{}\n",
+            esc(&e.tab_title),
+            esc(&e.left_file),
+            esc(&e.right_file),
+            e.diff_block,
+            esc(&e.comment)
+        ));
+    }
+    out
+}
+
+/// Export all comment entries as JSON
+pub fn export_all_comments_json(entries: &[CommentEntry]) -> String {
+    let esc = |s: &str| {
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+    };
+    let mut out = String::from("[\n");
+    for (i, e) in entries.iter().enumerate() {
+        out.push_str(&format!(
+            "  {{\"tab\":\"{}\",\"left_file\":\"{}\",\"right_file\":\"{}\",\"diff_block\":{},\"comment\":\"{}\"}}{}",
+            esc(&e.tab_title),
+            esc(&e.left_file),
+            esc(&e.right_file),
+            e.diff_block,
+            esc(&e.comment),
+            if i + 1 < entries.len() { ",\n" } else { "\n" }
+        ));
+    }
+    out.push_str("]\n");
+    out
+}
+
 /// Generate HTML for printing: includes auto-print script and print-optimized CSS
 pub fn export_html_for_print(
     diff_result: &DiffResult,
     left_title: &str,
     right_title: &str,
+    comments: &std::collections::HashMap<usize, String>,
 ) -> String {
-    let mut html = export_html(
-        diff_result,
-        left_title,
-        right_title,
-        &std::collections::HashMap::new(),
-    );
+    let mut html = export_html(diff_result, left_title, right_title, comments);
     // Insert auto-print script before </body>
     let script = "<script>window.onload=function(){window.print();}</script>\n";
     if let Some(pos) = html.rfind("</body>") {
@@ -320,6 +365,141 @@ pub fn export_folder_html(
         escape_html(right_title),
         rows
     )
+}
+
+/// Export diff result as an Excel (.xlsx) file
+pub fn export_xlsx(
+    diff_result: &DiffResult,
+    left_title: &str,
+    right_title: &str,
+    comments: &std::collections::HashMap<usize, String>,
+) -> Result<Vec<u8>, String> {
+    use rust_xlsxwriter::{Color, Format, Workbook};
+
+    let mut workbook = Workbook::new();
+    let sheet = workbook.add_worksheet();
+    sheet.set_name("Diff Report").map_err(|e| e.to_string())?;
+
+    // Formats
+    let fmt_header = Format::new()
+        .set_bold()
+        .set_background_color(Color::RGB(0xF0F0F0));
+    let fmt_added = Format::new().set_background_color(Color::RGB(0xE6FFEC));
+    let fmt_removed = Format::new().set_background_color(Color::RGB(0xFFEBE9));
+    let fmt_modified = Format::new().set_background_color(Color::RGB(0xFFF8C5));
+    let fmt_moved = Format::new().set_background_color(Color::RGB(0xE0E8FF));
+    let fmt_comment = Format::new()
+        .set_background_color(Color::RGB(0xFFFBE6))
+        .set_italic();
+
+    // Header row
+    sheet
+        .write_string_with_format(0, 0, "Status", &fmt_header)
+        .map_err(|e| e.to_string())?;
+    sheet
+        .write_string_with_format(0, 1, "Left Line", &fmt_header)
+        .map_err(|e| e.to_string())?;
+    sheet
+        .write_string_with_format(0, 2, left_title, &fmt_header)
+        .map_err(|e| e.to_string())?;
+    sheet
+        .write_string_with_format(0, 3, "Right Line", &fmt_header)
+        .map_err(|e| e.to_string())?;
+    sheet
+        .write_string_with_format(0, 4, right_title, &fmt_header)
+        .map_err(|e| e.to_string())?;
+    sheet
+        .write_string_with_format(0, 5, "Comment", &fmt_header)
+        .map_err(|e| e.to_string())?;
+
+    // Column widths
+    sheet.set_column_width(0, 10).map_err(|e| e.to_string())?;
+    sheet.set_column_width(1, 8).map_err(|e| e.to_string())?;
+    sheet.set_column_width(2, 60).map_err(|e| e.to_string())?;
+    sheet.set_column_width(3, 8).map_err(|e| e.to_string())?;
+    sheet.set_column_width(4, 60).map_err(|e| e.to_string())?;
+    sheet.set_column_width(5, 40).map_err(|e| e.to_string())?;
+
+    let mut row: u32 = 1;
+    let mut diff_block_idx: usize = 0;
+
+    for line in &diff_result.lines {
+        let (status_str, fmt) = match line.status {
+            LineStatus::Equal => ("Equal", None),
+            LineStatus::Added => ("Added", Some(&fmt_added)),
+            LineStatus::Removed => ("Removed", Some(&fmt_removed)),
+            LineStatus::Modified => ("Modified", Some(&fmt_modified)),
+            LineStatus::Moved => ("Moved", Some(&fmt_moved)),
+        };
+
+        let left_no = line.left_line_no.map(|n| n as f64);
+        let right_no = line.right_line_no.map(|n| n as f64);
+
+        if let Some(fmt) = fmt {
+            sheet
+                .write_string_with_format(row, 0, status_str, fmt)
+                .map_err(|e| e.to_string())?;
+            if let Some(n) = left_no {
+                sheet
+                    .write_number_with_format(row, 1, n, fmt)
+                    .map_err(|e| e.to_string())?;
+            }
+            sheet
+                .write_string_with_format(row, 2, &line.left_text, fmt)
+                .map_err(|e| e.to_string())?;
+            if let Some(n) = right_no {
+                sheet
+                    .write_number_with_format(row, 3, n, fmt)
+                    .map_err(|e| e.to_string())?;
+            }
+            sheet
+                .write_string_with_format(row, 4, &line.right_text, fmt)
+                .map_err(|e| e.to_string())?;
+
+            // Comment column
+            let comment = comments
+                .get(&diff_block_idx)
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            if !comment.is_empty() {
+                sheet
+                    .write_string_with_format(row, 5, comment, fmt)
+                    .map_err(|e| e.to_string())?;
+            }
+            diff_block_idx += 1;
+        } else {
+            sheet
+                .write_string(row, 0, status_str)
+                .map_err(|e| e.to_string())?;
+            if let Some(n) = left_no {
+                sheet.write_number(row, 1, n).map_err(|e| e.to_string())?;
+            }
+            sheet
+                .write_string(row, 2, &line.left_text)
+                .map_err(|e| e.to_string())?;
+            if let Some(n) = right_no {
+                sheet.write_number(row, 3, n).map_err(|e| e.to_string())?;
+            }
+            sheet
+                .write_string(row, 4, &line.right_text)
+                .map_err(|e| e.to_string())?;
+        }
+
+        row += 1;
+    }
+
+    // Freeze header row
+    sheet.set_freeze_panes(1, 0).map_err(|e| e.to_string())?;
+
+    // Auto-filter on header
+    sheet
+        .autofilter(0, 0, row - 1, 5)
+        .map_err(|e| e.to_string())?;
+
+    // Drop unused format warnings
+    let _ = fmt_comment;
+
+    workbook.save_to_buffer().map_err(|e| e.to_string())
 }
 
 fn escape_html(s: &str) -> String {
