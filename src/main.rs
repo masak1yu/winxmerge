@@ -37,6 +37,16 @@ use slint::{ModelRc, SharedString, VecModel};
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
+    // --clear-history: wipe session + recent files and exit
+    if args.iter().any(|a| a == "--clear-history") {
+        let mut s = settings::AppSettings::load();
+        s.session = Vec::new();
+        s.recent_files = Vec::new();
+        s.save();
+        println!("[winxmerge] comparison history cleared");
+        return;
+    }
+
     let window = MainWindow::new().unwrap();
     let state = Rc::new(RefCell::new(AppState::new()));
     let settings = Rc::new(RefCell::new(settings::AppSettings::load()));
@@ -219,6 +229,12 @@ fn main() {
             let mut first = true;
             for entry in &session {
                 if entry.left_path.is_empty() || entry.right_path.is_empty() {
+                    continue;
+                }
+                // Skip entries where files/folders no longer exist on disk
+                if !std::path::Path::new(&entry.left_path).exists()
+                    || !std::path::Path::new(&entry.right_path).exists()
+                {
                     continue;
                 }
                 if !first {
@@ -1427,6 +1443,7 @@ fn main() {
             s.session = app
                 .tabs
                 .iter()
+                .filter(|tab| tab.view_mode != 2) // skip open-dialog tabs
                 .filter_map(|tab| {
                     let left = match tab.view_mode {
                         1 => tab
