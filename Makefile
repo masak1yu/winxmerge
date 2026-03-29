@@ -1,6 +1,12 @@
 .PHONY: build release clean clear-history
 
-SETTINGS := $(HOME)/.config/winxmerge/settings.json
+# Settings path: macOS uses Application Support, Linux uses XDG config
+UNAME := $(shell uname)
+ifeq ($(UNAME), Darwin)
+  SETTINGS := $(HOME)/Library/Application Support/winxmerge/settings.json
+else
+  SETTINGS := $(HOME)/.config/winxmerge/settings.json
+endif
 
 build:
 	cargo build
@@ -12,15 +18,10 @@ release:
 
 clear-history:
 	@if [ -f "$(SETTINGS)" ]; then \
-	  python3 -c " \
-import json, sys; \
-p = '$(SETTINGS)'; \
-d = json.load(open(p)); \
-d['recent_files'] = []; \
-d['session'] = []; \
-json.dump(d, open(p, 'w'), indent=2, ensure_ascii=False); \
-print('[winxmerge] comparison history cleared'); \
-	  " 2>/dev/null || true; \
+	  jq '.recent_files = [] | .session = []' "$(SETTINGS)" > "$(SETTINGS).tmp" \
+	  && mv "$(SETTINGS).tmp" "$(SETTINGS)" \
+	  && echo "[winxmerge] comparison history cleared" \
+	  || rm -f "$(SETTINGS).tmp"; \
 	fi
 
 clean:

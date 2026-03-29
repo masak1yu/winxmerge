@@ -459,9 +459,9 @@ export component MainWindow inherits Window {
         Palette.color-scheme = theme-index == 1 ? ColorScheme.dark : ColorScheme.light;
     }
 
-    // Scroll diff view to a specific row
+    // Scroll diff view to a specific row (with 3 context lines above)
     public function scroll-diff-to-row(row: int) {
-        root.diff-scroll-y = -(row * 24px);
+        root.diff-scroll-y = -((row > 3 ? row - 3 : 0) * (root.opt-font-size + 2) * 1px);
     }
 
     // Helper: check unsaved before action
