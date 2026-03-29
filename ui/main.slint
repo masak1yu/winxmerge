@@ -9,6 +9,7 @@ import { FileBrowserDialog, FileEntryData } from "dialogs/file-browser.slint";
 import { ShortcutsDialog } from "dialogs/shortcuts-dialog.slint";
 import { ThemeColors } from "theme.slint";
 import { ExcelView, ExcelCellData } from "widgets/excel-view.slint";
+import { CsvView } from "widgets/csv-view.slint";
 import { ImageView } from "widgets/image-view.slint";
 
 export struct PluginEntryData {
@@ -1028,6 +1029,12 @@ export component MainWindow inherits Window {
             cells: root.excel-cells;
             sheet-names: root.excel-sheet-names;
             active-sheet <=> root.excel-active-sheet;
+            vertical-stretch: 1;
+        }
+
+        // CSV/TSV compare view
+        if root.view-mode == 6 : CsvView {
+            cells: root.excel-cells;
             vertical-stretch: 1;
         }
 

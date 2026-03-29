@@ -1,5 +1,6 @@
 mod app;
 mod archive;
+mod csv;
 mod diff;
 mod encoding;
 mod excel;

@@ -7,6 +7,7 @@ use std::time::SystemTime;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use crate::archive::{compare_zip_archives, is_zip_bytes, is_zip_path};
+use crate::csv::{compare_csv, is_csv_path};
 use crate::diff::engine::{DiffOptions, compute_diff_with_options};
 use crate::diff::folder::{FolderCompareOptions, compare_folders_with_options};
 use crate::diff::three_way::{ThreeWayStatus, compute_three_way_diff};
@@ -378,6 +379,14 @@ fn restore_tab(window: &MainWindow, state: &AppState) {
         window.set_excel_sheet_names(sheet_model);
     }
 
+    if tab.view_mode == 6 {
+        let sheet_model: ModelRc<SharedString> =
+            ModelRc::new(VecModel::from(vec![SharedString::from("")]));
+        window.set_excel_cells(ModelRc::new(VecModel::from(tab.excel_cells.clone())));
+        window.set_excel_sheet_names(sheet_model);
+        window.set_excel_active_sheet(SharedString::from(""));
+    }
+
     if tab.view_mode == 2 {
         window.set_status_text(SharedString::from("Select files or folders to compare"));
         // Clear path inputs for a fresh open dialog state
@@ -461,6 +470,19 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
     // Excel comparison
     if is_excel_path(&left_path) && is_excel_path(&right_path) {
         run_excel_compare(
+            window,
+            state,
+            &left_bytes,
+            &right_bytes,
+            &left_path,
+            &right_path,
+        );
+        return;
+    }
+
+    // CSV/TSV comparison
+    if is_csv_path(&left_path) && is_csv_path(&right_path) {
+        run_csv_compare(
             window,
             state,
             &left_bytes,
@@ -3234,6 +3256,66 @@ fn run_excel_compare(
     window.set_right_path(SharedString::from(right_path.to_string_lossy().to_string()));
     window.set_status_text(SharedString::from(format!(
         "[Excel] {} ↔ {} — {} cells changed",
+        left_name, right_name, diff_count
+    )));
+    sync_tab_list(window, state);
+}
+
+fn run_csv_compare(
+    window: &MainWindow,
+    state: &mut AppState,
+    left_bytes: &[u8],
+    right_bytes: &[u8],
+    left_path: &std::path::Path,
+    right_path: &std::path::Path,
+) {
+    use crate::encoding::decode_file;
+
+    let (left_text, _) = decode_file(left_bytes);
+    let (right_text, _) = decode_file(right_bytes);
+
+    let diffs = compare_csv(&left_text, &right_text);
+
+    let cell_data: Vec<ExcelCellData> = diffs
+        .iter()
+        .map(|d| ExcelCellData {
+            sheet_name: SharedString::from(""),
+            row: d.row as i32,
+            col_name: SharedString::from(&d.col_name),
+            left_value: SharedString::from(&d.left_value),
+            right_value: SharedString::from(&d.right_value),
+            status: d.status,
+        })
+        .collect();
+
+    let left_name = left_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let right_name = right_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let diff_count = diffs.len();
+
+    let tab = state.current_tab_mut();
+    tab.excel_cells = cell_data.clone();
+    tab.excel_sheet_names = Vec::new();
+    tab.view_mode = 6;
+    tab.title = format!("{} ↔ {}", left_name, right_name);
+
+    let sheet_model: ModelRc<SharedString> =
+        ModelRc::new(VecModel::from(vec![SharedString::from("")]));
+
+    window.set_excel_cells(ModelRc::new(VecModel::from(cell_data)));
+    window.set_excel_sheet_names(sheet_model);
+    window.set_excel_active_sheet(SharedString::from(""));
+    window.set_view_mode(6);
+    window.set_left_path(SharedString::from(left_path.to_string_lossy().to_string()));
+    window.set_right_path(SharedString::from(right_path.to_string_lossy().to_string()));
+    window.set_status_text(SharedString::from(format!(
+        "[CSV] {} ↔ {} — {} cells changed",
         left_name, right_name, diff_count
     )));
     sync_tab_list(window, state);

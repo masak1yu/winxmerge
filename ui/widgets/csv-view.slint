@@ -1,0 +1,127 @@
+import { ListView, Palette } from "std-widgets.slint";
+import { ThemeColors } from "../theme.slint";
+import { ExcelCellData } from "excel-view.slint";
+
+export component CsvView inherits Rectangle {
+    in property <[ExcelCellData]> cells;
+
+    border-color: Palette.border;
+    border-width: 1px;
+
+    VerticalLayout {
+        // Column header
+        Rectangle {
+            height: 28px;
+            background: Palette.background.darker(0.05);
+            border-color: Palette.border;
+            border-width: 1px;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 0;
+
+                Text {
+                    width: 60px;
+                    text: @tr("Row");
+                    font-size: 12px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Text {
+                    width: 60px;
+                    text: @tr("Col");
+                    font-size: 12px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Text {
+                    width: 80px;
+                    text: @tr("Status");
+                    font-size: 12px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: @tr("Left Value");
+                    font-size: 12px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                Text {
+                    horizontal-stretch: 1;
+                    text: @tr("Right Value");
+                    font-size: 12px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // Cell rows
+        ListView {
+            for cell in root.cells: Rectangle {
+                height: 24px;
+
+                background: ta.has-hover ? Palette.background.darker(0.04) : Palette.background;
+
+                ta := TouchArea {}
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 0;
+
+                    Text {
+                        width: 60px;
+                        text: "\{cell.row}";
+                        font-size: 11px;
+                        font-family: "monospace";
+                        color: Palette.foreground.transparentize(0.3);
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        width: 60px;
+                        text: cell.col-name;
+                        font-size: 11px;
+                        font-family: "monospace";
+                        color: Palette.foreground;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        width: 80px;
+                        text: cell.status == 1 ? @tr("Changed") :
+                              cell.status == 2 ? @tr("Left only") :
+                              @tr("Right only");
+                        font-size: 11px;
+                        color: cell.status == 1 ? ThemeColors.modified-fg :
+                               cell.status == 2 ? ThemeColors.removed-fg :
+                               ThemeColors.added-fg;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: cell.left-value;
+                        font-size: 11px;
+                        font-family: "monospace";
+                        color: cell.status == 2 ? ThemeColors.removed-fg : Palette.foreground;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        horizontal-stretch: 1;
+                        text: cell.right-value;
+                        font-size: 11px;
+                        font-family: "monospace";
+                        color: cell.status == 3 ? ThemeColors.added-fg : Palette.foreground;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+        }
+    }
+}
