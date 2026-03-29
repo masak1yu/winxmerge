@@ -1,0 +1,31 @@
+{
+  "name": "WinXMerge",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "serayuzgur.crates",
+        "tamasfe.even-better-toml"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "[rust]": {
+          "editor.defaultFormatter": "rust-lang.rust-analyzer"
+        }
+      }
+    }
+  },
+  "remoteEnv": {
+    "CARGO_TERM_COLOR": "always",
+    "SLINT_BACKEND": "software-renderer"
+  },
+  "onCreateCommand": "curl -fsSL https://claude.ai/install.sh | bash",
+  "postCreateCommand": "cargo fetch",
+  "runArgs": ["--env-file", "${localWorkspaceFolder}/.devcontainer/.env"],
+  "mounts": [
+    "source=${localEnv:HOME}/.cargo/registry,target=/usr/local/cargo/registry,type=bind,consistency=cached"
+  ]
+}
