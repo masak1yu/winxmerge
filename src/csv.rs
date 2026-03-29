@@ -2,9 +2,9 @@
 
 #[derive(Debug, Clone)]
 pub struct CsvCellDiff {
-    pub row: usize,   // 1-based
+    pub row: usize, // 1-based
     #[allow(dead_code)]
-    pub col: usize,   // 1-based
+    pub col: usize, // 1-based
     pub col_name: String,
     pub left_value: String,
     pub right_value: String,
@@ -102,18 +102,26 @@ pub fn compare_csv(left_text: &str, right_text: &str) -> Vec<CsvCellDiff> {
         let left_row = left_rows.get(r);
         let right_row = right_rows.get(r);
 
-        let max_cols = left_row.map(|r| r.len()).unwrap_or(0)
+        let max_cols = left_row
+            .map(|r| r.len())
+            .unwrap_or(0)
             .max(right_row.map(|r| r.len()).unwrap_or(0));
 
         for c in 0..max_cols {
-            let lv = left_row.and_then(|row| row.get(c)).map(|s| s.as_str()).unwrap_or("");
-            let rv = right_row.and_then(|row| row.get(c)).map(|s| s.as_str()).unwrap_or("");
+            let lv = left_row
+                .and_then(|row| row.get(c))
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            let rv = right_row
+                .and_then(|row| row.get(c))
+                .map(|s| s.as_str())
+                .unwrap_or("");
 
             let status = match (left_row.is_some(), right_row.is_some()) {
-                (true, false) => 2,  // left only
-                (false, true) => 3,  // right only
+                (true, false) => 2,        // left only
+                (false, true) => 3,        // right only
                 _ if lv == rv => continue, // identical — skip
-                _ => 1,              // different
+                _ => 1,                    // different
             };
 
             diffs.push(CsvCellDiff {
