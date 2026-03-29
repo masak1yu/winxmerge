@@ -13,6 +13,26 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 - **ビルド:** `cargo build` 成功（警告なし）
 - **CI:** GitHub Actions（Ubuntu / macOS (aarch64) / Windows）
 
+## 次バージョン (v0.29.0) の予定
+
+WinMergeマニュアルとの機能ギャップ調査（2026-03-29）に基づく優先順位:
+
+### HIGH PRIORITY（コア機能ギャップ）
+1. **バイナリ/Hex比較** — 16進数ビューアでのバイナリファイル比較、バイト単位差分表示
+2. **プロジェクトファイル** — よく使うパス・オプションを .json で保存/読み込み
+3. **CLIオプション拡充** — `/e`, `/x`, `/wl`, `/wr`, `/enableexitcode` 等
+4. **差分アルゴリズム選択** — Histogram / Minimal アルゴリズム追加（現在: Myers/Patience のみ）
+5. **フォルダ比較: リネーム/移動検出** — リネームされたファイルを同一として検出
+6. **フォルダ比較: ツリービュー** — 展開/折りたたみ可能なツリー表示（現状フラットリストのみ）
+
+### MEDIUM PRIORITY
+7. 数値無視オプション (`Ignore numbers`)
+8. コメント無視オプション (`Ignore comment differences`)
+9. 差分番号による直接移動 ("Go to Difference #N")
+10. 行揃え (Align Similar Lines) — 類似行に空白行を自動挿入
+
+詳細は `/home/vscode/.claude/projects/-workspaces-winxmerge/memory/project_unimplemented_features.md` 参照。
+
 ## リリース履歴
 
 | バージョン | PR | 内容 |
