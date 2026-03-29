@@ -150,6 +150,12 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Compare `.zip` files as virtual folders showing added/removed/changed entries
 - CRC + size based change detection per entry
 
+### CSV / TSV Comparison
+- Compare `.csv` and `.tsv` files with cell-level diff table display
+- Auto-detects delimiter (comma vs tab) from the first line
+- Handles quoted fields with embedded delimiters and newlines
+- Columns shown: Row, Col, Status (Different / Left Only / Right Only), Left Value, Right Value
+
 ### Excel / Spreadsheet Comparison
 - Compare `.xlsx`, `.xls`, `.xlsm`, `.ods` files with table-view cell diff display
 - Changed cells highlighted; sheet selector for multi-sheet files

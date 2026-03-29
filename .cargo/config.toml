@@ -1,0 +1,6 @@
+[profile.dev]
+debug = 0
+split-debuginfo = "off"
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-Wl,--reduce-memory-overheads"]

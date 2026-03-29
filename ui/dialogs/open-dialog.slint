@@ -1,4 +1,4 @@
-import { Button, LineEdit, Palette, CheckBox, ListView } from "std-widgets.slint";
+import { Button, LineEdit, Palette, CheckBox, ListView, ScrollView } from "std-widgets.slint";
 import { FileBrowserIcons } from "file-browser.slint";
 
 component PasteButton inherits Rectangle {
@@ -53,8 +53,10 @@ export component OpenDialog inherits Rectangle {
     Rectangle {
         background: Palette.background;
 
+        ScrollView {
         VerticalLayout {
             alignment: center;
+            min-height: root.height;
             padding: 40px;
             spacing: 16px;
 
@@ -269,5 +271,6 @@ export component OpenDialog inherits Rectangle {
                 }
             }
         }
+        } // ScrollView
     }
 }

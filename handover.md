@@ -7,11 +7,31 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 
 ## 現在の状態
 
-- **バージョン:** 0.27.0
-- **ブランチ:** `feature/v0.27.0`
+- **バージョン:** 0.28.0
+- **ブランチ:** `feature/v0.28.0`
 - **テスト:** 19件すべてパス
 - **ビルド:** `cargo build` 成功（警告なし）
 - **CI:** GitHub Actions（Ubuntu / macOS (aarch64) / Windows）
+
+## 次バージョン (v0.29.0) の予定
+
+WinMergeマニュアルとの機能ギャップ調査（2026-03-29）に基づく優先順位:
+
+### HIGH PRIORITY（コア機能ギャップ）
+1. **バイナリ/Hex比較** — 16進数ビューアでのバイナリファイル比較、バイト単位差分表示
+2. **プロジェクトファイル** — よく使うパス・オプションを .json で保存/読み込み
+3. **CLIオプション拡充** — `/e`, `/x`, `/wl`, `/wr`, `/enableexitcode` 等
+4. **差分アルゴリズム選択** — Histogram / Minimal アルゴリズム追加（現在: Myers/Patience のみ）
+5. **フォルダ比較: リネーム/移動検出** — リネームされたファイルを同一として検出
+6. **フォルダ比較: ツリービュー** — 展開/折りたたみ可能なツリー表示（現状フラットリストのみ）
+
+### MEDIUM PRIORITY
+7. 数値無視オプション (`Ignore numbers`)
+8. コメント無視オプション (`Ignore comment differences`)
+9. 差分番号による直接移動 ("Go to Difference #N")
+10. 行揃え (Align Similar Lines) — 類似行に空白行を自動挿入
+
+詳細は `/home/vscode/.claude/projects/-workspaces-winxmerge/memory/project_unimplemented_features.md` 参照。
 
 ## リリース履歴
 
@@ -44,6 +64,7 @@ GitHub: `git@github.com:masak1yu/winxmerge.git`
 | v0.25.0 | - | 差分詳細ペイン改善（現在ブロックのみ表示・片方のみ対応・文字レベルハイライト）、View メニュー拡張（Zoom In/Out/Reset・行折り返し）、ウィンドウリサイズ対応、マージ列削除、GitHub Actions リリースワークフロー追加 |
 | v0.26.0 | - | UIアイコン修正（📋ペーストボタン→SVGアイコン化、フォルダ一覧ファイルアイコン→SVG化）、ファイルブラウザフォーカスバグ修正、リリース対象からmacOS Intel除外 |
 | v0.27.0 | - | Excel差分エクスポート（.xlsx、色分け+コメント列）、差分コメント印刷対応、フォルダ比較列ヘッダソート、画像比較オーバーレイ透明度スライダー、全タブコメント一括エクスポート（CSV/JSON） |
+| v0.28.0 | #31 | CSV/TSV比較（セル単位差分テーブル表示）、Diffハイライト色をオレンジに変更（本家WinMerge準拠）、ビルド後比較履歴自動クリア（`--clear-history`フラグ）、Diffスクロール修正（フォントサイズ対応）、比較選択ダイアログスクロール対応 |
 
 ## 実装済み機能一覧
 

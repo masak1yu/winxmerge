@@ -1,0 +1,139 @@
+/// CSV / TSV table comparison
+
+#[derive(Debug, Clone)]
+pub struct CsvCellDiff {
+    pub row: usize, // 1-based
+    #[allow(dead_code)]
+    pub col: usize, // 1-based
+    pub col_name: String,
+    pub left_value: String,
+    pub right_value: String,
+    /// 0=identical, 1=different, 2=left_only, 3=right_only
+    pub status: i32,
+}
+
+/// Returns true if the path is a CSV or TSV file
+pub fn is_csv_path(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| matches!(e.to_lowercase().as_str(), "csv" | "tsv"))
+        .unwrap_or(false)
+}
+
+fn detect_delimiter(text: &str) -> u8 {
+    // Simple heuristic: count commas vs tabs in the first line
+    let first_line = text.lines().next().unwrap_or("");
+    let commas = first_line.bytes().filter(|&b| b == b',').count();
+    let tabs = first_line.bytes().filter(|&b| b == b'\t').count();
+    if tabs > commas { b'\t' } else { b',' }
+}
+
+fn col_to_name(mut col: usize) -> String {
+    let mut name = String::new();
+    loop {
+        name.insert(0, (b'A' + (col % 26) as u8) as char);
+        if col < 26 {
+            break;
+        }
+        col = col / 26 - 1;
+    }
+    name
+}
+
+/// Parse CSV/TSV text into a 2-D table of cell strings.
+/// Handles quoted fields with embedded delimiters and newlines.
+fn parse_csv(text: &str, delimiter: u8) -> Vec<Vec<String>> {
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut row: Vec<String> = Vec::new();
+    let mut field = String::new();
+    let mut in_quotes = false;
+    let mut chars = text.bytes().peekable();
+
+    while let Some(&b) = chars.peek() {
+        chars.next();
+        if in_quotes {
+            if b == b'"' {
+                if chars.peek() == Some(&b'"') {
+                    // Escaped double-quote
+                    chars.next();
+                    field.push('"');
+                } else {
+                    in_quotes = false;
+                }
+            } else {
+                field.push(b as char);
+            }
+        } else if b == b'"' {
+            in_quotes = true;
+        } else if b == delimiter {
+            row.push(field.clone());
+            field.clear();
+        } else if b == b'\n' {
+            row.push(field.clone());
+            field.clear();
+            rows.push(row.clone());
+            row.clear();
+        } else if b == b'\r' {
+            // skip CR in CRLF
+        } else {
+            field.push(b as char);
+        }
+    }
+
+    // Flush last field / row
+    if !field.is_empty() || !row.is_empty() {
+        row.push(field);
+        rows.push(row);
+    }
+
+    rows
+}
+
+/// Compare two CSV/TSV texts and return cell-level differences.
+pub fn compare_csv(left_text: &str, right_text: &str) -> Vec<CsvCellDiff> {
+    let delim = detect_delimiter(left_text);
+    let left_rows = parse_csv(left_text, delim);
+    let right_rows = parse_csv(right_text, delim);
+
+    let max_rows = left_rows.len().max(right_rows.len());
+    let mut diffs = Vec::new();
+
+    for r in 0..max_rows {
+        let left_row = left_rows.get(r);
+        let right_row = right_rows.get(r);
+
+        let max_cols = left_row
+            .map(|r| r.len())
+            .unwrap_or(0)
+            .max(right_row.map(|r| r.len()).unwrap_or(0));
+
+        for c in 0..max_cols {
+            let lv = left_row
+                .and_then(|row| row.get(c))
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            let rv = right_row
+                .and_then(|row| row.get(c))
+                .map(|s| s.as_str())
+                .unwrap_or("");
+
+            let status = match (left_row.is_some(), right_row.is_some()) {
+                (true, false) => 2,        // left only
+                (false, true) => 3,        // right only
+                _ if lv == rv => continue, // identical — skip
+                _ => 1,                    // different
+            };
+
+            diffs.push(CsvCellDiff {
+                row: r + 1,
+                col: c + 1,
+                col_name: col_to_name(c),
+                left_value: lv.to_string(),
+                right_value: rv.to_string(),
+                status,
+            });
+        }
+    }
+
+    diffs
+}
