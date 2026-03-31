@@ -150,7 +150,6 @@ fn open_file_picker(callback: impl Fn(String, String) + 'static) {
     input.click();
 }
 
-#[wasm_bindgen(start)]
 pub fn wasm_entry() {
     let window = crate::WasmApp::new().unwrap();
 
