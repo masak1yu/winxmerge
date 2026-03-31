@@ -150,8 +150,46 @@ fn open_file_picker(callback: impl Fn(String, String) + 'static) {
     input.click();
 }
 
+fn viewport_size() -> (u32, u32) {
+    web_sys::window()
+        .map(|w| {
+            let width = w
+                .inner_width()
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(800.0) as u32;
+            let height = w
+                .inner_height()
+                .ok()
+                .and_then(|v| v.as_f64())
+                .unwrap_or(600.0) as u32;
+            (width, height)
+        })
+        .unwrap_or((800, 600))
+}
+
 pub fn run() {
     let window = crate::WasmApp::new().unwrap();
+
+    // Keep size in sync when the browser window is resized.
+    {
+        let window_weak = window.as_weak();
+        let closure = Closure::<dyn FnMut()>::new(move || {
+            if let Some(w) = window_weak.upgrade() {
+                let (width, height) = viewport_size();
+                w.window()
+                    .set_size(slint::WindowSize::Logical(slint::LogicalSize::new(
+                        width as f32,
+                        height as f32,
+                    )));
+            }
+        });
+        web_sys::window()
+            .unwrap()
+            .add_event_listener_with_callback("resize", closure.as_ref().unchecked_ref())
+            .ok();
+        closure.forget();
+    }
 
     // Shared state: diff block start-line positions and current diff index
     let diff_positions: Rc<RefCell<Vec<usize>>> = Rc::new(RefCell::new(Vec::new()));
