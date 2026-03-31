@@ -2,8 +2,8 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 
 use crate::diff::engine::{DiffOptions, compute_diff_with_options};
 use crate::models::diff_line::LineStatus;
@@ -78,11 +78,7 @@ fn encode_word_diff(segments: &[crate::models::diff_line::WordDiffSegment]) -> S
 }
 
 /// Update `is_current_diff` flags and scroll to the diff at `diff_idx`.
-fn navigate_to_diff(
-    window: &crate::WasmApp,
-    diff_positions: &[usize],
-    diff_idx: i32,
-) {
+fn navigate_to_diff(window: &crate::WasmApp, diff_positions: &[usize], diff_idx: i32) {
     let lines_model = window.get_diff_lines();
     let mut lines: Vec<crate::DiffLineData> = (0..lines_model.row_count())
         .map(|i| lines_model.row_data(i).unwrap())
