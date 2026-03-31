@@ -1,4 +1,5 @@
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use wasm_bindgen::prelude::*;
 
 use crate::diff::engine::{DiffOptions, compute_diff_with_options};
 use crate::models::diff_line::LineStatus;
@@ -72,7 +73,8 @@ fn encode_word_diff(segments: &[crate::models::diff_line::WordDiffSegment]) -> S
         .collect()
 }
 
-pub fn run() {
+#[wasm_bindgen(start)]
+pub fn wasm_entry() {
     let window = crate::WasmApp::new().unwrap();
 
     let window_weak = window.as_weak();

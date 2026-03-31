@@ -29,9 +29,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 #[cfg(target_arch = "wasm32")]
-fn main() {
-    wasm::run();
-}
+fn main() {}
 
 #[cfg(not(target_arch = "wasm32"))]
 use app::{
