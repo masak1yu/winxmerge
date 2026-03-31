@@ -18,20 +18,12 @@ mod models;
 #[cfg(not(target_arch = "wasm32"))]
 mod settings;
 
-#[cfg(target_arch = "wasm32")]
-mod wasm;
-
 slint::include_modules!();
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::cell::{Cell, RefCell};
 #[cfg(not(target_arch = "wasm32"))]
 use std::rc::Rc;
-
-#[cfg(target_arch = "wasm32")]
-fn main() {
-    wasm::wasm_entry();
-}
 
 #[cfg(not(target_arch = "wasm32"))]
 use app::{

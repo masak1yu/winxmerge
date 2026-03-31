@@ -150,7 +150,7 @@ fn open_file_picker(callback: impl Fn(String, String) + 'static) {
     input.click();
 }
 
-pub fn wasm_entry() {
+pub fn run() {
     let window = crate::WasmApp::new().unwrap();
 
     // Shared state: diff block start-line positions and current diff index
