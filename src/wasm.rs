@@ -8,6 +8,38 @@ use wasm_bindgen::prelude::*;
 use crate::diff::engine::{DiffOptions, compute_diff_with_options};
 use crate::models::diff_line::LineStatus;
 
+fn compute_stats(result: &crate::models::diff_line::DiffResult) -> (i32, i32, i32) {
+    let mut added = 0i32;
+    let mut removed = 0i32;
+    let mut modified = 0i32;
+    for line in &result.lines {
+        match line.status {
+            LineStatus::Added => added += 1,
+            LineStatus::Removed => removed += 1,
+            LineStatus::Modified => modified += 1,
+            _ => {}
+        }
+    }
+    (added, removed, modified)
+}
+
+/// Read text from the clipboard and call callback with the text.
+fn paste_from_clipboard(callback: impl Fn(String) + 'static) {
+    let window = match web_sys::window() {
+        Some(w) => w,
+        None => return,
+    };
+    let clipboard = window.navigator().clipboard();
+    let promise = clipboard.read_text();
+    wasm_bindgen_futures::spawn_local(async move {
+        if let Ok(text_js) = wasm_bindgen_futures::JsFuture::from(promise).await {
+            if let Some(text) = text_js.as_string() {
+                callback(text);
+            }
+        }
+    });
+}
+
 fn build_diff_line_data(result: &crate::models::diff_line::DiffResult) -> Vec<crate::DiffLineData> {
     result
         .lines
@@ -210,6 +242,7 @@ pub fn run() {
             let result = compute_diff_with_options(&left, &right, &options);
 
             let diff_count = result.diff_count;
+            let (added, removed, modified) = compute_stats(&result);
 
             *diff_positions.borrow_mut() = result.diff_positions.clone();
             current_diff_idx.set(-1);
@@ -219,6 +252,9 @@ pub fn run() {
             window.set_diff_count(diff_count as i32);
             window.set_current_diff_index(-1);
             window.set_diff_scroll_y(0.0);
+            window.set_stat_added(added);
+            window.set_stat_removed(removed);
+            window.set_stat_modified(modified);
         });
     }
 
@@ -283,6 +319,34 @@ pub fn run() {
                 if let Some(w) = window_weak.upgrade() {
                     w.set_right_text(SharedString::from(text));
                     w.set_right_title(SharedString::from(name));
+                }
+            });
+        });
+    }
+
+    // --- Paste left ---
+    {
+        let window_weak = window.as_weak();
+
+        window.on_paste_left(move || {
+            let window_weak = window_weak.clone();
+            paste_from_clipboard(move |text| {
+                if let Some(w) = window_weak.upgrade() {
+                    w.set_left_text(SharedString::from(text));
+                }
+            });
+        });
+    }
+
+    // --- Paste right ---
+    {
+        let window_weak = window.as_weak();
+
+        window.on_paste_right(move || {
+            let window_weak = window_weak.clone();
+            paste_from_clipboard(move |text| {
+                if let Some(w) = window_weak.upgrade() {
+                    w.set_right_text(SharedString::from(text));
                 }
             });
         });

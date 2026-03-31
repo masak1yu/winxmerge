@@ -18,10 +18,16 @@ export component WasmApp inherits Window {
     in-out property <int> opt-font-size: 13;
     in-out property <int> current-diff-index: -1;
     in-out property <length> diff-scroll-y: 0px;
+    // Stats: added / removed / modified line counts
+    in-out property <int> stat-added: 0;
+    in-out property <int> stat-removed: 0;
+    in-out property <int> stat-modified: 0;
 
     callback compare();
     callback upload-left();
     callback upload-right();
+    callback paste-left();
+    callback paste-right();
     callback next-diff();
     callback prev-diff();
 
@@ -97,6 +103,7 @@ export component WasmApp inherits Window {
                     HorizontalLayout {
                         padding-left: 12px;
                         padding-right: 12px;
+                        spacing: 6px;
                         alignment: space-between;
 
                         Text {
@@ -105,11 +112,22 @@ export component WasmApp inherits Window {
                             font-weight: 600;
                             color: #c8cfe0;
                             vertical-alignment: center;
+                            min-width: 30px;
                         }
 
-                        Button {
-                            text: "Upload";
-                            clicked => { root.upload-left(); }
+                        HorizontalLayout {
+                            spacing: 4px;
+                            alignment: end;
+
+                            Button {
+                                text: "Paste";
+                                clicked => { root.paste-left(); }
+                            }
+
+                            Button {
+                                text: "Upload";
+                                clicked => { root.upload-left(); }
+                            }
                         }
                     }
                 }
@@ -146,6 +164,7 @@ export component WasmApp inherits Window {
                     HorizontalLayout {
                         padding-left: 12px;
                         padding-right: 12px;
+                        spacing: 6px;
                         alignment: space-between;
 
                         Text {
@@ -154,11 +173,22 @@ export component WasmApp inherits Window {
                             font-weight: 600;
                             color: #c8cfe0;
                             vertical-alignment: center;
+                            min-width: 30px;
                         }
 
-                        Button {
-                            text: "Upload";
-                            clicked => { root.upload-right(); }
+                        HorizontalLayout {
+                            spacing: 4px;
+                            alignment: end;
+
+                            Button {
+                                text: "Paste";
+                                clicked => { root.paste-right(); }
+                            }
+
+                            Button {
+                                text: "Upload";
+                                clicked => { root.upload-right(); }
+                            }
                         }
                     }
                 }
@@ -243,8 +273,35 @@ export component WasmApp inherits Window {
                         }
                     }
 
-                    // Spacer
-                    Rectangle { width: 60px; }
+                    // Stats
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: end;
+
+                        if root.stat-added > 0: Text {
+                            text: "+" + root.stat-added;
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: #4ec94e;
+                            vertical-alignment: center;
+                        }
+
+                        if root.stat-removed > 0: Text {
+                            text: "-" + root.stat-removed;
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: #f06060;
+                            vertical-alignment: center;
+                        }
+
+                        if root.stat-modified > 0: Text {
+                            text: "~" + root.stat-modified;
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: #d4b030;
+                            vertical-alignment: center;
+                        }
+                    }
                 }
             }
 
