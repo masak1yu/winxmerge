@@ -1,8 +1,8 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use js_sys::Promise;
+use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
