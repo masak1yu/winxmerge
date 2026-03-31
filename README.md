@@ -228,6 +228,29 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 | Excel Comparison | [calamine](https://crates.io/crates/calamine) |
 | Excel Export | [rust_xlsxwriter](https://crates.io/crates/rust_xlsxwriter) |
 | Image Comparison | [image](https://crates.io/crates/image) |
+| WASM Build | [wasm-bindgen](https://crates.io/crates/wasm-bindgen) + [trunk](https://trunkrs.dev/) |
+
+## Web Version (WASM)
+
+WinXMerge can be built as a WebAssembly app for deployment to Cloudflare Pages.
+
+The web version supports text paste → diff display. Desktop-only features (file dialogs, clipboard, syntax highlighting, folder compare, etc.) are excluded via `cfg(not(target_arch = "wasm32"))` conditional compilation — the desktop build is unaffected.
+
+### Build
+
+```bash
+# Install WASM target and trunk
+rustup target add wasm32-unknown-unknown
+cargo install trunk
+
+# Development server
+trunk serve
+
+# Production build (outputs to dist/)
+trunk build --release
+```
+
+Deploy the `dist/` directory to Cloudflare Pages.
 
 ## Setup
 
