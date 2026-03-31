@@ -8,13 +8,11 @@ export component WasmApp inherits Window {
 
     in-out property <string> left-text: "";
     in-out property <string> right-text: "";
-    in property <[DiffLineData]> diff-lines;
-    in property <int> diff-count: 0;
-    in-out property <float> diff-scroll-y: 0;
+    in-out property <[DiffLineData]> diff-lines;
+    in-out property <int> diff-count: 0;
     in-out property <int> opt-font-size: 13;
 
     callback compare();
-    callback scroll-diff(float);
 
     VerticalLayout {
         padding: 0px;
@@ -121,7 +119,7 @@ export component WasmApp inherits Window {
                         ta := TouchArea {
                             mouse-cursor: pointer;
                             clicked => {
-                                root.diff-scroll-y = 0;
+                                root.diff-lines = [];
                             }
                         }
                     }
@@ -130,11 +128,10 @@ export component WasmApp inherits Window {
 
             DiffView {
                 vertical-stretch: 1;
-                lines: root.diff-lines;
-                viewport-y <=> root.diff-scroll-y;
-                font-size: root.opt-font-size;
+                diff-lines: root.diff-lines;
+                editor-font-size: root.opt-font-size;
                 show-line-numbers: true;
-                word-wrap: false;
+                word-wrap-mode: false;
                 show-word-diff: true;
             }
         }
