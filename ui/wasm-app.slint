@@ -6,6 +6,9 @@ export component WasmApp inherits Window {
     title: "WinXMerge Web";
     background: Palette.background;
 
+    // Force dark theme
+    init => { Palette.color-scheme = ColorScheme.dark; }
+
     in-out property <string> left-text: "";
     in-out property <string> right-text: "";
     in-out property <string> left-title: "Left";
@@ -15,10 +18,16 @@ export component WasmApp inherits Window {
     in-out property <int> opt-font-size: 13;
     in-out property <int> current-diff-index: -1;
     in-out property <length> diff-scroll-y: 0px;
+    // Stats: added / removed / modified line counts
+    in-out property <int> stat-added: 0;
+    in-out property <int> stat-removed: 0;
+    in-out property <int> stat-modified: 0;
 
     callback compare();
     callback upload-left();
     callback upload-right();
+    callback paste-left();
+    callback paste-right();
     callback next-diff();
     callback prev-diff();
 
@@ -28,20 +37,33 @@ export component WasmApp inherits Window {
 
         // Header
         Rectangle {
-            height: 48px;
-            background: Palette.background.darker(0.08);
+            height: 44px;
+            background: #1a1a2e;
 
             HorizontalLayout {
                 padding-left: 16px;
                 padding-right: 16px;
                 alignment: space-between;
 
-                Text {
-                    text: "WinXMerge Web";
-                    font-size: 16px;
-                    font-weight: 700;
-                    color: Palette.foreground;
-                    vertical-alignment: center;
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+
+                    Rectangle {
+                        width: 6px;
+                        height: 24px;
+                        background: #4a9af5;
+                        border-radius: 3px;
+                        y: (parent.height - self.height) / 2;
+                    }
+
+                    Text {
+                        text: "WinXMerge Web";
+                        font-size: 15px;
+                        font-weight: 700;
+                        color: #e8e8e8;
+                        vertical-alignment: center;
+                    }
                 }
 
                 HorizontalLayout {
@@ -56,32 +78,63 @@ export component WasmApp inherits Window {
             }
         }
 
+        // Separator line under header
+        Rectangle {
+            height: 1px;
+            background: #2a2a3e;
+        }
+
         if diff-lines.length == 0: HorizontalLayout {
             vertical-stretch: 1;
-            spacing: 8px;
-            padding: 12px;
+            spacing: 0px;
+            padding: 0px;
+            padding-left: 2px;
 
-            // Left input
+            // Left input panel
             VerticalLayout {
                 horizontal-stretch: 1;
-                spacing: 4px;
+                spacing: 0px;
 
-                HorizontalLayout {
-                    spacing: 6px;
-                    alignment: space-between;
+                // Panel title bar
+                Rectangle {
+                    height: 36px;
+                    background: #1a1a28;
 
-                    Text {
-                        text: root.left-title;
-                        font-size: 12px;
-                        font-weight: 600;
-                        color: Palette.foreground.transparentize(0.4);
-                        vertical-alignment: center;
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 6px;
+                        alignment: space-between;
+
+                        Text {
+                            text: root.left-title;
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #c8cfe0;
+                            vertical-alignment: center;
+                            min-width: 30px;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 4px;
+                            alignment: end;
+
+                            Button {
+                                text: "Paste";
+                                clicked => { root.paste-left(); }
+                            }
+
+                            Button {
+                                text: "Upload";
+                                clicked => { root.upload-left(); }
+                            }
+                        }
                     }
+                }
 
-                    Button {
-                        text: "Upload";
-                        clicked => { root.upload-left(); }
-                    }
+                Rectangle {
+                    height: 1px;
+                    background: #3a3a4e;
                 }
 
                 TextEdit {
@@ -93,27 +146,56 @@ export component WasmApp inherits Window {
                 }
             }
 
-            // Right input
+            // Divider
+            Rectangle {
+                width: 1px;
+                background: #3a3a50;
+            }
+
+            // Right input panel
             VerticalLayout {
                 horizontal-stretch: 1;
-                spacing: 4px;
+                spacing: 0px;
 
-                HorizontalLayout {
-                    spacing: 6px;
-                    alignment: space-between;
+                Rectangle {
+                    height: 36px;
+                    background: #1a1a28;
 
-                    Text {
-                        text: root.right-title;
-                        font-size: 12px;
-                        font-weight: 600;
-                        color: Palette.foreground.transparentize(0.4);
-                        vertical-alignment: center;
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 6px;
+                        alignment: space-between;
+
+                        Text {
+                            text: root.right-title;
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: #c8cfe0;
+                            vertical-alignment: center;
+                            min-width: 30px;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 4px;
+                            alignment: end;
+
+                            Button {
+                                text: "Paste";
+                                clicked => { root.paste-right(); }
+                            }
+
+                            Button {
+                                text: "Upload";
+                                clicked => { root.upload-right(); }
+                            }
+                        }
                     }
+                }
 
-                    Button {
-                        text: "Upload";
-                        clicked => { root.upload-right(); }
-                    }
+                Rectangle {
+                    height: 1px;
+                    background: #3a3a4e;
                 }
 
                 TextEdit {
@@ -131,8 +213,8 @@ export component WasmApp inherits Window {
 
             // Navigation bar
             Rectangle {
-                height: 36px;
-                background: Palette.background.darker(0.04);
+                height: 38px;
+                background: #1e1e2e;
 
                 HorizontalLayout {
                     padding-left: 8px;
@@ -148,7 +230,7 @@ export component WasmApp inherits Window {
                         Text {
                             text: "← Edit";
                             font-size: 12px;
-                            color: Palette.foreground.transparentize(0.3);
+                            color: #4a9af5;
                             vertical-alignment: center;
 
                             TouchArea {
@@ -178,7 +260,7 @@ export component WasmApp inherits Window {
                                 : root.current-diff-index < 0 ? root.diff-count + " diffs"
                                 : (root.current-diff-index + 1) + " / " + root.diff-count;
                             font-size: 12px;
-                            color: Palette.foreground.transparentize(0.3);
+                            color: #a0a8c0;
                             vertical-alignment: center;
                             min-width: 80px;
                             horizontal-alignment: center;
@@ -191,9 +273,41 @@ export component WasmApp inherits Window {
                         }
                     }
 
-                    // Spacer
-                    Rectangle { width: 60px; }
+                    // Stats
+                    HorizontalLayout {
+                        spacing: 10px;
+                        alignment: end;
+
+                        if root.stat-added > 0: Text {
+                            text: "+" + root.stat-added;
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: #4ec94e;
+                            vertical-alignment: center;
+                        }
+
+                        if root.stat-removed > 0: Text {
+                            text: "-" + root.stat-removed;
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: #f06060;
+                            vertical-alignment: center;
+                        }
+
+                        if root.stat-modified > 0: Text {
+                            text: "~" + root.stat-modified;
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: #d4b030;
+                            vertical-alignment: center;
+                        }
+                    }
                 }
+            }
+
+            Rectangle {
+                height: 1px;
+                background: #2a2a3e;
             }
 
             diff-view := DiffView {

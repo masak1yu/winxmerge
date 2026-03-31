@@ -40,6 +40,7 @@ jobs:
         run: trunk build --release
         env:
           CARGO_TERM_COLOR: always
+          RUSTFLAGS: "--cfg=web_sys_unstable_apis"
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/pages-action@v1

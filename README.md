@@ -232,9 +232,11 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 
 ## Web Version (WASM)
 
+**Live: https://winxmerge.app**
+
 WinXMerge can be built as a WebAssembly app for deployment to Cloudflare Pages.
 
-The web version supports text paste → diff display. Desktop-only features (file dialogs, clipboard, syntax highlighting, folder compare, etc.) are excluded via `cfg(not(target_arch = "wasm32"))` conditional compilation — the desktop build is unaffected.
+The web version supports text input, file upload, clipboard paste, and diff navigation with stats. Desktop-only features (file dialogs, syntax highlighting, folder compare, etc.) are excluded via `cfg(not(target_arch = "wasm32"))` conditional compilation — the desktop build is unaffected.
 
 ### Build
 

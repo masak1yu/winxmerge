@@ -15,13 +15,23 @@
         }
         canvas {
             display: block;
-            width: 100%;
-            height: 100%;
         }
     </style>
     <link data-trunk rel="rust" data-wasm-opt="z" />
 </head>
 <body>
     <canvas id="canvas"></canvas>
+    <script>
+        // winit throws a JS exception to transfer control to requestAnimationFrame,
+        // so TrunkApplicationStarted never fires. Instead, observe the canvas style
+        // attribute: when Slint/winit first sets it up, dispatch resize so our Rust
+        // resize listener calls set_size() with the actual viewport dimensions.
+        var canvas = document.getElementById("canvas");
+        var observer = new MutationObserver(function() {
+            observer.disconnect();
+            window.dispatchEvent(new Event("resize"));
+        });
+        observer.observe(canvas, { attributes: true, attributeFilter: ["style"] });
+    </script>
 </body>
 </html>
