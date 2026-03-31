@@ -56,11 +56,11 @@ jobs:
 
       - name: Build release (Windows with icon)
         if: runner.os == 'Windows'
-        run: cargo build --release --target ${{ matrix.target }} --features embed-icon
+        run: cargo build --release --target ${{ matrix.target }} --features desktop,embed-icon
 
       - name: Build release (non-Windows)
         if: runner.os != 'Windows'
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} --features desktop
 
       - name: Package (Unix)
         if: runner.os != 'Windows'

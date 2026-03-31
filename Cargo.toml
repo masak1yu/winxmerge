@@ -6,6 +6,12 @@ edition = "2024"
 [lib]
 crate-type = ["lib", "cdylib"]
 
+# The binary requires the "desktop" feature so that trunk (WASM builds)
+# skips it and falls back to building the cdylib lib target instead.
+[[bin]]
+name = "winxmerge"
+required-features = ["desktop"]
+
 [dependencies]
 slint = "1.15.1"
 similar = "2.6"
@@ -60,6 +66,8 @@ winres = { version = "0.1", optional = true }
 [features]
 # Enable on Windows builds to embed the .ico into the executable
 embed-icon = ["winres"]
+# Required to build the native desktop binary (not used for WASM/trunk builds)
+desktop = []
 
 [package.metadata.bundle]
 name = "WinXMerge"
