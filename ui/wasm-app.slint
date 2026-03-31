@@ -8,11 +8,19 @@ export component WasmApp inherits Window {
 
     in-out property <string> left-text: "";
     in-out property <string> right-text: "";
+    in-out property <string> left-title: "Left";
+    in-out property <string> right-title: "Right";
     in-out property <[DiffLineData]> diff-lines;
     in-out property <int> diff-count: 0;
     in-out property <int> opt-font-size: 13;
+    in-out property <int> current-diff-index: -1;
+    in-out property <length> diff-scroll-y: 0px;
 
     callback compare();
+    callback upload-left();
+    callback upload-right();
+    callback next-diff();
+    callback prev-diff();
 
     VerticalLayout {
         padding: 0px;
@@ -40,14 +48,7 @@ export component WasmApp inherits Window {
                     spacing: 8px;
                     alignment: end;
 
-                    if root.diff-count > 0: Text {
-                        text: root.diff-count + " diffs";
-                        font-size: 12px;
-                        color: Palette.foreground.transparentize(0.4);
-                        vertical-alignment: center;
-                    }
-
-                    Button {
+                    if root.diff-lines.length == 0: Button {
                         text: "Compare";
                         clicked => { root.compare(); }
                     }
@@ -64,12 +65,25 @@ export component WasmApp inherits Window {
             VerticalLayout {
                 horizontal-stretch: 1;
                 spacing: 4px;
-                Text {
-                    text: "Left";
-                    font-size: 12px;
-                    font-weight: 600;
-                    color: Palette.foreground.transparentize(0.4);
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: space-between;
+
+                    Text {
+                        text: root.left-title;
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: Palette.foreground.transparentize(0.4);
+                        vertical-alignment: center;
+                    }
+
+                    Button {
+                        text: "Upload";
+                        clicked => { root.upload-left(); }
+                    }
                 }
+
                 TextEdit {
                     horizontal-stretch: 1;
                     vertical-stretch: 1;
@@ -83,12 +97,25 @@ export component WasmApp inherits Window {
             VerticalLayout {
                 horizontal-stretch: 1;
                 spacing: 4px;
-                Text {
-                    text: "Right";
-                    font-size: 12px;
-                    font-weight: 600;
-                    color: Palette.foreground.transparentize(0.4);
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: space-between;
+
+                    Text {
+                        text: root.right-title;
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: Palette.foreground.transparentize(0.4);
+                        vertical-alignment: center;
+                    }
+
+                    Button {
+                        text: "Upload";
+                        clicked => { root.upload-right(); }
+                    }
                 }
+
                 TextEdit {
                     horizontal-stretch: 1;
                     vertical-stretch: 1;
@@ -102,37 +129,87 @@ export component WasmApp inherits Window {
         if diff-lines.length > 0: VerticalLayout {
             vertical-stretch: 1;
 
-            // Back to edit button
+            // Navigation bar
             Rectangle {
-                height: 32px;
+                height: 36px;
                 background: Palette.background.darker(0.04);
 
                 HorizontalLayout {
                     padding-left: 8px;
-                    alignment: start;
-                    Text {
-                        text: "← Edit";
-                        font-size: 12px;
-                        color: Palette.foreground.transparentize(0.3);
-                        vertical-alignment: center;
+                    padding-right: 8px;
+                    spacing: 8px;
+                    alignment: space-between;
 
-                        ta := TouchArea {
-                            mouse-cursor: pointer;
-                            clicked => {
-                                root.diff-lines = [];
+                    // Back to edit
+                    HorizontalLayout {
+                        spacing: 4px;
+                        alignment: start;
+
+                        Text {
+                            text: "← Edit";
+                            font-size: 12px;
+                            color: Palette.foreground.transparentize(0.3);
+                            vertical-alignment: center;
+
+                            TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.diff-lines = [];
+                                    root.current-diff-index = -1;
+                                    root.diff-scroll-y = 0px;
+                                }
                             }
                         }
                     }
+
+                    // Diff navigation
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: center;
+
+                        Button {
+                            text: "← Prev";
+                            enabled: root.diff-count > 0 && root.current-diff-index > 0;
+                            clicked => { root.prev-diff(); }
+                        }
+
+                        Text {
+                            text: root.diff-count == 0 ? "No diffs"
+                                : root.current-diff-index < 0 ? root.diff-count + " diffs"
+                                : (root.current-diff-index + 1) + " / " + root.diff-count;
+                            font-size: 12px;
+                            color: Palette.foreground.transparentize(0.3);
+                            vertical-alignment: center;
+                            min-width: 80px;
+                            horizontal-alignment: center;
+                        }
+
+                        Button {
+                            text: "Next →";
+                            enabled: root.diff-count > 0 && root.current-diff-index < root.diff-count - 1;
+                            clicked => { root.next-diff(); }
+                        }
+                    }
+
+                    // Spacer
+                    Rectangle { width: 60px; }
                 }
             }
 
-            DiffView {
+            diff-view := DiffView {
                 vertical-stretch: 1;
                 diff-lines: root.diff-lines;
+                current-diff-index: root.current-diff-index;
+                left-title: root.left-title;
+                right-title: root.right-title;
                 editor-font-size: root.opt-font-size;
                 show-line-numbers: true;
                 word-wrap-mode: false;
                 show-word-diff: true;
+                context-menu-enabled: false;
+                scroll-y <=> root.diff-scroll-y;
+                next-diff => { root.next-diff(); }
+                prev-diff => { root.prev-diff(); }
             }
         }
     }
