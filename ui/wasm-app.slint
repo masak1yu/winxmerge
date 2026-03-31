@@ -1,0 +1,142 @@
+import { Button, TextEdit, Palette, ScrollView } from "std-widgets.slint";
+import { DiffView, DiffLineData } from "widgets/diff-view.slint";
+import { ThemeColors } from "theme.slint";
+
+export component WasmApp inherits Window {
+    title: "WinXMerge Web";
+    background: Palette.background;
+
+    in-out property <string> left-text: "";
+    in-out property <string> right-text: "";
+    in property <[DiffLineData]> diff-lines;
+    in property <int> diff-count: 0;
+    in-out property <float> diff-scroll-y: 0;
+    in-out property <int> opt-font-size: 13;
+
+    callback compare();
+    callback scroll-diff(float);
+
+    VerticalLayout {
+        padding: 0px;
+        spacing: 0px;
+
+        // Header
+        Rectangle {
+            height: 48px;
+            background: Palette.background.darker(0.08);
+
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                alignment: space-between;
+
+                Text {
+                    text: "WinXMerge Web";
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: Palette.foreground;
+                    vertical-alignment: center;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+
+                    if root.diff-count > 0: Text {
+                        text: root.diff-count + " diffs";
+                        font-size: 12px;
+                        color: Palette.foreground.transparentize(0.4);
+                        vertical-alignment: center;
+                    }
+
+                    Button {
+                        text: "Compare";
+                        clicked => { root.compare(); }
+                    }
+                }
+            }
+        }
+
+        if diff-lines.length == 0: HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: 8px;
+            padding: 12px;
+
+            // Left input
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 4px;
+                Text {
+                    text: "Left";
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: Palette.foreground.transparentize(0.4);
+                }
+                TextEdit {
+                    horizontal-stretch: 1;
+                    vertical-stretch: 1;
+                    text <=> root.left-text;
+                    font-size: 13px;
+                    placeholder-text: "Paste left text here...";
+                }
+            }
+
+            // Right input
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 4px;
+                Text {
+                    text: "Right";
+                    font-size: 12px;
+                    font-weight: 600;
+                    color: Palette.foreground.transparentize(0.4);
+                }
+                TextEdit {
+                    horizontal-stretch: 1;
+                    vertical-stretch: 1;
+                    text <=> root.right-text;
+                    font-size: 13px;
+                    placeholder-text: "Paste right text here...";
+                }
+            }
+        }
+
+        if diff-lines.length > 0: VerticalLayout {
+            vertical-stretch: 1;
+
+            // Back to edit button
+            Rectangle {
+                height: 32px;
+                background: Palette.background.darker(0.04);
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    alignment: start;
+                    Text {
+                        text: "← Edit";
+                        font-size: 12px;
+                        color: Palette.foreground.transparentize(0.3);
+                        vertical-alignment: center;
+
+                        ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.diff-scroll-y = 0;
+                            }
+                        }
+                    }
+                }
+            }
+
+            DiffView {
+                vertical-stretch: 1;
+                lines: root.diff-lines;
+                viewport-y <=> root.diff-scroll-y;
+                font-size: root.opt-font-size;
+                show-line-numbers: true;
+                word-wrap: false;
+                show-word-diff: true;
+            }
+        }
+    }
+}

@@ -1,7 +1,10 @@
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
+#[cfg(not(target_arch = "wasm32"))]
 use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter};
 
 /// Highlight names we recognize, mapped to color indices
+#[cfg(not(target_arch = "wasm32"))]
 const HIGHLIGHT_NAMES: &[&str] = &[
     "keyword",               // 0
     "string",                // 1
@@ -28,6 +31,7 @@ const HIGHLIGHT_NAMES: &[&str] = &[
 
 /// Maximum number of lines for which syntax highlighting is computed.
 /// Files larger than this skip highlighting to avoid UI latency.
+#[cfg(not(target_arch = "wasm32"))]
 const HIGHLIGHT_LINE_LIMIT: usize = 5_000;
 
 /// Per-line highlight: the dominant highlight type for the line
@@ -35,6 +39,19 @@ const HIGHLIGHT_LINE_LIMIT: usize = 5_000;
 ///   -1 = no highlight (plain text)
 ///   0..N = index into HIGHLIGHT_NAMES
 pub fn highlight_lines(source: &str, file_path: &str) -> Vec<i32> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        highlight_lines_desktop(source, file_path)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (source, file_path);
+        Vec::new()
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn highlight_lines_desktop(source: &str, file_path: &str) -> Vec<i32> {
     let line_count = source.lines().count().max(1);
     let mut line_highlights = vec![-1i32; line_count];
 
@@ -126,6 +143,7 @@ pub fn highlight_lines(source: &str, file_path: &str) -> Vec<i32> {
 }
 
 // C# highlights query (tree-sitter-c-sharp doesn't include one)
+#[cfg(not(target_arch = "wasm32"))]
 const CSHARP_HIGHLIGHTS_QUERY: &str = r#"
 (using_directive) @keyword
 ["if" "else" "switch" "case" "default" "while" "for" "foreach" "do" "return" "break" "continue" "throw" "try" "catch" "finally" "new" "class" "struct" "interface" "enum" "namespace" "public" "private" "protected" "internal" "static" "abstract" "virtual" "override" "sealed" "readonly" "const" "async" "await" "var" "void" "bool" "int" "string" "float" "double" "long" "byte" "char" "decimal" "object" "dynamic" "using" "null" "true" "false" "this" "base" "is" "as" "in" "out" "ref" "params" "get" "set" "value" "where" "yield" "partial" "event" "delegate" "operator" "implicit" "explicit" "checked" "unchecked" "fixed" "lock" "unsafe" "volatile" "extern" "sizeof" "typeof" "nameof" "stackalloc" "record" "init" "required" "file" "global" "scoped" "with" "when"] @keyword
@@ -148,6 +166,7 @@ const CSHARP_HIGHLIGHTS_QUERY: &str = r#"
 (attribute (identifier) @attribute)
 "#;
 
+#[cfg(not(target_arch = "wasm32"))]
 fn get_highlight_config(ext: &str) -> Option<HighlightConfiguration> {
     let (language, highlights_query, injections_query, locals_query) = match ext {
         "rs" => (
@@ -258,7 +277,7 @@ fn get_highlight_config(ext: &str) -> Option<HighlightConfiguration> {
 
 /// Detect file type name from extension
 pub fn detect_file_type(file_path: &str) -> &'static str {
-    let ext = Path::new(file_path)
+    let ext = std::path::Path::new(file_path)
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("");

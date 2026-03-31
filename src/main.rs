@@ -1,20 +1,32 @@
+#[cfg(not(target_arch = "wasm32"))]
 mod app;
+#[cfg(not(target_arch = "wasm32"))]
 mod archive;
+#[cfg(not(target_arch = "wasm32"))]
 mod csv;
 mod diff;
+#[cfg(not(target_arch = "wasm32"))]
 mod encoding;
+#[cfg(not(target_arch = "wasm32"))]
 mod excel;
+#[cfg(not(target_arch = "wasm32"))]
 mod export;
 mod highlight;
+#[cfg(not(target_arch = "wasm32"))]
 mod image_compare;
 mod models;
+#[cfg(not(target_arch = "wasm32"))]
 mod settings;
+
+#[cfg(target_arch = "wasm32")]
+mod wasm;
 
 slint::include_modules!();
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+#[cfg(not(target_arch = "wasm32"))]
 use app::{
     AppState, add_tab, apply_options, apply_pending_diff_if_ready, check_files_changed, close_tab,
     compare_clipboard_as_left, compare_clipboard_as_right, copy_all_diffs_to_left,
@@ -32,8 +44,10 @@ use app::{
     start_three_way_compare, switch_tab, toggle_bookmark, toggle_ignore_case,
     toggle_ignore_whitespace, undo,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use slint::{ModelRc, SharedString, VecModel};
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -1501,6 +1515,7 @@ fn main() {
     window.run().unwrap();
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn sync_recent_entries(window: &MainWindow, settings: &settings::AppSettings) {
     let entries: Vec<RecentEntryData> = settings
         .recent_files
