@@ -32,6 +32,12 @@
             window.dispatchEvent(new Event("resize"));
         });
         observer.observe(canvas, { attributes: true, attributeFilter: ["style"] });
-    </script>
+
+        // Clipboard shim: called from Rust via wasm-bindgen extern "C"
+        // Avoids web_sys_unstable_apis which breaks softbuffer compilation.
+        function winxReadClipboard() {
+            return navigator.clipboard.readText();
+        }
+</script>
 </body>
 </html>

@@ -6593,6 +6593,7 @@ dependencies = [
  "dirs",
  "encoding_rs",
  "image",
+ "js-sys",
  "open",
  "regex",
  "rfd",

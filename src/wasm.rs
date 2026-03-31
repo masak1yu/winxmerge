@@ -2,11 +2,19 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
+use js_sys::Promise;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::diff::engine::{DiffOptions, compute_diff_with_options};
 use crate::models::diff_line::LineStatus;
+
+// Clipboard shim defined in index.html — avoids web_sys_unstable_apis which
+// breaks softbuffer when that cfg flag is active.
+#[wasm_bindgen]
+extern "C" {
+    fn winxReadClipboard() -> Promise;
+}
 
 fn compute_stats(result: &crate::models::diff_line::DiffResult) -> (i32, i32, i32) {
     let mut added = 0i32;
@@ -24,13 +32,10 @@ fn compute_stats(result: &crate::models::diff_line::DiffResult) -> (i32, i32, i3
 }
 
 /// Read text from the clipboard and call callback with the text.
+/// Uses a JS shim (winxReadClipboard) defined in index.html to avoid
+/// depending on web_sys_unstable_apis.
 fn paste_from_clipboard(callback: impl Fn(String) + 'static) {
-    let window = match web_sys::window() {
-        Some(w) => w,
-        None => return,
-    };
-    let clipboard = window.navigator().clipboard();
-    let promise = clipboard.read_text();
+    let promise: Promise = winxReadClipboard();
     wasm_bindgen_futures::spawn_local(async move {
         if let Ok(text_js) = wasm_bindgen_futures::JsFuture::from(promise).await {
             if let Some(text) = text_js.as_string() {

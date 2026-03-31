@@ -2,8 +2,6 @@
 target = "index.html"
 dist = "dist"
 
-[env]
-RUSTFLAGS = "--cfg=web_sys_unstable_apis"
 
 [watch]
 ignore = ["dist", "target"]
