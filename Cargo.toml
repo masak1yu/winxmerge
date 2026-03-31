@@ -1,7 +1,16 @@
 [package]
 name = "winxmerge"
-version = "0.29.0"
+version = "0.31.0"
 edition = "2024"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+# The binary requires the "desktop" feature so that trunk (WASM builds)
+# skips it and falls back to building the cdylib lib target instead.
+[[bin]]
+name = "winxmerge"
+required-features = ["desktop"]
 
 [dependencies]
 slint = "1.15.1"
@@ -46,8 +55,9 @@ wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [
     "Document", "Element", "EventTarget",
     "HtmlInputElement", "File", "FileList", "Blob",
-    "Event", "Window",
+    "Event", "Window", "console",
 ] }
+console_error_panic_hook = "0.1"
 
 [build-dependencies]
 slint-build = "1.15.1"
@@ -56,6 +66,8 @@ winres = { version = "0.1", optional = true }
 [features]
 # Enable on Windows builds to embed the .ico into the executable
 embed-icon = ["winres"]
+# Required to build the native desktop binary (not used for WASM/trunk builds)
+desktop = []
 
 [package.metadata.bundle]
 name = "WinXMerge"
@@ -63,7 +75,7 @@ identifier = "io.github.masak1yu.winxmerge"
 icon = ["assets/icons/app-icon-32.png", "assets/icons/app-icon-64.png",
         "assets/icons/app-icon-128.png", "assets/icons/app-icon-256.png",
         "assets/icons/app-icon-512.png", "assets/icons/app-icon.icns"]
-version = "0.29.0"
+version = "0.31.0"
 copyright = "WinXMerge contributors"
 category = "Developer Tool"
 short_description = "Cross-platform file diff and merge tool"
