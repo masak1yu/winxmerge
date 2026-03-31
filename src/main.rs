@@ -28,9 +28,10 @@ use std::cell::{Cell, RefCell};
 #[cfg(not(target_arch = "wasm32"))]
 use std::rc::Rc;
 
-// WASM entry point is in src/wasm.rs via #[wasm_bindgen(start)]
 #[cfg(target_arch = "wasm32")]
-fn main() {}
+fn main() {
+    wasm::run();
+}
 
 #[cfg(not(target_arch = "wasm32"))]
 use app::{

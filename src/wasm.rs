@@ -1,12 +1,9 @@
-use slint::{ModelRc, SharedString, VecModel};
-use wasm_bindgen::prelude::*;
+use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use crate::diff::engine::{DiffOptions, compute_diff_with_options};
 use crate::models::diff_line::LineStatus;
 
-slint::include_modules!();
-
-fn build_diff_line_data(result: &crate::models::diff_line::DiffResult) -> Vec<DiffLineData> {
+fn build_diff_line_data(result: &crate::models::diff_line::DiffResult) -> Vec<crate::DiffLineData> {
     result
         .lines
         .iter()
@@ -34,7 +31,7 @@ fn build_diff_line_data(result: &crate::models::diff_line::DiffResult) -> Vec<Di
             let left_word_diff = encode_word_diff(&line.left_word_segments);
             let right_word_diff = encode_word_diff(&line.right_word_segments);
 
-            DiffLineData {
+            crate::DiffLineData {
                 left_line_no: SharedString::from(
                     line.left_line_no.map(|n| n.to_string()).unwrap_or_default(),
                 ),
@@ -75,9 +72,8 @@ fn encode_word_diff(segments: &[crate::models::diff_line::WordDiffSegment]) -> S
         .collect()
 }
 
-#[wasm_bindgen(start)]
-pub fn main() {
-    let window = WasmApp::new().unwrap();
+pub fn run() {
+    let window = crate::WasmApp::new().unwrap();
 
     let window_weak = window.as_weak();
     window.on_compare(move || {
