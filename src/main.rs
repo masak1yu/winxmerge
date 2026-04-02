@@ -38,16 +38,17 @@ use app::{
     copy_to_left, copy_to_right, delete_line, discard_and_proceed, edit_line, export_all_comments,
     export_csv_report, export_folder_html_report, export_html_report, export_patch,
     export_xlsx_report, first_diff, folder_copy_to_left, folder_copy_to_right, folder_delete_item,
-    goto_line, insert_line_after, last_diff, navigate_bookmark, navigate_conflict, navigate_diff,
-    navigate_diff_by_status, navigate_search, new_blank_table, new_blank_table_3way,
+    force_close_tab, goto_line, insert_line_after, last_diff, navigate_bookmark, navigate_conflict,
+    navigate_diff, navigate_diff_by_status, navigate_search, new_blank_table, new_blank_table_3way,
     new_blank_text, new_blank_text_3way, open_file_dialog, open_folder_dialog, open_folder_item,
     open_in_editor, paste_clipboard_path_left, paste_clipboard_path_right, preview_folder_item,
-    print_diff, redo, reorder_tab, replace_all_text, replace_text, rescan,
-    resolve_conflict_use_left, resolve_conflict_use_right, run_diff, run_folder_compare,
-    run_plugin, save_file, search_text, select_diff, set_diff_comment, set_diff_filter,
-    set_row_selection, sort_folder, start_compare, start_three_way_compare, switch_tab,
-    three_way_delete_line, three_way_edit_line, three_way_insert_line_after, toggle_bookmark,
-    toggle_ignore_case, toggle_ignore_whitespace, undo,
+    print_diff, redo, reorder_tab, replace_all_text, replace_text, rescan, resolve_all_use_left,
+    resolve_all_use_right, resolve_conflict_use_left, resolve_conflict_use_right,
+    resolve_use_left_and_next, resolve_use_right_and_next, run_diff, run_folder_compare,
+    run_plugin, save_file, save_three_way_pane, search_text, select_diff, set_diff_comment,
+    set_diff_filter, set_row_selection, sort_folder, start_compare, start_three_way_compare,
+    switch_tab, three_way_delete_line, three_way_edit_line, three_way_insert_line_after,
+    toggle_bookmark, toggle_ignore_case, toggle_ignore_whitespace, undo,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use slint::{Model, ModelRc, SharedString, VecModel};
@@ -343,6 +344,44 @@ fn main() {
         window.on_close_tab(move |idx| {
             let window = window_weak.unwrap();
             close_tab(&window, &mut state.borrow_mut(), idx);
+        });
+    }
+
+    // Tab close: save then close
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_tab_close_save(move || {
+            let window = window_weak.unwrap();
+            let idx = window.get_tab_close_target_index();
+            window.set_show_tab_close_confirm(false);
+            let mut s = state.borrow_mut();
+            // Switch to target tab so save_file operates on it
+            let prev_active = s.active_tab;
+            s.active_tab = idx as usize;
+            save_file(&window, &mut s, true);
+            save_file(&window, &mut s, false);
+            if let Some(tab) = s.tabs.get_mut(idx as usize) {
+                tab.has_unsaved_changes = false;
+            }
+            s.active_tab = prev_active;
+            force_close_tab(&window, &mut s, idx);
+        });
+    }
+
+    // Tab close: discard and close
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_tab_close_discard(move || {
+            let window = window_weak.unwrap();
+            let idx = window.get_tab_close_target_index();
+            window.set_show_tab_close_confirm(false);
+            let mut s = state.borrow_mut();
+            if let Some(tab) = s.tabs.get_mut(idx as usize) {
+                tab.has_unsaved_changes = false;
+            }
+            force_close_tab(&window, &mut s, idx);
         });
     }
 
@@ -669,7 +708,12 @@ fn main() {
         let state = state.clone();
         window.on_save_left(move || {
             let window = window_weak.unwrap();
-            save_file(&window, &mut state.borrow_mut(), true);
+            let mut s = state.borrow_mut();
+            if s.current_tab().view_mode == 3 {
+                save_three_way_pane(&window, &mut s, 0);
+            } else {
+                save_file(&window, &mut s, true);
+            }
         });
     }
 
@@ -678,7 +722,21 @@ fn main() {
         let state = state.clone();
         window.on_save_right(move || {
             let window = window_weak.unwrap();
-            save_file(&window, &mut state.borrow_mut(), false);
+            let mut s = state.borrow_mut();
+            if s.current_tab().view_mode == 3 {
+                save_three_way_pane(&window, &mut s, 2);
+            } else {
+                save_file(&window, &mut s, false);
+            }
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_save_base(move || {
+            let window = window_weak.unwrap();
+            save_three_way_pane(&window, &mut state.borrow_mut(), 1);
         });
     }
 
@@ -1079,6 +1137,69 @@ fn main() {
         });
     }
 
+    {
+        let window_weak = window.as_weak();
+        window.on_three_way_move_focus_up(move |row, pane| {
+            let window = window_weak.unwrap();
+            let model = window.get_three_way_lines();
+            if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+                let mut target = row - 1;
+                while target >= 0 {
+                    if let Some(r) = vec_model.row_data(target as usize) {
+                        let has_line_no = match pane {
+                            0 => !r.left_line_no.is_empty(),
+                            1 => !r.base_line_no.is_empty(),
+                            _ => !r.right_line_no.is_empty(),
+                        };
+                        if has_line_no {
+                            break;
+                        }
+                    }
+                    target -= 1;
+                }
+                if target >= 0 {
+                    match pane {
+                        0 => window.set_three_way_edit_focus_left_row(target),
+                        1 => window.set_three_way_edit_focus_base_row(target),
+                        _ => window.set_three_way_edit_focus_right_row(target),
+                    }
+                }
+            }
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        window.on_three_way_move_focus_down(move |row, pane| {
+            let window = window_weak.unwrap();
+            let model = window.get_three_way_lines();
+            if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+                let count = vec_model.row_count() as i32;
+                let mut target = row + 1;
+                while target < count {
+                    if let Some(r) = vec_model.row_data(target as usize) {
+                        let has_line_no = match pane {
+                            0 => !r.left_line_no.is_empty(),
+                            1 => !r.base_line_no.is_empty(),
+                            _ => !r.right_line_no.is_empty(),
+                        };
+                        if has_line_no {
+                            break;
+                        }
+                    }
+                    target += 1;
+                }
+                if target < count {
+                    match pane {
+                        0 => window.set_three_way_edit_focus_left_row(target),
+                        1 => window.set_three_way_edit_focus_base_row(target),
+                        _ => window.set_three_way_edit_focus_right_row(target),
+                    }
+                }
+            }
+        });
+    }
+
     // Apply options
     {
         let window_weak = window.as_weak();
@@ -1182,6 +1303,15 @@ fn main() {
         window.on_row_shift_clicked(move |idx| {
             let window = window_weak.unwrap();
             set_row_selection(&window, &mut state.borrow_mut(), idx, true);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_row_clicked(move |idx| {
+            let window = window_weak.unwrap();
+            set_row_selection(&window, &mut state.borrow_mut(), idx, false);
         });
     }
 
@@ -1399,6 +1529,42 @@ fn main() {
         window.on_use_right(move |idx| {
             let window = window_weak.unwrap();
             resolve_conflict_use_right(&window, &mut state.borrow_mut(), idx);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_use_left_and_next(move || {
+            let window = window_weak.unwrap();
+            resolve_use_left_and_next(&window, &mut state.borrow_mut());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_use_right_and_next(move || {
+            let window = window_weak.unwrap();
+            resolve_use_right_and_next(&window, &mut state.borrow_mut());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_use_all_left(move || {
+            let window = window_weak.unwrap();
+            resolve_all_use_left(&window, &mut state.borrow_mut());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_use_all_right(move || {
+            let window = window_weak.unwrap();
+            resolve_all_use_right(&window, &mut state.borrow_mut());
         });
     }
 
@@ -1661,8 +1827,8 @@ fn main() {
         });
     }
 
-    // Pending save-as queue: each item is (tab_index, is_left, text, encoding)
-    let pending_saves: Rc<RefCell<Vec<(usize, bool, String, String)>>> =
+    // Pending save-as queue: each item is (tab_index, pane: 0=left 1=right 2=base, text, encoding)
+    let pending_saves: Rc<RefCell<Vec<(usize, i32, String, String)>>> =
         Rc::new(RefCell::new(Vec::new()));
 
     // Helper: populate save-as dialog directory listing
@@ -1716,11 +1882,11 @@ fn main() {
                 do_save(&window);
                 let _ = slint::quit_event_loop();
             } else {
-                let (_, is_left, _, _) = pending_saves.borrow()[0].clone();
-                let title = if is_left {
-                    "Save Left File As"
-                } else {
-                    "Save Right File As"
+                let (_, pane, _, _) = pending_saves.borrow()[0].clone();
+                let title = match pane {
+                    0 => "Save Left File As",
+                    2 => "Save Middle File As",
+                    _ => "Save Right File As",
                 };
                 window.set_save_as_title(SharedString::from(title));
                 window.set_save_as_filename(SharedString::from(""));
@@ -1758,25 +1924,30 @@ fn main() {
             let window = window_weak.unwrap();
             let path = std::path::PathBuf::from(path_str.as_str());
             if !path_str.is_empty() {
-                if let Some((tab_idx, is_left, text, enc)) = {
+                if let Some((tab_idx, pane, text, enc)) = {
                     let b = pending_saves.borrow();
                     b.first().cloned()
                 } {
                     let bytes = encode_text(&text, &enc);
                     if fs::write(&path, bytes).is_ok() {
                         let mut s = state.borrow_mut();
-                        if is_left {
-                            s.tabs[tab_idx].left_path = Some(path);
-                        } else {
-                            s.tabs[tab_idx].right_path = Some(path);
+                        match pane {
+                            0 => s.tabs[tab_idx].left_path = Some(path),
+                            2 => s.tabs[tab_idx].base_path = Some(path),
+                            _ => s.tabs[tab_idx].right_path = Some(path),
                         }
-                        // Check if this tab is now fully saved (both sides have paths)
-                        if s.tabs[tab_idx].left_path.is_some()
-                            && s.tabs[tab_idx].right_path.is_some()
-                        {
+                        // Check if this tab is now fully saved (all sides have paths)
+                        let all_saved = if s.tabs[tab_idx].view_mode == 3 {
+                            s.tabs[tab_idx].left_path.is_some()
+                                && s.tabs[tab_idx].base_path.is_some()
+                                && s.tabs[tab_idx].right_path.is_some()
+                        } else {
+                            s.tabs[tab_idx].left_path.is_some()
+                                && s.tabs[tab_idx].right_path.is_some()
+                        };
+                        if all_saved {
                             s.tabs[tab_idx].has_unsaved_changes = false;
                         }
-                        // Check if there are still unsaved tabs remaining
                         let still_unsaved = s.tabs.iter().any(|t| t.has_unsaved_changes);
                         window.set_has_unsaved_changes(still_unsaved);
                     }

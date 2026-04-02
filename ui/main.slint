@@ -222,8 +222,10 @@ export component MainWindow inherits Window {
 
     // Detail pane: current diff block lines with word-diff segment highlighting
     in property <[DetailLineData]> detail-left-lines: [];
+    in property <[DetailLineData]> detail-base-lines: [];
     in property <[DetailLineData]> detail-right-lines: [];
     in-out property <length> detail-left-scroll-y: 0px;
+    in-out property <length> detail-base-scroll-y: 0px;
     in-out property <length> detail-right-scroll-y: 0px;
     in-out property <bool> show-detail-pane: true;
     in-out property <length> detail-pane-height: 180px;
@@ -231,6 +233,7 @@ export component MainWindow inherits Window {
     in-out property <float> detail-inner-split: 0.5;
     // Explicitly set from Rust when detail lines change (avoids model-length reactivity issues)
     in-out property <bool> detail-has-left: false;
+    in-out property <bool> detail-has-base: false;
     in-out property <bool> detail-has-right: false;
     property <bool> detail-has-both: detail-has-left && detail-has-right;
     // Available height for content panes (total minus comment row, minus inner handle if both shown)
@@ -258,6 +261,7 @@ export component MainWindow inherits Window {
     callback select-diff(int);
     callback save-left();
     callback save-right();
+    callback save-base();
     callback folder-item-double-clicked(int);
     callback back-to-folder-view();
     callback toggle-ignore-whitespace();
@@ -299,6 +303,8 @@ export component MainWindow inherits Window {
     callback three-way-edit-line(/* row */ int, /* text */ string, /* pane */ int);
     callback three-way-insert-line-after(/* row */ int, /* pane */ int);
     callback three-way-delete-line(/* row */ int, /* pane */ int);
+    callback three-way-move-focus-up(/* row */ int, /* pane */ int);
+    callback three-way-move-focus-down(/* row */ int, /* pane */ int);
     callback open-recent(int);
     callback goto-line(int);
     callback toggle-bookmark(int);
@@ -330,7 +336,8 @@ export component MainWindow inherits Window {
     callback copy-all-diffs-right();
     callback copy-all-diffs-left();
 
-    // Multi-line selection copy
+    // Multi-line selection
+    callback row-clicked(int);
     callback row-shift-clicked(int);
     callback copy-selection-right();
     callback copy-selection-left();
@@ -352,7 +359,17 @@ export component MainWindow inherits Window {
     callback prev-conflict();
     callback use-left(int);
     callback use-right(int);
+    callback use-left-and-next();
+    callback use-right-and-next();
+    callback use-all-left();
+    callback use-all-right();
     callback apply-options();
+
+    // Tab close with save check
+    in-out property <bool> show-tab-close-confirm: false;
+    in-out property <int> tab-close-target-index: -1;
+    callback tab-close-save();
+    callback tab-close-discard();
 
     // File browser dialog (WSL2-safe Browse fallback)
     in-out property <bool> file-browser-visible: false;
@@ -556,6 +573,7 @@ export component MainWindow inherits Window {
             MenuItem { title: @tr("Open Right Folder..."); activated => { root.request-action(4); } }
             MenuSeparator {}
             MenuItem { title: @tr("Save Left"); enabled: root.has-unsaved-changes; activated => { root.save-left(); } }
+            MenuItem { title: @tr("Save Middle"); enabled: root.has-unsaved-changes && root.view-mode == 3; activated => { root.save-base(); } }
             MenuItem { title: @tr("Save Right"); enabled: root.has-unsaved-changes; activated => { root.save-right(); } }
             MenuSeparator {}
             MenuItem { title: @tr("Open Left in Editor"); enabled: root.left-path != ""; activated => { root.open-left-in-editor(); } }
@@ -722,8 +740,7 @@ export component MainWindow inherits Window {
                 tb-back.is-hovered ? @tr("< Back") :
                 tb-open-l.is-hovered ? @tr("Open Left File...") :
                 tb-open-r.is-hovered ? @tr("Open Right File...") :
-                tb-save-l.is-hovered ? @tr("Save Left") :
-                tb-save-r.is-hovered ? @tr("Save Right") :
+                tb-save.is-hovered ? @tr("Save...") :
                 tb-undo.is-hovered ? @tr("Undo") :
                 tb-redo.is-hovered ? @tr("Redo") :
                 tb-rescan.is-hovered ? @tr("Rescan (F5)") :
@@ -811,13 +828,71 @@ export component MainWindow inherits Window {
 
                 ToolSep {}
 
-                tb-save-l := ToolBtn { icon: @image-url("icons/save.svg"); overlay: "L"; visible: root.view-mode == 0; btn-enabled: root.has-unsaved-changes; clicked => { root.save-left(); } }
-                tb-save-r := ToolBtn { icon: @image-url("icons/save.svg"); overlay: "R"; visible: root.view-mode == 0; btn-enabled: root.has-unsaved-changes; clicked => { root.save-right(); } }
+                tb-save := ToolBtn { icon: @image-url("icons/save.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.has-unsaved-changes; clicked => { save-popup.show(); } }
+                // Dropdown ▼ for save target selection
+                Rectangle {
+                    width: 14px;
+                    height: 32px;
+                    visible: root.view-mode == 0 || root.view-mode == 3;
+                    border-radius: 3px;
+                    background: save-dd-ta.has-hover ? Palette.background.darker(0.12) : transparent;
+                    opacity: root.has-unsaved-changes ? 1.0 : 0.35;
+                    Text {
+                        text: "▾";
+                        font-size: 10px;
+                        color: Palette.foreground;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    save-dd-ta := TouchArea {
+                        enabled: root.has-unsaved-changes;
+                        clicked => { save-popup.show(); }
+                    }
+                    save-popup := PopupWindow {
+                        x: -32px;
+                        y: 32px;
+                        width: 130px;
+                        height: root.view-mode == 3 ? 90px : 60px;
+                        Rectangle {
+                            background: Palette.background;
+                            border-color: Palette.border;
+                            border-width: 1px;
+                            border-radius: 4px;
+                            drop-shadow-blur: 8px;
+                            drop-shadow-color: #00000030;
+                            VerticalLayout {
+                                padding: 4px;
+                                spacing: 2px;
+                                Rectangle {
+                                    height: 26px;
+                                    border-radius: 3px;
+                                    background: save-l-ta.has-hover ? Palette.background.darker(0.1) : transparent;
+                                    Text { text: @tr("Save Left"); font-size: 12px; color: Palette.foreground; x: 10px; vertical-alignment: center; }
+                                    save-l-ta := TouchArea { clicked => { root.save-left(); } }
+                                }
+                                if root.view-mode == 3 : Rectangle {
+                                    height: 26px;
+                                    border-radius: 3px;
+                                    background: save-m-ta.has-hover ? Palette.background.darker(0.1) : transparent;
+                                    Text { text: @tr("Save Middle"); font-size: 12px; color: Palette.foreground; x: 10px; vertical-alignment: center; }
+                                    save-m-ta := TouchArea { clicked => { root.save-base(); } }
+                                }
+                                Rectangle {
+                                    height: 26px;
+                                    border-radius: 3px;
+                                    background: save-r-ta.has-hover ? Palette.background.darker(0.1) : transparent;
+                                    Text { text: @tr("Save Right"); font-size: 12px; color: Palette.foreground; x: 10px; vertical-alignment: center; }
+                                    save-r-ta := TouchArea { clicked => { root.save-right(); } }
+                                }
+                            }
+                        }
+                    }
+                }
 
-                sep-save := ToolSep { visible: root.view-mode == 0; }
+                sep-save := ToolSep { visible: root.view-mode == 0 || root.view-mode == 3; }
 
-                tb-undo := ToolBtn { icon: @image-url("icons/undo.svg"); visible: root.view-mode == 0; clicked => { root.undo(); } }
-                tb-redo := ToolBtn { icon: @image-url("icons/redo.svg"); visible: root.view-mode == 0; clicked => { root.redo(); } }
+                tb-undo := ToolBtn { icon: @image-url("icons/undo.svg"); visible: root.view-mode == 0 || root.view-mode == 3; clicked => { root.undo(); } }
+                tb-redo := ToolBtn { icon: @image-url("icons/redo.svg"); visible: root.view-mode == 0 || root.view-mode == 3; clicked => { root.redo(); } }
 
                 ToolSep {}
 
@@ -826,19 +901,19 @@ export component MainWindow inherits Window {
 
                 ToolSep {}
 
-                tb-first := ToolBtn { icon: @image-url("icons/first.svg"); visible: root.view-mode == 0; btn-enabled: root.diff-count > 0; clicked => { root.first-diff(); } }
-                tb-prev := ToolBtn { icon: @image-url("icons/prev.svg"); visible: root.view-mode == 0; btn-enabled: root.diff-count > 0; clicked => { root.prev-diff(); } }
-                tb-next := ToolBtn { icon: @image-url("icons/next.svg"); visible: root.view-mode == 0; btn-enabled: root.diff-count > 0; clicked => { root.next-diff(); } }
-                tb-last := ToolBtn { icon: @image-url("icons/last.svg"); visible: root.view-mode == 0; btn-enabled: root.diff-count > 0; clicked => { root.last-diff(); } }
+                tb-first := ToolBtn { icon: @image-url("icons/first.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { root.first-diff(); } }
+                tb-prev := ToolBtn { icon: @image-url("icons/prev.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.prev-conflict(); } else { root.prev-diff(); } } }
+                tb-next := ToolBtn { icon: @image-url("icons/next.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.next-conflict(); } else { root.next-diff(); } } }
+                tb-last := ToolBtn { icon: @image-url("icons/last.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { root.last-diff(); } }
 
-                sep-nav := ToolSep { visible: root.view-mode == 0; }
+                sep-nav := ToolSep { visible: root.view-mode == 0 || root.view-mode == 3; }
 
-                tb-copy-r := ToolBtn { icon: @image-url("icons/copy-right.svg"); visible: root.view-mode == 0; btn-enabled: root.current-diff-index >= 0; clicked => { root.copy-to-right(root.current-diff-index); } }
-                tb-copy-l := ToolBtn { icon: @image-url("icons/copy-left.svg"); visible: root.view-mode == 0; btn-enabled: root.current-diff-index >= 0; clicked => { root.copy-to-left(root.current-diff-index); } }
-                tb-copy-r-next := ToolBtn { icon: @image-url("icons/copy-right-next.svg"); visible: root.view-mode == 0; btn-enabled: root.current-diff-index >= 0; clicked => { root.copy-right-and-next(); } }
-                tb-copy-l-next := ToolBtn { icon: @image-url("icons/copy-left-next.svg"); visible: root.view-mode == 0; btn-enabled: root.current-diff-index >= 0; clicked => { root.copy-left-and-next(); } }
-                tb-all-r := ToolBtn { icon: @image-url("icons/copy-all-right.svg"); visible: root.view-mode == 0; btn-enabled: root.diff-count > 0; clicked => { root.copy-all-diffs-right(); } }
-                tb-all-l := ToolBtn { icon: @image-url("icons/copy-all-left.svg"); visible: root.view-mode == 0; btn-enabled: root.diff-count > 0; clicked => { root.copy-all-diffs-left(); } }
+                tb-copy-r := ToolBtn { icon: @image-url("icons/copy-right.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 3 { root.use-left(root.current-conflict-index); } else { root.copy-to-right(root.current-diff-index); } } }
+                tb-copy-l := ToolBtn { icon: @image-url("icons/copy-left.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 3 { root.use-right(root.current-conflict-index); } else { root.copy-to-left(root.current-diff-index); } } }
+                tb-copy-r-next := ToolBtn { icon: @image-url("icons/copy-right-next.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 3 { root.use-left-and-next(); } else { root.copy-right-and-next(); } } }
+                tb-copy-l-next := ToolBtn { icon: @image-url("icons/copy-left-next.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 3 { root.use-right-and-next(); } else { root.copy-left-and-next(); } } }
+                tb-all-r := ToolBtn { icon: @image-url("icons/copy-all-right.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.use-all-left(); } else { root.copy-all-diffs-right(); } } }
+                tb-all-l := ToolBtn { icon: @image-url("icons/copy-all-left.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.use-all-right(); } else { root.copy-all-diffs-left(); } } }
 
                 ToolSep {}
 
@@ -1004,8 +1079,8 @@ export component MainWindow inherits Window {
             scroll-y <=> root.diff-scroll-y;
             edit-focus-row <=> root.diff-edit-focus-row;
             edit-focus-right-row <=> root.diff-edit-focus-right-row;
-            left-title: root.left-path != "" ? root.left-path : @tr("Left file");
-            right-title: root.right-path != "" ? root.right-path : @tr("Right file");
+            left-title: root.left-path != "" ? root.left-path : "Left";
+            right-title: root.right-path != "" ? root.right-path : "Right";
             context-menu-enabled: root.opt-enable-context-menu;
             show-line-numbers: root.opt-show-line-numbers;
             show-location-pane: root.show-location-pane;
@@ -1030,6 +1105,7 @@ export component MainWindow inherits Window {
             delete-line(idx, is-left) => { root.delete-line(idx, is-left); }
             move-focus-up(idx, is-left) => { root.move-focus-up(idx, is-left); }
             move-focus-down(idx, is-left) => { root.move-focus-down(idx, is-left); }
+            drag-select-start(idx) => { root.row-clicked(idx); }
             row-shift-clicked(idx) => { root.row-shift-clicked(idx); }
             copy-selection-to-right => { root.copy-selection-right(); }
             copy-selection-to-left => { root.copy-selection-left(); }
@@ -1114,10 +1190,11 @@ export component MainWindow inherits Window {
         if root.view-mode == 3 : DiffView3Way {
             lines: root.three-way-lines;
             current-conflict-index: root.current-conflict-index;
-            left-title: root.left-path != "" ? root.left-path : @tr("Left (Mine)");
-            base-title: root.base-path != "" ? root.base-path : @tr("Base");
-            right-title: root.right-path != "" ? root.right-path : @tr("Right (Theirs)");
+            left-title: root.left-path != "" ? root.left-path : "Left";
+            base-title: root.base-path != "" ? root.base-path : "Middle";
+            right-title: root.right-path != "" ? root.right-path : "Right";
             show-line-numbers: root.opt-show-line-numbers;
+            show-location-pane: root.show-location-pane;
             editor-font-size: root.opt-font-size;
             inline-edit-enabled: root.opt-inline-edit;
             edit-focus-left-row <=> root.three-way-edit-focus-left-row;
@@ -1130,6 +1207,8 @@ export component MainWindow inherits Window {
             edit-text-changed(row, text, pane) => { root.three-way-edit-line(row, text, pane); }
             insert-line-after(row, pane) => { root.three-way-insert-line-after(row, pane); }
             delete-line(row, pane) => { root.three-way-delete-line(row, pane); }
+            move-focus-up(row, pane) => { root.three-way-move-focus-up(row, pane); }
+            move-focus-down(row, pane) => { root.three-way-move-focus-down(row, pane); }
         }
 
         // Excel compare view
@@ -1153,8 +1232,8 @@ export component MainWindow inherits Window {
             diff-image: root.diff-image;
             overlay-image: root.overlay-image;
             stats: root.image-stats;
-            left-title: root.left-path != "" ? root.left-path : @tr("Left");
-            right-title: root.right-path != "" ? root.right-path : @tr("Right");
+            left-title: root.left-path != "" ? root.left-path : "Left";
+            right-title: root.right-path != "" ? root.right-path : "Right";
             left-image-width: root.image-left-width;
             left-image-height: root.image-left-height;
             right-image-width: root.image-right-width;
@@ -1218,7 +1297,7 @@ export component MainWindow inherits Window {
                             background: ThemeColors.removed-bg;
                             Text {
                                 x: 4px;
-                                text: "left";
+                                text: "Left";
                                 font-size: 10px;
                                 font-weight: 600;
                                 color: ThemeColors.removed-fg;
@@ -1300,7 +1379,7 @@ export component MainWindow inherits Window {
                             background: ThemeColors.added-bg;
                             Text {
                                 x: 4px;
-                                text: "right";
+                                text: "Right";
                                 font-size: 10px;
                                 font-weight: 600;
                                 color: ThemeColors.added-fg;
@@ -1358,6 +1437,183 @@ export component MainWindow inherits Window {
                             placeholder-text: @tr("Add a note for this diff block...");
                             font-size: 11px;
                             edited(t) => { root.diff-comment-changed(t); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3-way detail pane resize handle
+        if root.show-detail-pane && root.view-mode == 3 && root.current-conflict-index >= 0 : Rectangle {
+            height: 5px;
+            background: transparent;
+            Rectangle {
+                y: 2px;
+                height: 1px;
+                background: Palette.border;
+            }
+            TouchArea {
+                property <length> drag-start-y;
+                property <length> drag-start-height;
+                moved => {
+                    root.detail-pane-height = Math.clamp(
+                        drag-start-height - (self.mouse-y - drag-start-y),
+                        60px,
+                        400px
+                    );
+                }
+                pointer-event(ev) => {
+                    if ev.kind == PointerEventKind.down {
+                        drag-start-y = self.mouse-y;
+                        drag-start-height = root.detail-pane-height;
+                    }
+                }
+            }
+        }
+
+        // 3-way detail pane (top=left, middle=base, bottom=right — vertical stack)
+        if root.show-detail-pane && root.view-mode == 3 && root.current-conflict-index >= 0 : Rectangle {
+            height: root.detail-pane-height;
+            background: Palette.background;
+            border-color: Palette.border;
+            border-width: 1px;
+
+            property <int> three-way-detail-panel-count:
+                (root.detail-has-left ? 1 : 0) + (root.detail-has-base ? 1 : 0) + (root.detail-has-right ? 1 : 0);
+            property <length> three-way-detail-panel-height:
+                three-way-detail-panel-count > 0
+                    ? (root.detail-pane-height - 2px) / three-way-detail-panel-count
+                    : 0px;
+
+            VerticalLayout {
+                spacing: 0;
+
+                // Left (top) panel
+                if root.detail-has-left : Rectangle {
+                    height: three-way-detail-panel-height;
+                    border-color: Palette.border;
+                    border-width: 1px;
+                    clip: true;
+                    VerticalLayout {
+                        spacing: 0;
+                        Rectangle {
+                            height: 14px;
+                            background: ThemeColors.added-bg;
+                            Text {
+                                x: 4px;
+                                text: "Left";
+                                font-size: 10px;
+                                font-weight: 600;
+                                color: ThemeColors.added-fg;
+                                vertical-alignment: center;
+                            }
+                        }
+                        ListView {
+                            viewport-y: root.detail-left-scroll-y;
+                            for line in root.detail-left-lines: Rectangle {
+                                height: (root.opt-font-size + 2) * 1px;
+                                background: line.status == 4 ? ThemeColors.removed-bg-current :
+                                            line.status == 3 ? ThemeColors.modified-bg-current :
+                                            ThemeColors.added-bg-current;
+                                HorizontalLayout {
+                                    spacing: 0;
+                                    alignment: start;
+                                    padding-left: 4px;
+                                    for seg in line.segments: Text {
+                                        text: seg.text;
+                                        font-size: root.opt-font-size * 1px;
+                                        font-family: "monospace";
+                                        color: Palette.foreground;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Base (middle) panel
+                if root.detail-has-base : Rectangle {
+                    height: three-way-detail-panel-height;
+                    border-color: Palette.border;
+                    border-width: 1px;
+                    clip: true;
+                    VerticalLayout {
+                        spacing: 0;
+                        Rectangle {
+                            height: 14px;
+                            background: Palette.background.darker(0.08);
+                            Text {
+                                x: 4px;
+                                text: "Middle";
+                                font-size: 10px;
+                                font-weight: 600;
+                                color: Palette.foreground.transparentize(0.3);
+                                vertical-alignment: center;
+                            }
+                        }
+                        ListView {
+                            viewport-y: root.detail-base-scroll-y;
+                            for line in root.detail-base-lines: Rectangle {
+                                height: (root.opt-font-size + 2) * 1px;
+                                background: Palette.background.darker(0.04);
+                                HorizontalLayout {
+                                    spacing: 0;
+                                    alignment: start;
+                                    padding-left: 4px;
+                                    for seg in line.segments: Text {
+                                        text: seg.text;
+                                        font-size: root.opt-font-size * 1px;
+                                        font-family: "monospace";
+                                        color: Palette.foreground;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Right (bottom) panel
+                if root.detail-has-right : Rectangle {
+                    height: three-way-detail-panel-height;
+                    border-color: Palette.border;
+                    border-width: 1px;
+                    clip: true;
+                    VerticalLayout {
+                        spacing: 0;
+                        Rectangle {
+                            height: 14px;
+                            background: ThemeColors.added-bg;
+                            Text {
+                                x: 4px;
+                                text: "Right";
+                                font-size: 10px;
+                                font-weight: 600;
+                                color: ThemeColors.added-fg;
+                                vertical-alignment: center;
+                            }
+                        }
+                        ListView {
+                            viewport-y: root.detail-right-scroll-y;
+                            for line in root.detail-right-lines: Rectangle {
+                                height: (root.opt-font-size + 2) * 1px;
+                                background: line.status == 4 ? ThemeColors.removed-bg-current :
+                                            line.status == 3 ? ThemeColors.modified-bg-current :
+                                            ThemeColors.added-bg-current;
+                                HorizontalLayout {
+                                    spacing: 0;
+                                    alignment: start;
+                                    padding-left: 4px;
+                                    for seg in line.segments: Text {
+                                        text: seg.text;
+                                        font-size: root.opt-font-size * 1px;
+                                        font-family: "monospace";
+                                        color: Palette.foreground;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1861,6 +2117,63 @@ export component MainWindow inherits Window {
                     Button {
                         text: @tr("Cancel");
                         clicked => { root.show-quit-confirm = false; }
+                    }
+                }
+            }
+        }
+    }
+
+    // Tab close confirm dialog
+    if root.show-tab-close-confirm : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000060;
+
+        Rectangle {
+            width: Math.min(400px, parent.width - 48px);
+            height: dlg-tab-close.preferred-height + 32px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Palette.background;
+            border-radius: 8px;
+            border-color: Palette.border;
+            border-width: 1px;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000040;
+
+            dlg-tab-close := VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+
+                Text {
+                    text: @tr("Unsaved Changes");
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: Palette.foreground;
+                }
+                Rectangle { height: 1px; background: Palette.border; }
+                Text {
+                    text: @tr("This tab has unsaved changes. What would you like to do?");
+                    font-size: 13px;
+                    color: Palette.foreground;
+                    wrap: word-wrap;
+                    width: parent.width - 40px;
+                }
+                Rectangle { height: 1px; background: Palette.border; }
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    Button {
+                        text: @tr("Save(S)");
+                        clicked => { root.tab-close-save(); }
+                    }
+                    Button {
+                        text: @tr("Don't Save(D)");
+                        clicked => { root.tab-close-discard(); }
+                    }
+                    Button {
+                        text: @tr("Cancel");
+                        clicked => { root.show-tab-close-confirm = false; }
                     }
                 }
             }

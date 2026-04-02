@@ -10,7 +10,7 @@ use crate::archive::{compare_zip_archives, is_zip_bytes, is_zip_path};
 use crate::csv::{compare_csv, is_csv_path};
 use crate::diff::engine::{DiffOptions, compute_diff_with_options};
 use crate::diff::folder::{FolderCompareOptions, compare_folders_with_options};
-use crate::diff::three_way::{ThreeWayStatus, compute_three_way_diff};
+use crate::diff::three_way::{ThreeWayResult, ThreeWayStatus, compute_three_way_diff};
 use crate::encoding::{decode_file, detect_eol, encode_text, is_binary};
 use crate::excel::{compare_excel, is_excel_path};
 use crate::highlight::{detect_file_type, highlight_lines};
@@ -60,6 +60,7 @@ pub struct TabState {
     pub current_diff: i32,
     pub left_lines: Vec<String>,
     pub right_lines: Vec<String>,
+    pub base_lines: Vec<String>,
     pub has_unsaved_changes: bool,
     // True after any inline edit; cleared on rescan/compare
     pub editing_dirty: bool,
@@ -71,6 +72,7 @@ pub struct TabState {
     pub folder_items: Vec<crate::models::folder_item::FolderItem>,
     pub left_encoding: String,
     pub right_encoding: String,
+    pub base_encoding: String,
     pub left_eol_type: String,
     pub right_eol_type: String,
     pub diff_options: DiffOptions,
@@ -131,6 +133,7 @@ impl TabState {
             current_diff: -1,
             left_lines: Vec::new(),
             right_lines: Vec::new(),
+            base_lines: Vec::new(),
             has_unsaved_changes: false,
             editing_dirty: false,
             undo_stack: Vec::new(),
@@ -140,6 +143,7 @@ impl TabState {
             folder_items: Vec::new(),
             left_encoding: "UTF-8".to_string(),
             right_encoding: "UTF-8".to_string(),
+            base_encoding: "UTF-8".to_string(),
             left_eol_type: String::new(),
             right_eol_type: String::new(),
             diff_options: DiffOptions::default(),
@@ -223,6 +227,21 @@ pub fn add_tab(window: &MainWindow, state: &mut AppState) {
 }
 
 pub fn close_tab(window: &MainWindow, state: &mut AppState, index: i32) {
+    if index < 0 || index as usize >= state.tabs.len() || state.tabs.len() <= 1 {
+        return;
+    }
+    let idx = index as usize;
+    // Check for unsaved changes — show confirm dialog if dirty
+    if state.tabs[idx].has_unsaved_changes {
+        window.set_tab_close_target_index(index);
+        window.set_show_tab_close_confirm(true);
+        return;
+    }
+    force_close_tab(window, state, index);
+}
+
+/// Close tab without checking unsaved changes (used after dialog confirm).
+pub fn force_close_tab(window: &MainWindow, state: &mut AppState, index: i32) {
     if index < 0 || index as usize >= state.tabs.len() || state.tabs.len() <= 1 {
         return;
     }
@@ -1343,15 +1362,18 @@ pub fn rebuild_right_from_data(data: &[DiffLineData]) -> String {
 pub fn collect_pending_saves(
     window: &MainWindow,
     state: &mut AppState,
-) -> Vec<(usize, bool, String, String)> {
+) -> Vec<(usize, i32, String, String)> {
     // Sync current tab's live model data into tab state first
-    let model = window.get_diff_lines();
-    if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        let tab = state.current_tab_mut();
-        tab.diff_line_data.clear();
-        for i in 0..vec_model.row_count() {
-            if let Some(row) = vec_model.row_data(i) {
-                tab.diff_line_data.push(row);
+    let current_view_mode = state.current_tab().view_mode;
+    if current_view_mode == 0 {
+        let model = window.get_diff_lines();
+        if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+            let tab = state.current_tab_mut();
+            tab.diff_line_data.clear();
+            for i in 0..vec_model.row_count() {
+                if let Some(row) = vec_model.row_data(i) {
+                    tab.diff_line_data.push(row);
+                }
             }
         }
     }
@@ -1362,30 +1384,66 @@ pub fn collect_pending_saves(
         if !state.tabs[i].has_unsaved_changes {
             continue;
         }
-        let left_path = state.tabs[i].left_path.clone();
-        let left_enc = state.tabs[i].left_encoding.clone();
-        let left_text = rebuild_left_from_data(&state.tabs[i].diff_line_data);
-        if let Some(path) = left_path {
-            let bytes = encode_text(&left_text, &left_enc);
-            let _ = fs::write(path, bytes);
-        } else if !left_text.trim().is_empty() {
-            queue.push((i, true, left_text, left_enc));
-        }
-        let right_path = state.tabs[i].right_path.clone();
-        let right_enc = state.tabs[i].right_encoding.clone();
-        let right_text = rebuild_right_from_data(&state.tabs[i].diff_line_data);
-        if let Some(path) = right_path {
-            let bytes = encode_text(&right_text, &right_enc);
-            let _ = fs::write(path, bytes);
-        } else if !right_text.trim().is_empty() {
-            queue.push((i, false, right_text, right_enc));
-        }
-        // Only clear unsaved flag if both sides were actually saved (have paths)
-        if state.tabs[i].left_path.is_some() && state.tabs[i].right_path.is_some() {
-            state.tabs[i].has_unsaved_changes = false;
+
+        if state.tabs[i].view_mode == 3 {
+            // 3-way tab: save left, base, right
+            let left_text = state.tabs[i].left_lines.join("\n") + "\n";
+            let base_text = state.tabs[i].base_lines.join("\n") + "\n";
+            let right_text = state.tabs[i].right_lines.join("\n") + "\n";
+            let left_enc = state.tabs[i].left_encoding.clone();
+            let right_enc = state.tabs[i].right_encoding.clone();
+            let base_enc = "UTF-8".to_string(); // base uses UTF-8 by default
+
+            if let Some(path) = state.tabs[i].left_path.clone() {
+                let bytes = encode_text(&left_text, &left_enc);
+                let _ = fs::write(path, bytes);
+            } else if !left_text.trim().is_empty() {
+                queue.push((i, 0, left_text, left_enc));
+            }
+            if let Some(path) = state.tabs[i].base_path.clone() {
+                let bytes = encode_text(&base_text, &base_enc);
+                let _ = fs::write(path, bytes);
+            } else if !base_text.trim().is_empty() {
+                queue.push((i, 2, base_text, base_enc));
+            }
+            if let Some(path) = state.tabs[i].right_path.clone() {
+                let bytes = encode_text(&right_text, &right_enc);
+                let _ = fs::write(path, bytes);
+            } else if !right_text.trim().is_empty() {
+                queue.push((i, 1, right_text, right_enc));
+            }
+            // Clear unsaved flag if all three sides have paths
+            if state.tabs[i].left_path.is_some()
+                && state.tabs[i].base_path.is_some()
+                && state.tabs[i].right_path.is_some()
+            {
+                state.tabs[i].has_unsaved_changes = false;
+            }
+        } else {
+            // 2-way tab
+            let left_path = state.tabs[i].left_path.clone();
+            let left_enc = state.tabs[i].left_encoding.clone();
+            let left_text = rebuild_left_from_data(&state.tabs[i].diff_line_data);
+            if let Some(path) = left_path {
+                let bytes = encode_text(&left_text, &left_enc);
+                let _ = fs::write(path, bytes);
+            } else if !left_text.trim().is_empty() {
+                queue.push((i, 0, left_text, left_enc));
+            }
+            let right_path = state.tabs[i].right_path.clone();
+            let right_enc = state.tabs[i].right_encoding.clone();
+            let right_text = rebuild_right_from_data(&state.tabs[i].diff_line_data);
+            if let Some(path) = right_path {
+                let bytes = encode_text(&right_text, &right_enc);
+                let _ = fs::write(path, bytes);
+            } else if !right_text.trim().is_empty() {
+                queue.push((i, 1, right_text, right_enc));
+            }
+            if state.tabs[i].left_path.is_some() && state.tabs[i].right_path.is_some() {
+                state.tabs[i].has_unsaved_changes = false;
+            }
         }
     }
-    // Don't clear the global flag here — it stays until all saves are confirmed or discarded
     queue
 }
 
@@ -1411,6 +1469,29 @@ fn rebuild_right(vec_model: &VecModel<DiffLineData>) -> String {
         lines.push(row.right_text.to_string());
     }
     lines.join("\n") + "\n"
+}
+
+/// Rebuild text for a specific pane (0=left, 1=base, 2=right) from the 3-way VecModel.
+/// Skips ghost lines (empty line_no) since they don't represent real content.
+fn rebuild_three_way_text(vec_model: &VecModel<ThreeWayLineData>, pane: i32) -> String {
+    let mut lines = Vec::new();
+    for i in 0..vec_model.row_count() {
+        let row = vec_model.row_data(i).unwrap();
+        let (line_no, text) = match pane {
+            0 => (&row.left_line_no, &row.left_text),
+            1 => (&row.base_line_no, &row.base_text),
+            _ => (&row.right_line_no, &row.right_text),
+        };
+        // Only include lines that have a real line number (skip ghost lines)
+        if !line_no.is_empty() {
+            lines.push(text.to_string());
+        }
+    }
+    if lines.is_empty() {
+        String::new()
+    } else {
+        lines.join("\n") + "\n"
+    }
 }
 
 fn rebuild_right_after_copy_from_left(
@@ -1804,7 +1885,33 @@ pub fn three_way_edit_line(
         _ => row.right_text = SharedString::from(new_text),
     }
     vec_model.set_row_data(row_index as usize, row);
+
+    // Sync internal line arrays
+    let row_ref = vec_model.row_data(row_index as usize).unwrap();
     let tab = state.current_tab_mut();
+    match pane {
+        0 => {
+            if let Ok(n) = row_ref.left_line_no.parse::<usize>() {
+                if n > 0 && n <= tab.left_lines.len() {
+                    tab.left_lines[n - 1] = new_text.to_string();
+                }
+            }
+        }
+        1 => {
+            if let Ok(n) = row_ref.base_line_no.parse::<usize>() {
+                if n > 0 && n <= tab.base_lines.len() {
+                    tab.base_lines[n - 1] = new_text.to_string();
+                }
+            }
+        }
+        _ => {
+            if let Ok(n) = row_ref.right_line_no.parse::<usize>() {
+                if n > 0 && n <= tab.right_lines.len() {
+                    tab.right_lines[n - 1] = new_text.to_string();
+                }
+            }
+        }
+    }
     tab.has_unsaved_changes = true;
     window.set_has_unsaved_changes(true);
     if !tab.editing_dirty {
@@ -1830,6 +1937,30 @@ pub fn three_way_insert_line_after(
     if insert_at > count {
         return;
     }
+
+    // Sync internal line arrays
+    let current_row = vec_model.row_data(row_index as usize).unwrap();
+    {
+        let tab = state.current_tab_mut();
+        match pane {
+            0 => {
+                let line_no = current_row.left_line_no.parse::<usize>().unwrap_or(1);
+                let pos = line_no.min(tab.left_lines.len());
+                tab.left_lines.insert(pos, String::new());
+            }
+            1 => {
+                let line_no = current_row.base_line_no.parse::<usize>().unwrap_or(1);
+                let pos = line_no.min(tab.base_lines.len());
+                tab.base_lines.insert(pos, String::new());
+            }
+            _ => {
+                let line_no = current_row.right_line_no.parse::<usize>().unwrap_or(1);
+                let pos = line_no.min(tab.right_lines.len());
+                tab.right_lines.insert(pos, String::new());
+            }
+        }
+    }
+
     // Build new row: only the edited pane gets a placeholder line number, others empty
     let new_row = ThreeWayLineData {
         left_line_no: if pane == 0 {
@@ -1910,12 +2041,58 @@ pub fn three_way_delete_line(window: &MainWindow, state: &mut AppState, row_inde
         return;
     }
     let row = vec_model.row_data(idx).unwrap();
-    let can_delete = match pane {
+    let text_empty = match pane {
         0 => row.left_text.is_empty(),
         1 => row.base_text.is_empty(),
         _ => row.right_text.is_empty(),
     };
+    // Count how many real lines remain for this pane (non-ghost rows)
+    let real_line_count = {
+        let mut count = 0usize;
+        for i in 0..vec_model.row_count() {
+            if let Some(r) = vec_model.row_data(i) {
+                let has_line = match pane {
+                    0 => !r.left_line_no.is_empty(),
+                    1 => !r.base_line_no.is_empty(),
+                    _ => !r.right_line_no.is_empty(),
+                };
+                if has_line {
+                    count += 1;
+                }
+            }
+        }
+        count
+    };
+    // Don't delete the last real line — keep at least one row so user can type
+    let can_delete = text_empty && real_line_count > 1;
     if can_delete {
+        // Sync internal line arrays: remove the corresponding real line
+        let line_no_str = match pane {
+            0 => &row.left_line_no,
+            1 => &row.base_line_no,
+            _ => &row.right_line_no,
+        };
+        if let Ok(line_no) = line_no_str.parse::<usize>() {
+            let tab = state.current_tab_mut();
+            match pane {
+                0 => {
+                    if line_no > 0 && line_no <= tab.left_lines.len() {
+                        tab.left_lines.remove(line_no - 1);
+                    }
+                }
+                1 => {
+                    if line_no > 0 && line_no <= tab.base_lines.len() {
+                        tab.base_lines.remove(line_no - 1);
+                    }
+                }
+                _ => {
+                    if line_no > 0 && line_no <= tab.right_lines.len() {
+                        tab.right_lines.remove(line_no - 1);
+                    }
+                }
+            }
+        }
+
         vec_model.remove(idx);
         // Renumber each pane independently
         let mut left_counter = 0usize;
@@ -2440,6 +2617,67 @@ pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
     )));
 }
 
+/// Save a pane of 3-way diff.  pane: 0=left, 1=base(middle), 2=right.
+pub fn save_three_way_pane(window: &MainWindow, state: &mut AppState, pane: i32) {
+    let model = window.get_three_way_lines();
+    let vec_model = match model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+
+    let text = rebuild_three_way_text(vec_model, pane);
+    let tab = state.current_tab();
+    let (path, encoding) = match pane {
+        0 => (tab.left_path.clone(), tab.left_encoding.clone()),
+        1 => (tab.base_path.clone(), tab.base_encoding.clone()),
+        _ => (tab.right_path.clone(), tab.right_encoding.clone()),
+    };
+
+    let path = if let Some(p) = path {
+        p
+    } else {
+        match rfd::FileDialog::new().set_title("Save As").save_file() {
+            Some(p) => {
+                match pane {
+                    0 => {
+                        state.current_tab_mut().left_path = Some(p.clone());
+                        window.set_left_path(SharedString::from(p.to_string_lossy().to_string()));
+                    }
+                    1 => {
+                        state.current_tab_mut().base_path = Some(p.clone());
+                    }
+                    _ => {
+                        state.current_tab_mut().right_path = Some(p.clone());
+                        window.set_right_path(SharedString::from(p.to_string_lossy().to_string()));
+                    }
+                }
+                sync_tab_list(window, state);
+                p
+            }
+            None => return,
+        }
+    };
+
+    let bytes = encode_text(&text, &encoding);
+    if let Err(e) = fs::write(&path, &bytes) {
+        window.set_status_text(SharedString::from(format!("Error saving: {}", e)));
+        return;
+    }
+    state.current_tab_mut().has_unsaved_changes = false;
+    window.set_has_unsaved_changes(false);
+    let side = match pane {
+        0 => "Left",
+        1 => "Middle",
+        _ => "Right",
+    };
+    window.set_status_text(SharedString::from(format!(
+        "{} file saved: {} ({})",
+        side,
+        path.to_string_lossy(),
+        encoding
+    )));
+}
+
 pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut AppSettings) {
     // Read options from window
     settings.ignore_whitespace = window.get_ignore_whitespace();
@@ -2820,6 +3058,10 @@ pub fn new_blank_text_3way(window: &MainWindow, state: &mut AppState) {
         tab.diff_positions.clear();
         tab.diff_stats = String::new();
         tab.has_unsaved_changes = false;
+        tab.editing_dirty = false;
+        tab.left_lines = vec![String::new()];
+        tab.right_lines = vec![String::new()];
+        tab.base_lines = vec![String::new()];
         tab.left_encoding = "UTF-8".to_string();
         tab.right_encoding = "UTF-8".to_string();
         tab.left_eol_type = "LF".to_string();
@@ -2845,6 +3087,10 @@ pub fn new_blank_text_3way(window: &MainWindow, state: &mut AppState) {
     window.set_right_path(SharedString::from(""));
     window.set_base_path(SharedString::from(""));
     window.set_has_unsaved_changes(false);
+    window.set_left_encoding_display(SharedString::from("UTF-8"));
+    window.set_right_encoding_display(SharedString::from("UTF-8"));
+    window.set_left_eol_type(SharedString::from("LF"));
+    window.set_right_eol_type(SharedString::from("LF"));
     window.set_status_text(SharedString::from("New blank 3-way document"));
     sync_tab_list(window, state);
 }
@@ -3197,52 +3443,12 @@ pub fn run_three_way_diff(window: &MainWindow, state: &mut AppState) {
     let left_bytes = fs::read(&left_path).unwrap_or_default();
     let right_bytes = fs::read(&right_path).unwrap_or_default();
 
-    let (base_text, _) = decode_file(&base_bytes);
-    let (left_text, _) = decode_file(&left_bytes);
-    let (right_text, _) = decode_file(&right_bytes);
+    let (base_text, base_enc) = decode_file(&base_bytes);
+    let (left_text, left_enc) = decode_file(&left_bytes);
+    let (right_text, right_enc) = decode_file(&right_bytes);
 
     let result = compute_three_way_diff(&base_text, &left_text, &right_text);
-
-    let line_data: Vec<ThreeWayLineData> = result
-        .lines
-        .iter()
-        .enumerate()
-        .map(|(i, line)| {
-            let status: i32 = match line.status {
-                ThreeWayStatus::Equal => 0,
-                ThreeWayStatus::LeftChanged => 1,
-                ThreeWayStatus::RightChanged => 2,
-                ThreeWayStatus::BothChanged => 3,
-                ThreeWayStatus::Conflict => 4,
-            };
-            let conflict_index = result
-                .conflict_positions
-                .iter()
-                .position(|&pos| pos == i)
-                .map(|idx| idx as i32)
-                .unwrap_or(-1);
-            ThreeWayLineData {
-                base_line_no: line
-                    .base_line_no
-                    .map(|n| SharedString::from(n.to_string()))
-                    .unwrap_or_default(),
-                left_line_no: line
-                    .left_line_no
-                    .map(|n| SharedString::from(n.to_string()))
-                    .unwrap_or_default(),
-                right_line_no: line
-                    .right_line_no
-                    .map(|n| SharedString::from(n.to_string()))
-                    .unwrap_or_default(),
-                base_text: SharedString::from(&line.base_text),
-                left_text: SharedString::from(&line.left_text),
-                right_text: SharedString::from(&line.right_text),
-                status,
-                is_current: conflict_index == 0 && !result.conflict_positions.is_empty(),
-                conflict_index,
-            }
-        })
-        .collect();
+    let line_data = build_three_way_line_data(&result);
 
     let left_name = left_path
         .file_name()
@@ -3261,21 +3467,62 @@ pub fn run_three_way_diff(window: &MainWindow, state: &mut AppState) {
         0
     };
     tab.view_mode = 3;
+    tab.left_encoding = left_enc.to_string();
+    tab.right_encoding = right_enc.to_string();
+    tab.base_encoding = base_enc.to_string();
     tab.title = format!("{} ↔ {} (3-way)", left_name, right_name);
 
     window.set_three_way_lines(ModelRc::new(VecModel::from(line_data)));
-    window.set_conflict_count(result.conflict_count as i32);
+    window.set_conflict_count(result.conflict_positions.len() as i32);
     window.set_current_conflict_index(tab.current_conflict);
     window.set_view_mode(3);
     window.set_left_path(SharedString::from(left_path.to_string_lossy().to_string()));
     window.set_right_path(SharedString::from(right_path.to_string_lossy().to_string()));
     window.set_base_path(SharedString::from(base_path.to_string_lossy().to_string()));
     window.set_status_text(SharedString::from(format!(
-        "{} conflicts found",
-        result.conflict_count
+        "{} differences found",
+        result.conflict_positions.len()
     )));
 
+    let model = window.get_three_way_lines();
+    update_three_way_detail_pane(window, &model, tab.current_conflict);
+
     sync_tab_list(window, state);
+}
+
+/// Recompute 3-way diff from in-memory text (for rescan of edited/blank 3-way docs).
+pub fn recompute_three_way_from_text(
+    window: &MainWindow,
+    state: &mut AppState,
+    base_text: &str,
+    left_text: &str,
+    right_text: &str,
+) {
+    let result = compute_three_way_diff(base_text, left_text, right_text);
+    let line_data = build_three_way_line_data(&result);
+
+    let tab = state.current_tab_mut();
+    tab.three_way_conflict_positions = result.conflict_positions.clone();
+    tab.current_conflict = if result.conflict_positions.is_empty() {
+        -1
+    } else {
+        0
+    };
+    tab.editing_dirty = false;
+    tab.left_lines = left_text.lines().map(String::from).collect();
+    tab.right_lines = right_text.lines().map(String::from).collect();
+    tab.base_lines = base_text.lines().map(String::from).collect();
+
+    window.set_three_way_lines(ModelRc::new(VecModel::from(line_data)));
+    // BUG-2: Reset stale focus state after model replacement
+    window.set_three_way_edit_focus_left_row(-1);
+    window.set_three_way_edit_focus_base_row(-1);
+    window.set_three_way_edit_focus_right_row(-1);
+    window.set_conflict_count(result.conflict_positions.len() as i32);
+    window.set_current_conflict_index(tab.current_conflict);
+
+    let model = window.get_three_way_lines();
+    update_three_way_detail_pane(window, &model, tab.current_conflict);
 }
 
 pub fn navigate_conflict(window: &MainWindow, state: &mut AppState, forward: bool) {
@@ -3319,8 +3566,142 @@ pub fn navigate_conflict(window: &MainWindow, state: &mut AppState, forward: boo
         new_index + 1,
         total
     )));
+
+    update_three_way_detail_pane(window, &model, new_index);
 }
 
+/// Build ThreeWayLineData from ThreeWayResult with block-level conflict_index.
+/// All lines in the same contiguous diff block share the same conflict_index.
+fn build_three_way_line_data(result: &ThreeWayResult) -> Vec<ThreeWayLineData> {
+    // Assign block-level conflict_index: consecutive non-Equal lines share the same index
+    let mut block_indices: Vec<i32> = vec![-1; result.lines.len()];
+    let mut current_block = -1i32;
+    let mut was_in_diff = false;
+    for (i, line) in result.lines.iter().enumerate() {
+        if line.status != ThreeWayStatus::Equal {
+            if !was_in_diff {
+                current_block += 1;
+                was_in_diff = true;
+            }
+            block_indices[i] = current_block;
+        } else {
+            was_in_diff = false;
+        }
+    }
+
+    result
+        .lines
+        .iter()
+        .enumerate()
+        .map(|(i, line)| {
+            let status: i32 = match line.status {
+                ThreeWayStatus::Equal => 0,
+                ThreeWayStatus::LeftChanged => 1,
+                ThreeWayStatus::RightChanged => 2,
+                ThreeWayStatus::BothChanged => 3,
+                ThreeWayStatus::Conflict => 4,
+            };
+            let conflict_index = block_indices[i];
+            ThreeWayLineData {
+                base_line_no: line
+                    .base_line_no
+                    .map(|n: u32| SharedString::from(n.to_string()))
+                    .unwrap_or_default(),
+                left_line_no: line
+                    .left_line_no
+                    .map(|n: u32| SharedString::from(n.to_string()))
+                    .unwrap_or_default(),
+                right_line_no: line
+                    .right_line_no
+                    .map(|n: u32| SharedString::from(n.to_string()))
+                    .unwrap_or_default(),
+                base_text: SharedString::from(&line.base_text),
+                left_text: SharedString::from(&line.left_text),
+                right_text: SharedString::from(&line.right_text),
+                status,
+                is_current: conflict_index == 0 && !result.conflict_positions.is_empty(),
+                conflict_index,
+            }
+        })
+        .collect()
+}
+
+fn update_three_way_detail_pane(
+    window: &MainWindow,
+    model: &ModelRc<ThreeWayLineData>,
+    conflict_index: i32,
+) {
+    if conflict_index < 0 {
+        window.set_detail_has_left(false);
+        window.set_detail_has_base(false);
+        window.set_detail_has_right(false);
+        window.set_detail_left_lines(ModelRc::new(VecModel::from(Vec::<DetailLineData>::new())));
+        window.set_detail_base_lines(ModelRc::new(VecModel::from(Vec::<DetailLineData>::new())));
+        window.set_detail_right_lines(ModelRc::new(VecModel::from(Vec::<DetailLineData>::new())));
+        return;
+    }
+
+    let mut left_lines: Vec<DetailLineData> = Vec::new();
+    let mut base_lines: Vec<DetailLineData> = Vec::new();
+    let mut right_lines: Vec<DetailLineData> = Vec::new();
+
+    let count = model.row_count();
+    for i in 0..count {
+        let row = model.row_data(i).unwrap();
+        if row.conflict_index != conflict_index {
+            continue;
+        }
+        let status = row.status;
+
+        // Left side (always include for 3-way)
+        let seg = ModelRc::new(VecModel::from(vec![WordSegment {
+            text: row.left_text.clone(),
+            is_changed: status == 1 || status == 3 || status == 4,
+        }]));
+        left_lines.push(DetailLineData {
+            segments: seg,
+            is_current: true,
+            status,
+        });
+
+        // Base (middle) side (always include for 3-way)
+        let seg = ModelRc::new(VecModel::from(vec![WordSegment {
+            text: row.base_text.clone(),
+            is_changed: status == 3 || status == 4,
+        }]));
+        base_lines.push(DetailLineData {
+            segments: seg,
+            is_current: true,
+            status,
+        });
+
+        // Right side (always include for 3-way)
+        let seg = ModelRc::new(VecModel::from(vec![WordSegment {
+            text: row.right_text.clone(),
+            is_changed: status == 2 || status == 3 || status == 4,
+        }]));
+        right_lines.push(DetailLineData {
+            segments: seg,
+            is_current: true,
+            status,
+        });
+    }
+
+    let has_left = !left_lines.is_empty();
+    let has_base = !base_lines.is_empty();
+    let has_right = !right_lines.is_empty();
+    window.set_detail_left_lines(ModelRc::new(VecModel::from(left_lines)));
+    window.set_detail_base_lines(ModelRc::new(VecModel::from(base_lines)));
+    window.set_detail_right_lines(ModelRc::new(VecModel::from(right_lines)));
+    window.set_detail_has_left(has_left);
+    window.set_detail_has_base(has_base);
+    window.set_detail_has_right(has_right);
+    window.set_detail_left_scroll_y(0.0);
+    window.set_detail_base_scroll_y(0.0);
+    window.set_detail_right_scroll_y(0.0);
+}
+
+/// Copy left text to base (middle) pane for the given diff index.
 pub fn resolve_conflict_use_left(window: &MainWindow, state: &mut AppState, conflict_index: i32) {
     let tab = state.current_tab();
     if conflict_index < 0 || conflict_index as usize >= tab.three_way_conflict_positions.len() {
@@ -3330,32 +3711,62 @@ pub fn resolve_conflict_use_left(window: &MainWindow, state: &mut AppState, conf
     let pos = tab.three_way_conflict_positions[conflict_index as usize];
     let model = window.get_three_way_lines();
     if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-        if let Some(mut row) = vec_model.row_data(pos) {
-            row.right_text = row.left_text.clone();
-            row.status = 3; // BothChanged (resolved)
-            row.conflict_index = -1;
-            vec_model.set_row_data(pos, row);
+        // Find all rows in this block (same conflict_index)
+        let block_ci = vec_model
+            .row_data(pos)
+            .map(|r| r.conflict_index)
+            .unwrap_or(-1);
+        if block_ci < 0 {
+            return;
+        }
+        for i in 0..vec_model.row_count() {
+            if let Some(mut row) = vec_model.row_data(i) {
+                if row.conflict_index == block_ci {
+                    if !row.left_line_no.is_empty() {
+                        // Left has a real line — copy it to base
+                        row.base_text = row.left_text.clone();
+                        if row.base_line_no.is_empty() {
+                            row.base_line_no = SharedString::from("+");
+                        }
+                    }
+                    // Don't touch base_text if left is a ghost row
+                    row.status = if row.left_text == row.right_text {
+                        0
+                    } else {
+                        2
+                    };
+                    vec_model.set_row_data(i, row);
+                }
+            }
+        }
+        // Rebuild tab.base_lines from VecModel (authoritative after copy)
+        let tab = state.current_tab_mut();
+        tab.base_lines = Vec::new();
+        for i in 0..vec_model.row_count() {
+            if let Some(row) = vec_model.row_data(i) {
+                if !row.base_line_no.is_empty() {
+                    tab.base_lines.push(row.base_text.to_string());
+                }
+            }
         }
     }
 
-    // Remove from conflict positions
     let tab = state.current_tab_mut();
-    tab.three_way_conflict_positions.retain(|&p| p != pos);
-    window.set_conflict_count(tab.three_way_conflict_positions.len() as i32);
+    tab.has_unsaved_changes = true;
+    tab.editing_dirty = true;
+    window.set_has_unsaved_changes(true);
+    window.set_status_text(SharedString::from("Left → Middle copied"));
 
-    if tab.three_way_conflict_positions.is_empty() {
-        tab.current_conflict = -1;
-        window.set_status_text(SharedString::from("All conflicts resolved"));
-    } else {
-        let new_idx = (conflict_index as usize).min(tab.three_way_conflict_positions.len() - 1);
-        tab.current_conflict = new_idx as i32;
-        window.set_status_text(SharedString::from(format!(
-            "{} conflicts remaining",
-            tab.three_way_conflict_positions.len()
-        )));
-    }
+    // BUG-3: Clear stale focus state after copy
+    window.set_three_way_edit_focus_left_row(-1);
+    window.set_three_way_edit_focus_base_row(-1);
+    window.set_three_way_edit_focus_right_row(-1);
+
+    let model = window.get_three_way_lines();
+    update_three_way_detail_pane(window, &model, conflict_index);
 }
 
+/// Copy right text to base (middle) pane for the given diff index.
 pub fn resolve_conflict_use_right(window: &MainWindow, state: &mut AppState, conflict_index: i32) {
     let tab = state.current_tab();
     if conflict_index < 0 || conflict_index as usize >= tab.three_way_conflict_positions.len() {
@@ -3365,29 +3776,105 @@ pub fn resolve_conflict_use_right(window: &MainWindow, state: &mut AppState, con
     let pos = tab.three_way_conflict_positions[conflict_index as usize];
     let model = window.get_three_way_lines();
     if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-        if let Some(mut row) = vec_model.row_data(pos) {
-            row.left_text = row.right_text.clone();
-            row.status = 3; // BothChanged (resolved)
-            row.conflict_index = -1;
-            vec_model.set_row_data(pos, row);
+        let block_ci = vec_model
+            .row_data(pos)
+            .map(|r| r.conflict_index)
+            .unwrap_or(-1);
+        if block_ci < 0 {
+            return;
+        }
+        for i in 0..vec_model.row_count() {
+            if let Some(mut row) = vec_model.row_data(i) {
+                if row.conflict_index == block_ci {
+                    if !row.right_line_no.is_empty() {
+                        // Right has a real line — copy it to base
+                        row.base_text = row.right_text.clone();
+                        if row.base_line_no.is_empty() {
+                            row.base_line_no = SharedString::from("+");
+                        }
+                    }
+                    // Don't touch base_text if right is a ghost row
+                    row.status = if row.left_text == row.right_text {
+                        0
+                    } else {
+                        1
+                    };
+                    vec_model.set_row_data(i, row);
+                }
+            }
+        }
+        // Rebuild tab.base_lines from VecModel (authoritative after copy)
+        let tab = state.current_tab_mut();
+        tab.base_lines = Vec::new();
+        for i in 0..vec_model.row_count() {
+            if let Some(row) = vec_model.row_data(i) {
+                if !row.base_line_no.is_empty() {
+                    tab.base_lines.push(row.base_text.to_string());
+                }
+            }
         }
     }
 
     let tab = state.current_tab_mut();
-    tab.three_way_conflict_positions.retain(|&p| p != pos);
-    window.set_conflict_count(tab.three_way_conflict_positions.len() as i32);
+    tab.has_unsaved_changes = true;
+    tab.editing_dirty = true;
+    window.set_has_unsaved_changes(true);
+    window.set_status_text(SharedString::from("Right → Middle copied"));
 
-    if tab.three_way_conflict_positions.is_empty() {
-        tab.current_conflict = -1;
-        window.set_status_text(SharedString::from("All conflicts resolved"));
-    } else {
-        let new_idx = (conflict_index as usize).min(tab.three_way_conflict_positions.len() - 1);
-        tab.current_conflict = new_idx as i32;
-        window.set_status_text(SharedString::from(format!(
-            "{} conflicts remaining",
-            tab.three_way_conflict_positions.len()
-        )));
+    // BUG-3: Clear stale focus state after copy
+    window.set_three_way_edit_focus_left_row(-1);
+    window.set_three_way_edit_focus_base_row(-1);
+    window.set_three_way_edit_focus_right_row(-1);
+
+    let model = window.get_three_way_lines();
+    update_three_way_detail_pane(window, &model, conflict_index);
+}
+
+/// Copy left to middle and advance to next diff block.
+pub fn resolve_use_left_and_next(window: &MainWindow, state: &mut AppState) {
+    let conflict_index = state.current_tab().current_conflict;
+    resolve_conflict_use_left(window, state, conflict_index);
+    navigate_conflict(window, state, true);
+}
+
+/// Copy right to middle and advance to next diff block.
+pub fn resolve_use_right_and_next(window: &MainWindow, state: &mut AppState) {
+    let conflict_index = state.current_tab().current_conflict;
+    resolve_conflict_use_right(window, state, conflict_index);
+    navigate_conflict(window, state, true);
+}
+
+/// Copy all left diffs to middle (resolve all with left).
+pub fn resolve_all_use_left(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab();
+    let count = tab.three_way_conflict_positions.len();
+    if count == 0 {
+        return;
     }
+    // Resolve from last to first to avoid index shifts
+    for i in (0..count as i32).rev() {
+        resolve_conflict_use_left(window, state, i);
+    }
+    window.set_status_text(SharedString::from(format!(
+        "All {} blocks: Left → Middle",
+        count
+    )));
+}
+
+/// Copy all right diffs to middle (resolve all with right).
+pub fn resolve_all_use_right(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab();
+    let count = tab.three_way_conflict_positions.len();
+    if count == 0 {
+        return;
+    }
+    for i in (0..count as i32).rev() {
+        resolve_conflict_use_right(window, state, i);
+    }
+    window.set_status_text(SharedString::from(format!(
+        "All {} blocks: Right → Middle",
+        count
+    )));
 }
 
 // --- Folder file operations ---
@@ -3645,6 +4132,24 @@ pub fn rescan(window: &MainWindow, state: &mut AppState) {
             recompute_diff_from_text(window, state, &left_text, &right_text);
             window.set_status_text(SharedString::from("Compared"));
         }
+    } else if tab.view_mode == 3
+        && tab.base_path.is_some()
+        && tab.left_path.is_some()
+        && tab.right_path.is_some()
+        && !tab.editing_dirty
+    {
+        run_three_way_diff(window, state);
+        window.set_status_text(SharedString::from("Files rescanned"));
+    } else if tab.view_mode == 3 {
+        // 3-way editing in progress or blank: rebuild from VecModel (authoritative source)
+        let model = window.get_three_way_lines();
+        if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+            let left_text = rebuild_three_way_text(vec_model, 0);
+            let base_text = rebuild_three_way_text(vec_model, 1);
+            let right_text = rebuild_three_way_text(vec_model, 2);
+            recompute_three_way_from_text(window, state, &base_text, &left_text, &right_text);
+        }
+        window.set_status_text(SharedString::from("Compared"));
     } else if tab.view_mode == 1 {
         run_folder_compare(window, state);
         window.set_status_text(SharedString::from("Folders rescanned"));

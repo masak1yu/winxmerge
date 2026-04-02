@@ -6584,7 +6584,7 @@ dependencies = [
 
 [[package]]
 name = "winxmerge"
-version = "0.33.0"
+version = "0.34.0"
 dependencies = [
  "arboard",
  "calamine",
