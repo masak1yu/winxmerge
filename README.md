@@ -20,10 +20,14 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 
 ### 3-way Merge
 - Three-pane display (Left / Base / Right)
+- WinMerge-style Make3wayDiff overlap-grouping algorithm
 - Automatic detection of changes from base file
 - Conflict highlighting (red) with L/R buttons for conflict resolution
 - Conflict navigation (next/previous)
+- Copy & advance, copy all toolbar buttons
 - Auto-merge when both sides have identical changes
+- Inline editing with F5 rescan (VecModel as authoritative source)
+- Save dropdown: save Left / Middle / Right individually
 
 ### Folder Comparison
 - Recursive directory comparison with tree-style indentation
