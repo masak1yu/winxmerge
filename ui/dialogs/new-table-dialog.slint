@@ -1,0 +1,227 @@
+import { Button, Palette, CheckBox, LineEdit } from "std-widgets.slint";
+
+component RadioOption inherits HorizontalLayout {
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked();
+
+    spacing: 8px;
+
+    Rectangle {
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        border-width: 2px;
+        border-color: root.selected ? Palette.accent-background : Palette.border;
+        background: transparent;
+        Rectangle {
+            width: 8px;
+            height: 8px;
+            x: 4px;
+            y: 4px;
+            border-radius: 4px;
+            background: root.selected ? Palette.accent-background : transparent;
+        }
+        TouchArea { clicked => { root.clicked(); } }
+    }
+    Text {
+        text: root.label;
+        font-size: 13px;
+        vertical-alignment: center;
+        color: Palette.foreground;
+    }
+    TouchArea {
+        width: 200px;
+        height: 20px;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component NewTableDialog inherits Rectangle {
+    in-out property <bool> visible-flag: false;
+    // 0=CSV, 1=TSV, 2=custom
+    out property <int> file-type: 0;
+    out property <string> csv-delimiter: ",";
+    out property <string> custom-delimiter: ";";
+    out property <bool> newline-in-quotes: true;
+    out property <string> quote-char: "\"";
+
+    callback confirmed(/* file-type */ int, /* delimiter */ string, /* newline-in-quotes */ bool, /* quote-char */ string);
+    callback cancelled();
+
+    if visible-flag : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000060;
+
+        Rectangle {
+            width: Math.min(440px, parent.width - 48px);
+            height: dlg.preferred-height + 32px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Palette.background;
+            border-radius: 8px;
+            border-color: Palette.border;
+            border-width: 1px;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000040;
+
+            dlg := VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+
+                // Title bar
+                HorizontalLayout {
+                    Text {
+                        text: @tr("Table");
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: Palette.foreground;
+                        horizontal-stretch: 1;
+                    }
+                    Rectangle {
+                        width: 20px;
+                        height: 20px;
+                        border-radius: 4px;
+                        background: close-ta.has-hover ? Palette.background.darker(0.15) : transparent;
+                        Text {
+                            text: "×";
+                            font-size: 14px;
+                            color: Palette.foreground;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        close-ta := TouchArea { clicked => { root.cancelled(); } }
+                    }
+                }
+
+                Rectangle { height: 1px; background: Palette.border; }
+
+                // File type group
+                VerticalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: @tr("File Type");
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: Palette.foreground.transparentize(0.3);
+                    }
+
+                    Rectangle {
+                        border-width: 1px;
+                        border-color: Palette.border;
+                        border-radius: 4px;
+
+                        VerticalLayout {
+                            padding: 12px;
+                            spacing: 8px;
+
+                            // CSV
+                            RadioOption {
+                                label: "CSV";
+                                selected: root.file-type == 0;
+                                clicked => { root.file-type = 0; }
+                            }
+                            // CSV delimiter field (shown when CSV selected)
+                            HorizontalLayout {
+                                padding-left: 24px;
+                                spacing: 8px;
+                                Text {
+                                    text: @tr("Delimiter(E)");
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                    color: root.file-type == 0 ? Palette.foreground : Palette.foreground.transparentize(0.5);
+                                }
+                                LineEdit {
+                                    width: 80px;
+                                    text: root.csv-delimiter;
+                                    enabled: root.file-type == 0;
+                                    edited(t) => { root.csv-delimiter = t; }
+                                }
+                            }
+
+                            // TSV
+                            RadioOption {
+                                label: "TSV";
+                                selected: root.file-type == 1;
+                                clicked => { root.file-type = 1; }
+                            }
+
+                            // Custom delimiter
+                            RadioOption {
+                                label: @tr("User-defined delimiter(D)");
+                                selected: root.file-type == 2;
+                                clicked => { root.file-type = 2; }
+                            }
+                            // Custom delimiter field (always shown, grayed when not selected)
+                            HorizontalLayout {
+                                padding-left: 24px;
+                                spacing: 8px;
+                                Text {
+                                    text: @tr("Delimiter(E)");
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                    color: root.file-type == 2 ? Palette.foreground : Palette.foreground.transparentize(0.5);
+                                }
+                                LineEdit {
+                                    width: 80px;
+                                    text: root.custom-delimiter;
+                                    enabled: root.file-type == 2;
+                                    edited(t) => { root.custom-delimiter = t; }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Quote options
+                CheckBox {
+                    text: @tr("Treat newlines within quotes as values(A)");
+                    checked: root.newline-in-quotes;
+                    toggled => { root.newline-in-quotes = self.checked; }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        text: @tr("Quote character(Q)");
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        color: Palette.foreground;
+                    }
+                    LineEdit {
+                        width: 60px;
+                        text: root.quote-char;
+                        edited(t) => { root.quote-char = t; }
+                    }
+                }
+
+                Rectangle { height: 1px; background: Palette.border; }
+
+                // Buttons
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    Button {
+                        text: @tr("OK");
+                        clicked => {
+                            // delimiter: for TSV pass "TAB" sentinel, Rust side converts it
+                            root.confirmed(
+                                root.file-type,
+                                root.file-type == 0 ? root.csv-delimiter
+                                    : root.file-type == 2 ? root.custom-delimiter
+                                    : "TAB",
+                                root.newline-in-quotes,
+                                root.quote-char
+                            );
+                        }
+                    }
+                    Button {
+                        text: @tr("Cancel");
+                        clicked => { root.cancelled(); }
+                    }
+                }
+            }
+        }
+    }
+}

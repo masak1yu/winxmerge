@@ -7,6 +7,8 @@ import { OpenDialog, RecentEntryData } from "dialogs/open-dialog.slint";
 import { OptionsDialog } from "dialogs/options-dialog.slint";
 import { FileBrowserDialog, FileEntryData } from "dialogs/file-browser.slint";
 import { ShortcutsDialog } from "dialogs/shortcuts-dialog.slint";
+import { SaveConfirmDialog } from "dialogs/save-confirm-dialog.slint";
+import { NewTableDialog } from "dialogs/new-table-dialog.slint";
 import { ThemeColors } from "theme.slint";
 import { ExcelView, ExcelCellData } from "widgets/excel-view.slint";
 import { CsvView } from "widgets/csv-view.slint";
@@ -166,8 +168,11 @@ export component MainWindow inherits Window {
     // Folder comparison properties
     in-out property <[FolderItemData]> folder-items;
     in-out property <int> folder-selected-index: -1;
-    // 0=file diff, 1=folder compare, 2=open dialog
-    in-out property <int> view-mode: 2;
+    // 0=file diff, 1=folder compare, 3=3way, 4=excel, 5=image, 6=csv, 7=blank
+    in-out property <int> view-mode: 7;
+
+    // Open dialog modal
+    in-out property <bool> show-open-dialog: false;
 
     // Diff options
     in-out property <bool> ignore-whitespace: false;
@@ -207,6 +212,13 @@ export component MainWindow inherits Window {
 
     // Scroll control for diff view (in pixels, negative = scroll down)
     in-out property <length> diff-scroll-y: 0px;
+    // Row index to focus in the inline edit TextInput (-1 = none)
+    in-out property <int> diff-edit-focus-row: -1;
+    in-out property <int> diff-edit-focus-right-row: -1;
+    // 3-way edit focus rows (0=left, 1=base, 2=right)
+    in-out property <int> three-way-edit-focus-left-row: -1;
+    in-out property <int> three-way-edit-focus-base-row: -1;
+    in-out property <int> three-way-edit-focus-right-row: -1;
 
     // Detail pane: current diff block lines with word-diff segment highlighting
     in property <[DetailLineData]> detail-left-lines: [];
@@ -257,6 +269,8 @@ export component MainWindow inherits Window {
     callback replace-all(/* search */ string, /* replacement */ string);
     callback start-compare(/* left */ string, /* right */ string, /* is-folder */ bool);
     callback discard-and-proceed();
+    callback new-blank-text();
+    callback new-blank-text-3way();
     callback new-tab();
     callback close-tab(int);
     callback switch-tab(int);
@@ -277,6 +291,14 @@ export component MainWindow inherits Window {
     callback copy-all-right();
     callback edit-left-line(/* line-index */ int, /* new-text */ string);
     callback edit-right-line(/* line-index */ int, /* new-text */ string);
+    callback insert-line-after(/* line-index */ int, /* is-left */ bool);
+    callback delete-line(/* line-index */ int, /* is-left */ bool);
+    callback move-focus-up(/* line-index */ int, /* is-left */ bool);
+    callback move-focus-down(/* line-index */ int, /* is-left */ bool);
+    // 3-way pane editing (pane: 0=left, 1=base, 2=right)
+    callback three-way-edit-line(/* row */ int, /* text */ string, /* pane */ int);
+    callback three-way-insert-line-after(/* row */ int, /* pane */ int);
+    callback three-way-delete-line(/* row */ int, /* pane */ int);
     callback open-recent(int);
     callback goto-line(int);
     callback toggle-bookmark(int);
@@ -348,6 +370,35 @@ export component MainWindow inherits Window {
     in-out property <bool> show-plugin-output: false;
     in-out property <string> plugin-output-title: "";
     in-out property <string> plugin-output-text: "";
+
+    // Save confirm dialog
+    in-out property <bool> show-save-confirm-dialog: false;
+    callback save-and-proceed(/* left-choice */ int, /* right-choice */ int);
+
+    // Quit confirm dialog
+    in-out property <bool> show-quit-confirm: false;
+    callback quit-save-all();
+    callback quit-discard-all();
+
+    // In-app Save As dialog with file browser
+    in-out property <bool> show-save-as-dialog: false;
+    in-out property <string> save-as-title: "";
+    in-out property <string> save-as-path: "";         // full path (dir + filename)
+    in-out property <string> save-as-dir: "";           // current directory
+    in-out property <string> save-as-filename: "";      // filename input
+    in-out property <[FileEntryData]> save-as-entries;  // directory listing
+    in-out property <int> save-as-selected-index: -1;
+    callback save-as-confirmed(string);
+    callback save-as-cancelled();
+    callback save-as-navigate(string);   // navigate to directory
+    callback save-as-go-parent();        // go up one directory
+
+    // New table dialog
+    in-out property <bool> show-new-table-dialog: false;
+    // 0=2pane, 1=3pane
+    in-out property <int> new-table-pane-mode: 0;
+    callback new-blank-table(/* file-type */ int, /* delimiter */ string, /* newline-in-quotes */ bool, /* quote-char */ string);
+    callback new-blank-table-3way(/* file-type */ int, /* delimiter */ string, /* newline-in-quotes */ bool, /* quote-char */ string);
 
     // Options dialog state
     in-out property <bool> show-options-dialog: false;
@@ -468,7 +519,7 @@ export component MainWindow inherits Window {
     function request-action(action: int) {
         if root.has-unsaved-changes {
             root.pending-action = action;
-            root.show-confirm-dialog = true;
+            root.show-save-confirm-dialog = true;
         } else {
             root.pending-action = action;
             root.discard-and-proceed();
@@ -478,8 +529,26 @@ export component MainWindow inherits Window {
     MenuBar {
         Menu {
             title: @tr("File");
-            MenuItem { title: @tr("New Tab"); activated => { root.new-tab(); } }
-            MenuItem { title: @tr("New Compare..."); activated => { root.request-action(5); } }
+            Menu {
+                title: @tr("New(N)");
+                MenuItem { title: @tr("Text"); activated => { root.new-blank-text(); } }
+                MenuItem { title: @tr("Table"); activated => { root.show-new-table-dialog = true; } }
+            }
+            Menu {
+                title: @tr("New (3-pane)(N)");
+                MenuItem { title: @tr("Text"); activated => { root.new-blank-text-3way(); } }
+                MenuItem { title: @tr("Table"); activated => { root.new-table-pane-mode = 1; root.show-new-table-dialog = true; } }
+            }
+            MenuSeparator {}
+            MenuItem { title: @tr("Open(O)..."); activated => { root.show-open-dialog = true; } }
+            MenuSeparator {}
+            Menu {
+                title: @tr("Recent Files or Folders(I)");
+                for entry[idx] in root.recent-entries : MenuItem {
+                    title: entry.left-path + " ↔ " + entry.right-path;
+                    activated => { root.open-recent(idx); }
+                }
+            }
             MenuSeparator {}
             MenuItem { title: @tr("Open Left File..."); activated => { root.request-action(1); } }
             MenuItem { title: @tr("Open Right File..."); activated => { root.request-action(2); } }
@@ -630,8 +699,8 @@ export component MainWindow inherits Window {
     }
 
     VerticalLayout {
-        // Tab bar
-        TabBar {
+        // Tab bar (hidden when blank start screen)
+        if root.view-mode != 7 : TabBar {
             tabs: root.tab-list;
             active-index: root.active-tab-index;
             tab-clicked(idx) => { root.switch-tab(idx); }
@@ -642,7 +711,7 @@ export component MainWindow inherits Window {
         }
 
         // Toolbar (single row, image icons)
-        if root.show-toolbar && root.view-mode != 2 : Rectangle {
+        if root.show-toolbar : Rectangle {
             height: 36px;
             background: Palette.background.darker(0.03);
             border-color: Palette.border;
@@ -684,7 +753,56 @@ export component MainWindow inherits Window {
                 spacing: 0;
                 alignment: start;
 
-                tb-new := ToolBtn { icon: @image-url("icons/new.svg"); clicked => { root.request-action(5); } }
+                tb-new := ToolBtn { icon: @image-url("icons/new.svg"); clicked => { root.new-blank-text(); } }
+                // Dropdown ▼ for new type selection
+                Rectangle {
+                    width: 14px;
+                    height: 32px;
+                    border-radius: 3px;
+                    background: dd-ta.has-hover ? Palette.background.darker(0.12) : transparent;
+                    Text {
+                        text: "▾";
+                        font-size: 10px;
+                        color: Palette.foreground;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    dd-ta := TouchArea {
+                        clicked => { new-type-popup.show(); }
+                    }
+                    new-type-popup := PopupWindow {
+                        x: -32px;
+                        y: 32px;
+                        width: 100px;
+                        height: 64px;
+                        Rectangle {
+                            background: Palette.background;
+                            border-color: Palette.border;
+                            border-width: 1px;
+                            border-radius: 4px;
+                            drop-shadow-blur: 8px;
+                            drop-shadow-color: #00000030;
+                            VerticalLayout {
+                                padding: 4px;
+                                spacing: 2px;
+                                Rectangle {
+                                    height: 26px;
+                                    border-radius: 3px;
+                                    background: text-ta.has-hover ? Palette.background.darker(0.1) : transparent;
+                                    Text { text: @tr("Text"); font-size: 12px; color: Palette.foreground; x: 10px; vertical-alignment: center; }
+                                    text-ta := TouchArea { clicked => { root.new-blank-text(); } }
+                                }
+                                Rectangle {
+                                    height: 26px;
+                                    border-radius: 3px;
+                                    background: table-ta.has-hover ? Palette.background.darker(0.1) : transparent;
+                                    Text { text: @tr("Table"); font-size: 12px; color: Palette.foreground; x: 10px; vertical-alignment: center; }
+                                    table-ta := TouchArea { clicked => { root.show-new-table-dialog = true; } }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 tb-back := ToolBtn { icon: @image-url("icons/back.svg"); visible: root.view-mode == 0 && root.has-folder-context; clicked => { root.back-to-folder-view(); } }
 
@@ -703,7 +821,7 @@ export component MainWindow inherits Window {
 
                 ToolSep {}
 
-                tb-rescan := ToolBtn { icon: @image-url("icons/refresh.svg"); clicked => { root.rescan(); } }
+                tb-rescan := ToolBtn { icon: @image-url("icons/refresh.svg"); btn-enabled: root.view-mode != 7; clicked => { root.rescan(); } }
                 tb-options := ToolBtn { icon: @image-url("icons/settings.svg"); clicked => { root.show-options-dialog = true; } }
 
                 ToolSep {}
@@ -834,34 +952,10 @@ export component MainWindow inherits Window {
         }
 
         // Content area
-        if root.view-mode == 2 : OpenDialog {
-            left-path-input <=> root.open-left-path-input;
-            right-path-input <=> root.open-right-path-input;
-            is-folder-mode <=> root.open-is-folder-mode;
-            is-three-way <=> root.open-is-three-way;
-            base-path-input <=> root.open-base-path-input;
-            recent-entries: root.recent-entries;
-            open-recent(idx) => { root.open-recent(idx); }
-            browse-base => { root.browse-base(); }
-            browse-left => {
-                if root.open-is-folder-mode {
-                    root.open-folder-left();
-                } else {
-                    root.open-left-file();
-                }
-            }
-            browse-right => {
-                if root.open-is-folder-mode {
-                    root.open-folder-right();
-                } else {
-                    root.open-right-file();
-                }
-            }
-            compare => {
-                root.start-compare(root.open-left-path-input, root.open-right-path-input, root.open-is-folder-mode);
-            }
-            paste-left => { root.paste-left-path(); }
-            paste-right => { root.paste-right-path(); }
+        // Blank start screen
+        if root.view-mode == 7 : Rectangle {
+            vertical-stretch: 1;
+            background: Palette.background;
         }
 
         // Diff status filter bar
@@ -908,6 +1002,8 @@ export component MainWindow inherits Window {
             diff-lines: root.diff-lines;
             current-diff-index: root.current-diff-index;
             scroll-y <=> root.diff-scroll-y;
+            edit-focus-row <=> root.diff-edit-focus-row;
+            edit-focus-right-row <=> root.diff-edit-focus-right-row;
             left-title: root.left-path != "" ? root.left-path : @tr("Left file");
             right-title: root.right-path != "" ? root.right-path : @tr("Right file");
             context-menu-enabled: root.opt-enable-context-menu;
@@ -915,8 +1011,9 @@ export component MainWindow inherits Window {
             show-location-pane: root.show-location-pane;
             show-word-diff: root.show-word-diff;
             word-wrap-mode: root.opt-word-wrap;
-            diff-only-mode: root.opt-diff-only;
-            diff-status-filter: root.diff-status-filter;
+            // Suppress diff-only and status-filter when no files are loaded (blank new doc)
+            diff-only-mode: root.opt-diff-only && (root.left-path != "" || root.right-path != "");
+            diff-status-filter: (root.left-path != "" || root.right-path != "") ? root.diff-status-filter : 0;
             editor-font-size: root.opt-font-size;
             editor-tab-width: root.opt-tab-width;
             copy-to-right(idx) => { root.copy-to-right(idx); }
@@ -929,6 +1026,10 @@ export component MainWindow inherits Window {
             inline-edit-enabled: root.opt-inline-edit;
             edit-left-line(idx, text) => { root.edit-left-line(idx, text); }
             edit-right-line(idx, text) => { root.edit-right-line(idx, text); }
+            insert-line-after(idx, is-left) => { root.insert-line-after(idx, is-left); }
+            delete-line(idx, is-left) => { root.delete-line(idx, is-left); }
+            move-focus-up(idx, is-left) => { root.move-focus-up(idx, is-left); }
+            move-focus-down(idx, is-left) => { root.move-focus-down(idx, is-left); }
             row-shift-clicked(idx) => { root.row-shift-clicked(idx); }
             copy-selection-to-right => { root.copy-selection-right(); }
             copy-selection-to-left => { root.copy-selection-left(); }
@@ -1018,10 +1119,17 @@ export component MainWindow inherits Window {
             right-title: root.right-path != "" ? root.right-path : @tr("Right (Theirs)");
             show-line-numbers: root.opt-show-line-numbers;
             editor-font-size: root.opt-font-size;
+            inline-edit-enabled: root.opt-inline-edit;
+            edit-focus-left-row <=> root.three-way-edit-focus-left-row;
+            edit-focus-base-row <=> root.three-way-edit-focus-base-row;
+            edit-focus-right-row <=> root.three-way-edit-focus-right-row;
             next-conflict => { root.next-conflict(); }
             prev-conflict => { root.prev-conflict(); }
             use-left(idx) => { root.use-left(idx); }
             use-right(idx) => { root.use-right(idx); }
+            edit-text-changed(row, text, pane) => { root.three-way-edit-line(row, text, pane); }
+            insert-line-after(row, pane) => { root.three-way-insert-line-after(row, pane); }
+            delete-line(row, pane) => { root.three-way-delete-line(row, pane); }
         }
 
         // Excel compare view
@@ -1450,6 +1558,85 @@ export component MainWindow inherits Window {
         }
     }
 
+    // Save confirm dialog (WinMerge-style per-side save/discard)
+    SaveConfirmDialog {
+        width: 100%;
+        height: 100%;
+        visible-flag: root.show-save-confirm-dialog;
+        left-filename: root.left-path;
+        right-filename: root.right-path;
+        confirmed(lc, rc) => {
+            root.show-save-confirm-dialog = false;
+            root.save-and-proceed(lc, rc);
+        }
+        cancelled => { root.show-save-confirm-dialog = false; }
+        discard-all => {
+            root.show-save-confirm-dialog = false;
+            root.discard-and-proceed();
+        }
+    }
+
+    // New table dialog
+    NewTableDialog {
+        width: 100%;
+        height: 100%;
+        visible-flag: root.show-new-table-dialog;
+        confirmed(ft, delim, nlq, qc) => {
+            root.show-new-table-dialog = false;
+            if root.new-table-pane-mode == 1 {
+                root.new-blank-table-3way(ft, delim, nlq, qc);
+            } else {
+                root.new-blank-table(ft, delim, nlq, qc);
+            }
+            root.new-table-pane-mode = 0;
+        }
+        cancelled => {
+            root.show-new-table-dialog = false;
+            root.new-table-pane-mode = 0;
+        }
+    }
+
+    // Open dialog (modal overlay)
+    OpenDialog {
+        width: 100%;
+        height: 100%;
+        visible-flag: root.show-open-dialog;
+        left-path-input <=> root.open-left-path-input;
+        right-path-input <=> root.open-right-path-input;
+        is-folder-mode <=> root.open-is-folder-mode;
+        is-three-way <=> root.open-is-three-way;
+        base-path-input <=> root.open-base-path-input;
+        recent-entries: root.recent-entries;
+        open-recent(idx) => {
+            root.show-open-dialog = false;
+            root.open-recent(idx);
+        }
+        browse-base => { root.browse-base(); }
+        browse-left => {
+            if root.open-is-folder-mode {
+                root.open-folder-left();
+            } else {
+                root.open-left-file();
+            }
+        }
+        browse-right => {
+            if root.open-is-folder-mode {
+                root.open-folder-right();
+            } else {
+                root.open-right-file();
+            }
+        }
+        compare => {
+            root.show-open-dialog = false;
+            root.start-compare(root.open-left-path-input, root.open-right-path-input, root.open-is-folder-mode);
+        }
+        cancel => {
+            root.show-open-dialog = false;
+        }
+        paste-left => { root.paste-left-path(); }
+        paste-right => { root.paste-right-path(); }
+    }
+
     // Go to Line dialog
     if root.show-goto-dialog : Rectangle {
         width: 100%;
@@ -1621,5 +1808,224 @@ export component MainWindow inherits Window {
         height: root.height;
         visible-dialog: root.show-shortcuts-dialog;
         close => { root.shortcuts-dialog-close(); }
+    }
+
+    // Quit confirm dialog (shown when there are unsaved changes on app exit)
+    if root.show-quit-confirm : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000060;
+
+        Rectangle {
+            width: Math.min(400px, parent.width - 48px);
+            height: dlg-quit.preferred-height + 32px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Palette.background;
+            border-radius: 8px;
+            border-color: Palette.border;
+            border-width: 1px;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000040;
+
+            dlg-quit := VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+
+                Text {
+                    text: @tr("Unsaved Changes");
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: Palette.foreground;
+                }
+                Rectangle { height: 1px; background: Palette.border; }
+                Text {
+                    text: @tr("There are unsaved changes. What would you like to do?");
+                    font-size: 13px;
+                    color: Palette.foreground;
+                    wrap: word-wrap;
+                    width: parent.width - 40px;
+                }
+                Rectangle { height: 1px; background: Palette.border; }
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    Button {
+                        text: @tr("Save(S)");
+                        clicked => { root.quit-save-all(); }
+                    }
+                    Button {
+                        text: @tr("Don't Save(D)");
+                        clicked => { root.quit-discard-all(); }
+                    }
+                    Button {
+                        text: @tr("Cancel");
+                        clicked => { root.show-quit-confirm = false; }
+                    }
+                }
+            }
+        }
+    }
+
+    // In-app Save As dialog
+    // Save As dialog with integrated file browser
+    if root.show-save-as-dialog : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000060;
+
+        TouchArea { clicked => { /* absorb backdrop click */ } }
+
+        Rectangle {
+            width: Math.min(600px, parent.width - 40px);
+            height: Math.min(500px, parent.height - 40px);
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Palette.background;
+            border-radius: 8px;
+            border-color: Palette.border;
+            border-width: 1px;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000050;
+
+            TouchArea { } // absorb backdrop click
+
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+
+                // Title
+                Text {
+                    text: root.save-as-title;
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: Palette.foreground;
+                }
+
+                // Directory path bar + up button
+                HorizontalLayout {
+                    spacing: 6px;
+                    LineEdit {
+                        horizontal-stretch: 1;
+                        text <=> root.save-as-dir;
+                        accepted(t) => { root.save-as-navigate(t); }
+                    }
+                    Rectangle {
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 4px;
+                        background: saveas-up-ta.has-hover ? Palette.background.darker(0.12) : transparent;
+                        border-color: Palette.border;
+                        border-width: 1px;
+                        Image {
+                            width: 18px;
+                            height: 18px;
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            source: @image-url("icons/up.svg");
+                            colorize: Palette.foreground;
+                        }
+                        saveas-up-ta := TouchArea {
+                            clicked => { root.save-as-go-parent(); }
+                        }
+                    }
+                }
+
+                Rectangle { height: 1px; background: Palette.border; }
+
+                // File / folder listing
+                saveas-focus := FocusScope {
+                    vertical-stretch: 1;
+                    ListView {
+                        vertical-stretch: 1;
+                        for entry[idx] in root.save-as-entries : Rectangle {
+                            height: 28px;
+                            background: idx == root.save-as-selected-index
+                                ? Palette.accent-background
+                                : saveas-row-ta.has-hover
+                                    ? Palette.background.darker(0.07)
+                                    : transparent;
+                            saveas-row-ta := TouchArea {
+                                clicked => {
+                                    root.save-as-selected-index = idx;
+                                    if !entry.is-dir {
+                                        root.save-as-filename = entry.name;
+                                    }
+                                    saveas-focus.focus();
+                                }
+                                double-clicked => {
+                                    if entry.is-dir {
+                                        root.save-as-navigate(root.save-as-dir + "/" + entry.name);
+                                    } else {
+                                        root.save-as-filename = entry.name;
+                                        root.save-as-confirmed(root.save-as-dir + "/" + entry.name);
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                spacing: 6px;
+                                alignment: start;
+                                Image {
+                                    width: 16px;
+                                    height: 16px;
+                                    source: entry.is-dir ? @image-url("icons/folder.svg") : @image-url("icons/file.svg");
+                                    colorize: Palette.foreground;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: entry.name;
+                                    font-size: 13px;
+                                    font-family: "monospace";
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    color: entry.is-dir ? Palette.foreground : Palette.foreground.transparentize(0.2);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { height: 1px; background: Palette.border; }
+
+                // Filename input bar
+                HorizontalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: @tr("File name:");
+                        font-size: 12px;
+                        color: Palette.foreground;
+                        vertical-alignment: center;
+                    }
+                    LineEdit {
+                        horizontal-stretch: 1;
+                        text <=> root.save-as-filename;
+                        placeholder-text: "filename.txt";
+                        accepted(t) => {
+                            root.save-as-confirmed(root.save-as-dir + "/" + t);
+                        }
+                    }
+                }
+
+                // Footer buttons
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: 8px;
+                    Button {
+                        text: @tr("Save");
+                        enabled: root.save-as-filename != "";
+                        clicked => {
+                            root.save-as-confirmed(root.save-as-dir + "/" + root.save-as-filename);
+                        }
+                    }
+                    Button {
+                        text: @tr("Cancel");
+                        clicked => { root.save-as-cancelled(); }
+                    }
+                }
+            }
+        }
     }
 }

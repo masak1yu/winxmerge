@@ -199,11 +199,31 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Window is now properly resizable (initial size 1200×800, minimum 600×400)
 - Diff view panes use proportional layout (no fixed-width binding loops)
 
+### Inline Editing (WinMerge-style)
+- Edit text directly in diff panes — always in aligned Ghost-line view (no separate edit mode)
+- Enter to insert new line (Ghost line added to other pane for alignment)
+- Backspace at start of empty line to delete
+- Arrow keys (Up/Down) to move between editable rows
+- F5 to rescan (recompute diff from edited content)
+- Undo/Redo support for all edit operations
+
+### New Blank Document
+- File → New → Text: create empty 2-way comparison document
+- File → New → Table: create empty CSV/TSV comparison document
+- File → New (3-pane) → Text / Table: create empty 3-way comparison
+- Toolbar "New" button with dropdown for type selection
+
+### Save As Dialog (WinMerge-style)
+- In-app file browser dialog with directory listing, navigation, and filename input
+- Shown when saving documents without file paths (new/clipboard)
+- Directory defaults to current working directory
+- On quit with unsaved changes: Save / Don't Save / Cancel (cancel aborts quit)
+
 ### Other
 - WinMerge-style initial file selection dialog (with recent files list)
 - WinMerge-style options dialog (Edit → Options...)
 - Right-click context menu (copy, merge, navigation)
-- Unsaved changes confirmation dialog
+- Unsaved changes confirmation dialog (WinMerge-style Save/Don't Save/Cancel)
 - HTML diff report export (File → Export HTML Report...) with embedded diff comments (also included in Print)
 - Excel diff report export (File → Export Excel (.xlsx)...) with color-coded rows and comments column
 - Native menu bar (macOS / Windows)
@@ -341,6 +361,8 @@ winxmerge/
 │   ├── dialogs/
 │   │   ├── open-dialog.slint      # File/folder selection dialog
 │   │   ├── file-browser.slint     # Built-in file browser (WSL2-safe)
+│   │   ├── save-confirm-dialog.slint # Save confirmation dialog (WinMerge-style)
+│   │   ├── new-table-dialog.slint # New table type selection dialog
 │   │   ├── options-dialog.slint   # Options dialog
 │   │   └── shortcuts-dialog.slint # Keyboard shortcuts reference dialog
 │   └── widgets/
