@@ -35,6 +35,7 @@ component DiffLineRow inherits Rectangle {
     in property <bool> is-current;
     in property <int> highlight-type: -1;
     in property <int> diff-idx: -1;
+    in property <int> row-index: 0;
     in property <bool> show-line-no: true;
     in property <int> text-font-size: 13;
     in property <bool> editable: false;
@@ -45,6 +46,8 @@ component DiffLineRow inherits Rectangle {
     in property <bool> is-selected: false;
 
     callback line-clicked(int);
+    callback row-clicked(/* row-index */ int);
+    callback row-shift-clicked(/* row-index */ int);
     callback text-edited(string);
     callback return-pressed();
     callback focus-applied();
@@ -108,9 +111,16 @@ component DiffLineRow inherits Rectangle {
             }
 
             line-no-touch := TouchArea {
-                clicked => {
-                    if diff-idx >= 0 {
-                        root.line-clicked(diff-idx);
+                pointer-event(ev) => {
+                    if ev.button == PointerEventButton.left && ev.kind == PointerEventKind.up {
+                        if ev.modifiers.shift {
+                            root.row-shift-clicked(root.row-index);
+                        } else {
+                            root.row-clicked(root.row-index);
+                            if diff-idx >= 0 {
+                                root.line-clicked(diff-idx);
+                            }
+                        }
                     }
                 }
             }
@@ -261,8 +271,15 @@ export component DiffView inherits Rectangle {
     callback copy-left-text();
     callback copy-right-text();
     callback row-shift-clicked(/* row-index */ int);
+    callback drag-select-start(/* row-index */ int);
+    callback drag-select-move(/* row-index */ int);
+    callback drag-select-end();
     callback copy-selection-to-right();
     callback copy-selection-to-left();
+
+    // Internal: track whether drag is in progress
+    in-out property <bool> drag-active: false;
+    property <length> line-height: (root.editor-font-size + 2) * 1px;
 
     border-color: Palette.border;
     border-width: 1px;
@@ -350,6 +367,7 @@ export component DiffView inherits Rectangle {
                         line-no: line.left-line-no;
                         text: line.left-text;
                         status: line.status == 1 ? 0 : line.status;
+                        row-index: idx;
                         is-current: line.diff-index >= 0 && line.diff-index == root.current-diff-index;
                         is-search-match: line.is-search-match;
                         is-selected: line.is-selected;
@@ -363,6 +381,8 @@ export component DiffView inherits Rectangle {
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-row;
                         focus-at-end: root.focus-left-at-end;
                         line-clicked(didx) => { root.select-diff(didx); }
+                        row-clicked(ridx) => { root.drag-select-start(ridx); }
+                        row-shift-clicked(ridx) => { root.row-shift-clicked(ridx); }
                         text-edited(new-text) => { root.edit-left-line(idx, new-text); }
                         return-pressed => { root.insert-line-after(idx, true); }
                         focus-applied => { root.edit-focus-row = -1; root.focus-left-at-end = false; }
@@ -401,6 +421,7 @@ export component DiffView inherits Rectangle {
                         line-no: line.right-line-no;
                         text: line.right-text;
                         status: line.status == 2 ? 0 : line.status;
+                        row-index: idx;
                         is-current: line.diff-index >= 0 && line.diff-index == root.current-diff-index;
                         is-search-match: line.is-search-match;
                         is-selected: line.is-selected;
@@ -414,6 +435,8 @@ export component DiffView inherits Rectangle {
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-right-row;
                         focus-at-end: root.focus-right-at-end;
                         line-clicked(didx) => { root.select-diff(didx); }
+                        row-clicked(ridx) => { root.drag-select-start(ridx); }
+                        row-shift-clicked(ridx) => { root.row-shift-clicked(ridx); }
                         text-edited(new-text) => { root.edit-right-line(idx, new-text); }
                         return-pressed => { root.insert-line-after(idx, false); }
                         focus-applied => { root.edit-focus-right-row = -1; root.focus-right-at-end = false; }

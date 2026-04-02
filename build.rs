@@ -6,6 +6,7 @@ fn main() {
         slint_build::compile("ui/wasm-app.slint").unwrap();
     } else {
         // Desktop build: compile the full main UI with translations
+        println!("cargo:rerun-if-changed=translations/");
         let config = slint_build::CompilerConfiguration::new()
             .with_bundled_translations("translations/")
             .with_default_translation_context(slint_build::DefaultTranslationContext::None);

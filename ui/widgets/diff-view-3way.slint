@@ -23,15 +23,23 @@ component ThreeWayLineRow inherits Rectangle {
     in property <int> text-font-size: 13;
     in property <bool> editable: false;
     in property <bool> force-focus: false;
+    in property <bool> focus-at-end: false;
 
     callback text-edited(string);
     callback return-pressed();
     callback backspace-at-start();
     callback focus-applied();
+    callback move-up();
+    callback move-down();
+    callback clicked();
 
     // For rows that exist when focus property changes
     changed force-focus => {
         if self.force-focus {
+            if root.focus-at-end {
+                ti.text = ti.text + " ";
+                ti.text = root.text;
+            }
             ti.focus();
             root.focus-applied();
         }
@@ -47,23 +55,23 @@ component ThreeWayLineRow inherits Rectangle {
     property <color> text-color: Palette.foreground;
 
     background: is-current ? current-bg :
-                status == 1 ? ThemeColors.left-changed-bg :
-                status == 2 ? ThemeColors.right-changed-bg :
-                status == 3 ? ThemeColors.both-changed-bg :
-                status == 4 ? ThemeColors.conflict-bg :
+                status == 1 ? ThemeColors.added-bg :
+                status == 2 ? ThemeColors.added-bg :
+                status == 3 ? ThemeColors.modified-bg :
+                status == 4 ? ThemeColors.removed-bg :
                 Palette.background;
 
     property <color> current-bg:
-                status == 4 ? ThemeColors.conflict-bg-current :
-                status == 1 ? ThemeColors.left-changed-bg-current :
-                status == 2 ? ThemeColors.right-changed-bg-current :
-                status == 3 ? ThemeColors.both-changed-bg-current :
+                status == 4 ? ThemeColors.removed-bg-current :
+                status == 1 ? ThemeColors.added-bg-current :
+                status == 2 ? ThemeColors.added-bg-current :
+                status == 3 ? ThemeColors.modified-bg-current :
                 Palette.background.darker(0.05);
 
     HorizontalLayout {
         padding-left: 4px;
         padding-right: 4px;
-        spacing: 8px;
+        spacing: 4px;
 
         if show-line-no : Rectangle {
             width: 36px;
@@ -77,27 +85,18 @@ component ThreeWayLineRow inherits Rectangle {
             }
         }
 
-        // Status marker
-        Rectangle {
-            width: 14px;
-            Text {
-                text: status == 1 ? "L" : status == 2 ? "R" : status == 3 ? "=" : status == 4 ? "!" : " ";
-                font-size: 10px;
-                font-family: "monospace";
-                font-weight: 700;
-                color: status == 1 ? ThemeColors.moved-fg : status == 2 ? ThemeColors.added-fg : status == 3 ? ThemeColors.modified-fg : status == 4 ? ThemeColors.removed-fg : Palette.foreground.transparentize(0.5);
-                vertical-alignment: center;
-                horizontal-alignment: center;
+        if !root.editable : Rectangle {
+            TouchArea {
+                clicked => { root.clicked(); }
             }
-        }
-
-        if !root.editable : Text {
-            text: root.text;
-            font-size: root.text-font-size * 1px;
-            font-family: "monospace";
-            vertical-alignment: center;
-            overflow: elide;
-            color: root.text-color;
+            Text {
+                text: root.text;
+                font-size: root.text-font-size * 1px;
+                font-family: "monospace";
+                vertical-alignment: center;
+                overflow: elide;
+                color: root.text-color;
+            }
         }
         // TextInput always instantiated so `ti` id is in scope for focus()
         ti := TextInput {
@@ -116,28 +115,123 @@ component ThreeWayLineRow inherits Rectangle {
                 } else if event.text == "\u{0008}" && self.cursor-position-byte-offset == 0 {
                     root.backspace-at-start();
                     accept
+                } else if event.text == Key.UpArrow {
+                    root.move-up();
+                    accept
+                } else if event.text == Key.DownArrow {
+                    root.move-down();
+                    accept
                 } else {
                     reject
                 }
             }
         }
+        // Click overlay: intercept clicks when TextInput doesn't have focus
+        // so that clicking anywhere in the pane places cursor at end of text.
+        if root.editable && !ti.has-focus : TouchArea {
+            clicked => { root.clicked(); }
+        }
+    }
+}
+
+// WinMerge-style 3-bar location pane with connector regions
+// Bar layout: [left-bar][connector-LM][middle-bar][connector-MR][right-bar]
+// Status: 0=Equal, 1=LeftChanged, 2=RightChanged, 3=BothChanged, 4=Conflict
+component ThreeWayLocationPane inherits Rectangle {
+    in property <[ThreeWayLineData]> lines;
+    in property <int> current-conflict-index: -1;
+
+    width: 36px;
+    background: Palette.background.darker(0.02);
+    border-color: Palette.border;
+    border-width: 1px;
+
+    // Layout: 6px bar, 4px connector, 6px bar, 4px connector, 6px bar = 26px + margins
+    property <length> bar-width: 8px;
+    property <length> gap-width: 4px;
+    property <length> start-x: 2px;
+
+    // Left bar
+    for line[idx] in lines: Rectangle {
+        y: lines.length > 0 ? (idx * (parent.height - 2px) / lines.length) : 0;
+        height: lines.length > 0 ? Math.max(2px, (parent.height - 2px) / lines.length) : 0;
+        x: root.start-x;
+        width: root.bar-width;
+        background: line.status == 0 ? transparent :
+                    (line.conflict-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
+                    line.status == 1 ? ThemeColors.added-fg :
+                    line.status == 3 ? ThemeColors.modified-fg :
+                    line.status == 4 ? ThemeColors.removed-fg : transparent;
+    }
+
+    // Left-Middle connector
+    for line[idx] in lines: Rectangle {
+        y: lines.length > 0 ? (idx * (parent.height - 2px) / lines.length) : 0;
+        height: lines.length > 0 ? Math.max(2px, (parent.height - 2px) / lines.length) : 0;
+        x: root.start-x + root.bar-width;
+        width: root.gap-width;
+        // Yellow if right-only (left==middle), Cyan if middle-only, Red if conflict
+        background: line.status == 2 ? #ffff7f :
+                    line.status == 3 ? #7fffff :
+                    line.status == 4 ? #ff4444 : transparent;
+    }
+
+    // Middle bar
+    for line[idx] in lines: Rectangle {
+        y: lines.length > 0 ? (idx * (parent.height - 2px) / lines.length) : 0;
+        height: lines.length > 0 ? Math.max(2px, (parent.height - 2px) / lines.length) : 0;
+        x: root.start-x + root.bar-width + root.gap-width;
+        width: root.bar-width;
+        background: line.status == 0 ? transparent :
+                    (line.conflict-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
+                    line.status == 3 ? ThemeColors.modified-fg :
+                    line.status == 4 ? ThemeColors.removed-fg : transparent;
+    }
+
+    // Middle-Right connector
+    for line[idx] in lines: Rectangle {
+        y: lines.length > 0 ? (idx * (parent.height - 2px) / lines.length) : 0;
+        height: lines.length > 0 ? Math.max(2px, (parent.height - 2px) / lines.length) : 0;
+        x: root.start-x + root.bar-width * 2 + root.gap-width;
+        width: root.gap-width;
+        // Yellow if left-only (middle==right), Cyan if middle-only, Red if conflict
+        background: line.status == 1 ? #ffff7f :
+                    line.status == 3 ? #7fffff :
+                    line.status == 4 ? #ff4444 : transparent;
+    }
+
+    // Right bar
+    for line[idx] in lines: Rectangle {
+        y: lines.length > 0 ? (idx * (parent.height - 2px) / lines.length) : 0;
+        height: lines.length > 0 ? Math.max(2px, (parent.height - 2px) / lines.length) : 0;
+        x: root.start-x + root.bar-width * 2 + root.gap-width * 2;
+        width: root.bar-width;
+        background: line.status == 0 ? transparent :
+                    (line.conflict-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
+                    line.status == 2 ? ThemeColors.added-fg :
+                    line.status == 3 ? ThemeColors.modified-fg :
+                    line.status == 4 ? ThemeColors.removed-fg : transparent;
     }
 }
 
 export component DiffView3Way inherits Rectangle {
     in property <string> base-title: "Base";
-    in property <string> left-title: "Left (Mine)";
-    in property <string> right-title: "Right (Theirs)";
+    in property <string> left-title: "Left";
+    in property <string> right-title: "Right";
     in property <[ThreeWayLineData]> lines;
     in property <int> current-conflict-index: -1;
     in property <bool> show-line-numbers: true;
     in property <int> editor-font-size: 13;
     in property <bool> inline-edit-enabled: false;
+    in property <bool> show-location-pane: true;
 
     // Row index to focus for each pane (-1 = none)
     in-out property <int> edit-focus-left-row: -1;
     in-out property <int> edit-focus-base-row: -1;
     in-out property <int> edit-focus-right-row: -1;
+    in-out property <bool> focus-left-at-end: false;
+    in-out property <bool> focus-base-at-end: false;
+    in-out property <bool> focus-right-at-end: false;
 
     callback next-conflict();
     callback prev-conflict();
@@ -148,6 +242,8 @@ export component DiffView3Way inherits Rectangle {
     callback edit-text-changed(/* row */ int, /* text */ string, /* pane */ int);
     callback insert-line-after(/* row */ int, /* pane */ int);
     callback delete-line(/* row */ int, /* pane */ int);
+    callback move-focus-up(/* row */ int, /* pane */ int);
+    callback move-focus-down(/* row */ int, /* pane */ int);
 
     border-color: Palette.border;
     border-width: 1px;
@@ -158,6 +254,8 @@ export component DiffView3Way inherits Rectangle {
             height: 28px;
 
             Rectangle {
+                horizontal-stretch: 1;
+                min-width: 80px;
                 background: Palette.background.darker(0.05);
                 border-color: Palette.border;
                 border-width: 1px;
@@ -174,6 +272,8 @@ export component DiffView3Way inherits Rectangle {
             }
 
             Rectangle {
+                horizontal-stretch: 1;
+                min-width: 80px;
                 background: Palette.background.darker(0.05);
                 border-color: Palette.border;
                 border-width: 1px;
@@ -189,22 +289,9 @@ export component DiffView3Way inherits Rectangle {
                 }
             }
 
-            // Resolve buttons column header
             Rectangle {
-                width: 60px;
-                background: Palette.background.darker(0.05);
-                border-color: Palette.border;
-                border-width: 1px;
-                Text {
-                    text: @tr("Resolve");
-                    font-size: 11px;
-                    font-weight: 600;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
-            }
-
-            Rectangle {
+                horizontal-stretch: 1;
+                min-width: 80px;
                 background: Palette.background.darker(0.05);
                 border-color: Palette.border;
                 border-width: 1px;
@@ -219,123 +306,111 @@ export component DiffView3Way inherits Rectangle {
                     }
                 }
             }
+
+            // Spacer matching LocationPane width
+            if root.lines.length > 0 && root.show-location-pane : Rectangle {
+                width: 36px;
+                background: Palette.background.darker(0.05);
+                border-color: Palette.border;
+                border-width: 1px;
+            }
         }
 
-        // Content
+        // Content: three equal panes
         HorizontalLayout {
             // Left pane
-            left-list := ListView {
-                for line[idx] in lines: ThreeWayLineRow {
-                    height: 24px;
-                    line-no: line.left-line-no;
-                    text: line.left-text;
-                    status: line.status;
-                    is-current: line.is-current;
-                    show-line-no: root.show-line-numbers;
-                    text-font-size: root.editor-font-size;
-                    editable: root.inline-edit-enabled && line.left-line-no != "";
-                    force-focus: root.inline-edit-enabled && idx == root.edit-focus-left-row;
-                    text-edited(t) => { root.edit-text-changed(idx, t, 0); }
-                    return-pressed => { root.insert-line-after(idx, 0); }
-                    backspace-at-start => { root.delete-line(idx, 0); }
-                    focus-applied => { root.edit-focus-left-row = -1; }
+            Rectangle {
+                horizontal-stretch: 1;
+                min-width: 80px;
+                border-color: Palette.border;
+                border-width: 1px;
+                left-list := ListView {
+                    for line[idx] in lines: ThreeWayLineRow {
+                        height: (root.editor-font-size + 2) * 1px;
+                        line-no: line.left-line-no;
+                        text: line.left-text;
+                        status: line.status;
+                        is-current: line.is-current;
+                        show-line-no: root.show-line-numbers;
+                        text-font-size: root.editor-font-size;
+                        editable: root.inline-edit-enabled && line.left-line-no != "";
+                        force-focus: root.inline-edit-enabled && idx == root.edit-focus-left-row;
+                        focus-at-end: root.focus-left-at-end;
+                        text-edited(t) => { root.edit-text-changed(idx, t, 0); }
+                        return-pressed => { root.insert-line-after(idx, 0); }
+                        backspace-at-start => { root.focus-left-at-end = true; root.delete-line(idx, 0); }
+                        focus-applied => { root.edit-focus-left-row = -1; root.focus-left-at-end = false; }
+                        move-up => { root.move-focus-up(idx, 0); }
+                        move-down => { root.move-focus-down(idx, 0); }
+                        clicked => { root.focus-left-at-end = true; root.edit-focus-left-row = idx; }
+                    }
                 }
             }
 
             // Base pane
-            ListView {
-                viewport-y: left-list.viewport-y;
-                for line[idx] in lines: ThreeWayLineRow {
-                    height: 24px;
-                    line-no: line.base-line-no;
-                    text: line.base-text;
-                    status: 0; // Base always neutral
-                    is-current: line.is-current;
-                    show-line-no: root.show-line-numbers;
-                    text-font-size: root.editor-font-size;
-                    editable: root.inline-edit-enabled && line.base-line-no != "";
-                    force-focus: root.inline-edit-enabled && idx == root.edit-focus-base-row;
-                    text-edited(t) => { root.edit-text-changed(idx, t, 1); }
-                    return-pressed => { root.insert-line-after(idx, 1); }
-                    backspace-at-start => { root.delete-line(idx, 1); }
-                    focus-applied => { root.edit-focus-base-row = -1; }
-                }
-            }
-
-            // Resolve buttons
             Rectangle {
-                width: 60px;
-                background: Palette.background.darker(0.01);
+                horizontal-stretch: 1;
+                min-width: 80px;
                 border-color: Palette.border;
                 border-width: 1px;
-
                 ListView {
                     viewport-y: left-list.viewport-y;
-                    for line in lines: Rectangle {
-                        height: 24px;
-                        if line.status == 4 : HorizontalLayout {
-                            padding: 1px;
-                            spacing: 2px;
-                            alignment: center;
-
-                            Rectangle {
-                                width: 24px;
-                                height: 20px;
-                                background: use-l-touch.has-hover ? ThemeColors.resolve-left-hover : transparent;
-                                border-radius: 2px;
-                                Text {
-                                    text: "L";
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    color: ThemeColors.moved-fg;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                }
-                                use-l-touch := TouchArea {
-                                    clicked => { root.use-left(line.conflict-index); }
-                                }
-                            }
-
-                            Rectangle {
-                                width: 24px;
-                                height: 20px;
-                                background: use-r-touch.has-hover ? ThemeColors.resolve-right-hover : transparent;
-                                border-radius: 2px;
-                                Text {
-                                    text: "R";
-                                    font-size: 10px;
-                                    font-weight: 700;
-                                    color: ThemeColors.added-fg;
-                                    horizontal-alignment: center;
-                                    vertical-alignment: center;
-                                }
-                                use-r-touch := TouchArea {
-                                    clicked => { root.use-right(line.conflict-index); }
-                                }
-                            }
-                        }
+                    for line[idx] in lines: ThreeWayLineRow {
+                        height: (root.editor-font-size + 2) * 1px;
+                        line-no: line.base-line-no;
+                        text: line.base-text;
+                        status: line.status;
+                        is-current: line.is-current;
+                        show-line-no: root.show-line-numbers;
+                        text-font-size: root.editor-font-size;
+                        editable: root.inline-edit-enabled && line.base-line-no != "";
+                        force-focus: root.inline-edit-enabled && idx == root.edit-focus-base-row;
+                        focus-at-end: root.focus-base-at-end;
+                        text-edited(t) => { root.edit-text-changed(idx, t, 1); }
+                        return-pressed => { root.insert-line-after(idx, 1); }
+                        backspace-at-start => { root.focus-base-at-end = true; root.delete-line(idx, 1); }
+                        focus-applied => { root.edit-focus-base-row = -1; root.focus-base-at-end = false; }
+                        move-up => { root.move-focus-up(idx, 1); }
+                        move-down => { root.move-focus-down(idx, 1); }
+                        clicked => { root.focus-base-at-end = true; root.edit-focus-base-row = idx; }
                     }
                 }
             }
 
             // Right pane
-            ListView {
-                viewport-y: left-list.viewport-y;
-                for line[idx] in lines: ThreeWayLineRow {
-                    height: 24px;
-                    line-no: line.right-line-no;
-                    text: line.right-text;
-                    status: line.status;
-                    is-current: line.is-current;
-                    show-line-no: root.show-line-numbers;
-                    text-font-size: root.editor-font-size;
-                    editable: root.inline-edit-enabled && line.right-line-no != "";
-                    force-focus: root.inline-edit-enabled && idx == root.edit-focus-right-row;
-                    text-edited(t) => { root.edit-text-changed(idx, t, 2); }
-                    return-pressed => { root.insert-line-after(idx, 2); }
-                    backspace-at-start => { root.delete-line(idx, 2); }
-                    focus-applied => { root.edit-focus-right-row = -1; }
+            Rectangle {
+                horizontal-stretch: 1;
+                min-width: 80px;
+                border-color: Palette.border;
+                border-width: 1px;
+                ListView {
+                    viewport-y: left-list.viewport-y;
+                    for line[idx] in lines: ThreeWayLineRow {
+                        height: (root.editor-font-size + 2) * 1px;
+                        line-no: line.right-line-no;
+                        text: line.right-text;
+                        status: line.status;
+                        is-current: line.is-current;
+                        show-line-no: root.show-line-numbers;
+                        text-font-size: root.editor-font-size;
+                        editable: root.inline-edit-enabled && line.right-line-no != "";
+                        force-focus: root.inline-edit-enabled && idx == root.edit-focus-right-row;
+                        focus-at-end: root.focus-right-at-end;
+                        text-edited(t) => { root.edit-text-changed(idx, t, 2); }
+                        return-pressed => { root.insert-line-after(idx, 2); }
+                        backspace-at-start => { root.focus-right-at-end = true; root.delete-line(idx, 2); }
+                        focus-applied => { root.edit-focus-right-row = -1; root.focus-right-at-end = false; }
+                        move-up => { root.move-focus-up(idx, 2); }
+                        move-down => { root.move-focus-down(idx, 2); }
+                        clicked => { root.focus-right-at-end = true; root.edit-focus-right-row = idx; }
+                    }
                 }
+            }
+
+            // Location pane (minimap)
+            if root.lines.length > 0 && root.show-location-pane : ThreeWayLocationPane {
+                lines: root.lines;
+                current-conflict-index: root.current-conflict-index;
             }
         }
     }

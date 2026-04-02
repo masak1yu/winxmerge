@@ -49,6 +49,9 @@ msgstr "右フォルダを開く..."
 msgid "Save Left"
 msgstr "左を保存"
 
+msgid "Save Middle"
+msgstr "中を保存"
+
 msgid "Save Right"
 msgstr "右を保存"
 
