@@ -61,6 +61,8 @@ pub struct TabState {
     pub left_lines: Vec<String>,
     pub right_lines: Vec<String>,
     pub has_unsaved_changes: bool,
+    // True after any inline edit; cleared on rescan/compare
+    pub editing_dirty: bool,
     // Undo/Redo
     undo_stack: Vec<TextSnapshot>,
     redo_stack: Vec<TextSnapshot>,
@@ -130,6 +132,7 @@ impl TabState {
             left_lines: Vec::new(),
             right_lines: Vec::new(),
             has_unsaved_changes: false,
+            editing_dirty: false,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             left_folder: None,
@@ -142,7 +145,7 @@ impl TabState {
             diff_options: DiffOptions::default(),
             search_matches: Vec::new(),
             current_search_match: -1,
-            view_mode: 2,
+            view_mode: 7,
             diff_line_data: Vec::new(),
             folder_item_data: Vec::new(),
             title: "New".to_string(),
@@ -293,6 +296,9 @@ fn restore_tab(window: &MainWindow, state: &AppState) {
     window.set_diff_count(tab.diff_positions.len() as i32);
     window.set_current_diff_index(tab.current_diff);
     window.set_has_unsaved_changes(tab.has_unsaved_changes);
+    if tab.editing_dirty {
+        window.set_status_text(SharedString::from("Editing — press F5 to compare"));
+    }
     window.set_ignore_whitespace(tab.diff_options.ignore_whitespace);
     window.set_ignore_case(tab.diff_options.ignore_case);
 
@@ -387,21 +393,8 @@ fn restore_tab(window: &MainWindow, state: &AppState) {
         window.set_excel_active_sheet(SharedString::from(""));
     }
 
-    if tab.view_mode == 2 {
-        window.set_status_text(SharedString::from("Select files or folders to compare"));
-        // Clear path inputs for a fresh open dialog state
-        window.set_open_left_path_input(SharedString::from(
-            tab.left_path
-                .as_ref()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default(),
-        ));
-        window.set_open_right_path_input(SharedString::from(
-            tab.right_path
-                .as_ref()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default(),
-        ));
+    if tab.view_mode == 7 {
+        window.set_status_text(SharedString::from(""));
     }
 
     // Restore diff comment for current diff block
@@ -689,6 +682,7 @@ fn apply_diff_result(
 ) {
     let tab = state.current_tab_mut();
     tab.is_computing = false;
+    tab.editing_dirty = false;
 
     tab.left_lines = left_text.lines().map(String::from).collect();
     tab.right_lines = right_text.lines().map(String::from).collect();
@@ -1244,7 +1238,7 @@ pub fn copy_to_right(window: &MainWindow, state: &mut AppState, diff_index: i32)
 
     push_undo_snapshot(state, vec_model);
 
-    let right_text = rebuild_right_after_copy_from_left(vec_model);
+    let right_text = rebuild_right_after_copy_from_left(vec_model, diff_index);
     let left_text = rebuild_left(vec_model);
 
     state.current_tab_mut().has_unsaved_changes = true;
@@ -1288,7 +1282,7 @@ pub fn copy_to_left(window: &MainWindow, state: &mut AppState, diff_index: i32) 
 
     push_undo_snapshot(state, vec_model);
 
-    let left_text = rebuild_left_after_copy_from_right(vec_model);
+    let left_text = rebuild_left_after_copy_from_right(vec_model, diff_index);
     let right_text = rebuild_right(vec_model);
 
     state.current_tab_mut().has_unsaved_changes = true;
@@ -1312,6 +1306,87 @@ fn expand_tabs(text: &str, tab_width: usize) -> String {
     }
     let spaces = " ".repeat(tab_width);
     text.replace('\t', &spaces)
+}
+
+pub fn rebuild_left_from_data(data: &[DiffLineData]) -> String {
+    let mut lines = Vec::new();
+    for row in data {
+        if row.status == 1 {
+            continue;
+        }
+        lines.push(row.left_text.to_string());
+    }
+    if lines.is_empty() {
+        return String::new();
+    }
+    lines.join("\n") + "\n"
+}
+
+pub fn rebuild_right_from_data(data: &[DiffLineData]) -> String {
+    let mut lines = Vec::new();
+    for row in data {
+        if row.status == 2 {
+            continue;
+        }
+        lines.push(row.right_text.to_string());
+    }
+    if lines.is_empty() {
+        return String::new();
+    }
+    lines.join("\n") + "\n"
+}
+
+/// Save all tabs with unsaved changes.
+/// Tabs with file paths are auto-saved. Tabs without paths prompt for a filename via dialog.
+/// Sync VecModel, auto-save tabs with paths, and return a queue of
+/// (tab_index, is_left, text, encoding) for pathless sides needing a Save As dialog.
+pub fn collect_pending_saves(
+    window: &MainWindow,
+    state: &mut AppState,
+) -> Vec<(usize, bool, String, String)> {
+    // Sync current tab's live model data into tab state first
+    let model = window.get_diff_lines();
+    if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        let tab = state.current_tab_mut();
+        tab.diff_line_data.clear();
+        for i in 0..vec_model.row_count() {
+            if let Some(row) = vec_model.row_data(i) {
+                tab.diff_line_data.push(row);
+            }
+        }
+    }
+
+    let mut queue = Vec::new();
+    let n = state.tabs.len();
+    for i in 0..n {
+        if !state.tabs[i].has_unsaved_changes {
+            continue;
+        }
+        let left_path = state.tabs[i].left_path.clone();
+        let left_enc = state.tabs[i].left_encoding.clone();
+        let left_text = rebuild_left_from_data(&state.tabs[i].diff_line_data);
+        if let Some(path) = left_path {
+            let bytes = encode_text(&left_text, &left_enc);
+            let _ = fs::write(path, bytes);
+        } else if !left_text.trim().is_empty() {
+            queue.push((i, true, left_text, left_enc));
+        }
+        let right_path = state.tabs[i].right_path.clone();
+        let right_enc = state.tabs[i].right_encoding.clone();
+        let right_text = rebuild_right_from_data(&state.tabs[i].diff_line_data);
+        if let Some(path) = right_path {
+            let bytes = encode_text(&right_text, &right_enc);
+            let _ = fs::write(path, bytes);
+        } else if !right_text.trim().is_empty() {
+            queue.push((i, false, right_text, right_enc));
+        }
+        // Only clear unsaved flag if both sides were actually saved (have paths)
+        if state.tabs[i].left_path.is_some() && state.tabs[i].right_path.is_some() {
+            state.tabs[i].has_unsaved_changes = false;
+        }
+    }
+    // Don't clear the global flag here — it stays until all saves are confirmed or discarded
+    queue
 }
 
 fn rebuild_left(vec_model: &VecModel<DiffLineData>) -> String {
@@ -1338,15 +1413,18 @@ fn rebuild_right(vec_model: &VecModel<DiffLineData>) -> String {
     lines.join("\n") + "\n"
 }
 
-fn rebuild_right_after_copy_from_left(vec_model: &VecModel<DiffLineData>) -> String {
+fn rebuild_right_after_copy_from_left(
+    vec_model: &VecModel<DiffLineData>,
+    target_diff_index: i32,
+) -> String {
     let mut lines = Vec::new();
     for i in 0..vec_model.row_count() {
         let row = vec_model.row_data(i).unwrap();
-        if row.is_current_diff {
+        if row.diff_index == target_diff_index {
             match row.status {
-                2 => continue,
-                1 => continue,
-                3 => lines.push(row.left_text.to_string()),
+                2 => lines.push(row.left_text.to_string()), // Removed: copy left text to right
+                1 => continue,                              // Added: drop (left has nothing)
+                3 => lines.push(row.left_text.to_string()), // Modified: use left
                 _ => lines.push(row.right_text.to_string()),
             }
         } else if row.status == 2 {
@@ -1358,15 +1436,18 @@ fn rebuild_right_after_copy_from_left(vec_model: &VecModel<DiffLineData>) -> Str
     lines.join("\n") + "\n"
 }
 
-fn rebuild_left_after_copy_from_right(vec_model: &VecModel<DiffLineData>) -> String {
+fn rebuild_left_after_copy_from_right(
+    vec_model: &VecModel<DiffLineData>,
+    target_diff_index: i32,
+) -> String {
     let mut lines = Vec::new();
     for i in 0..vec_model.row_count() {
         let row = vec_model.row_data(i).unwrap();
-        if row.is_current_diff {
+        if row.diff_index == target_diff_index {
             match row.status {
-                1 => lines.push(row.right_text.to_string()),
-                2 => continue,
-                3 => lines.push(row.right_text.to_string()),
+                1 => lines.push(row.right_text.to_string()), // Added: copy right text to left
+                2 => continue,                               // Removed: drop (right has nothing)
+                3 => lines.push(row.right_text.to_string()), // Modified: use right
                 _ => lines.push(row.left_text.to_string()),
             }
         } else if row.status == 1 {
@@ -1450,6 +1531,203 @@ pub fn copy_all_text(window: &MainWindow, state: &AppState, is_left: bool) {
     }
 }
 
+pub fn insert_line_after(
+    window: &MainWindow,
+    state: &mut AppState,
+    line_index: i32,
+    is_left: bool,
+) {
+    let model = window.get_diff_lines();
+    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+    if line_index < 0 || line_index as usize >= vec_model.row_count() {
+        return;
+    }
+
+    push_undo_snapshot(state, vec_model);
+
+    let insert_at = (line_index + 1) as usize;
+
+    // Determine line_no for the new row from the current row
+    let current_row = vec_model.row_data(line_index as usize).unwrap();
+    let line_no_str = if is_left {
+        &current_row.left_line_no
+    } else {
+        &current_row.right_line_no
+    };
+    let line_no = line_no_str.parse::<usize>().unwrap_or(1);
+
+    // Insert empty line into left_lines or right_lines
+    {
+        let tab = state.current_tab_mut();
+        if is_left {
+            let pos = line_no.min(tab.left_lines.len());
+            tab.left_lines.insert(pos, String::new());
+        } else {
+            let pos = line_no.min(tab.right_lines.len());
+            tab.right_lines.insert(pos, String::new());
+        }
+    }
+
+    // Insert a ghost row into the diff model
+    // Left insert: status=2 (Removed) → left has content, right is ghost
+    // Right insert: status=1 (Added) → right has content, left is ghost
+    let new_row = DiffLineData {
+        left_line_no: if is_left {
+            SharedString::from("?")
+        } else {
+            SharedString::from("")
+        },
+        right_line_no: if is_left {
+            SharedString::from("")
+        } else {
+            SharedString::from("?")
+        },
+        left_text: SharedString::from(""),
+        right_text: SharedString::from(""),
+        status: if is_left { 2 } else { 1 },
+        is_current_diff: false,
+        diff_index: -1,
+        left_highlight: 0,
+        right_highlight: 0,
+        left_word_diff: SharedString::from(""),
+        right_word_diff: SharedString::from(""),
+        is_search_match: false,
+        is_selected: false,
+    };
+    vec_model.insert(insert_at, new_row);
+
+    // Renumber line numbers
+    let mut left_counter = 0usize;
+    let mut right_counter = 0usize;
+    for i in 0..vec_model.row_count() {
+        let mut r = vec_model.row_data(i).unwrap();
+        if !r.left_line_no.is_empty() {
+            left_counter += 1;
+            r.left_line_no = SharedString::from(left_counter.to_string());
+        }
+        if !r.right_line_no.is_empty() {
+            right_counter += 1;
+            r.right_line_no = SharedString::from(right_counter.to_string());
+        }
+        vec_model.set_row_data(i, r);
+    }
+
+    // Mark dirty
+    {
+        let tab = state.current_tab_mut();
+        tab.has_unsaved_changes = true;
+        if !tab.editing_dirty {
+            tab.editing_dirty = true;
+            window.set_status_text(SharedString::from("Editing — press F5 to compare"));
+        }
+    }
+    window.set_has_unsaved_changes(true);
+    window.set_can_undo(true);
+
+    // Move focus to the newly inserted row
+    if is_left {
+        window.set_diff_edit_focus_row(insert_at as i32);
+    } else {
+        window.set_diff_edit_focus_right_row(insert_at as i32);
+    }
+}
+
+/// Delete a row (Backspace at start of line). Removes from the shared diff model
+/// and syncs left_lines / right_lines.
+pub fn delete_line(window: &MainWindow, state: &mut AppState, line_index: i32, is_left: bool) {
+    if line_index < 0 {
+        return;
+    }
+
+    let model = window.get_diff_lines();
+    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+    let idx = line_index as usize;
+    if idx >= vec_model.row_count() {
+        return;
+    }
+    let row = vec_model.row_data(idx).unwrap();
+    let can_delete = if is_left {
+        row.left_text.is_empty()
+    } else {
+        row.right_text.is_empty()
+    };
+    if can_delete {
+        push_undo_snapshot(state, vec_model);
+
+        // Sync left_lines / right_lines: remove the corresponding real line
+        let line_no_str = if is_left {
+            &row.left_line_no
+        } else {
+            &row.right_line_no
+        };
+        if let Ok(line_no) = line_no_str.parse::<usize>() {
+            let tab = state.current_tab_mut();
+            if is_left {
+                if line_no > 0 && line_no <= tab.left_lines.len() {
+                    tab.left_lines.remove(line_no - 1);
+                }
+            } else {
+                if line_no > 0 && line_no <= tab.right_lines.len() {
+                    tab.right_lines.remove(line_no - 1);
+                }
+            }
+        }
+
+        vec_model.remove(idx);
+
+        // Renumber
+        let mut left_counter = 0usize;
+        let mut right_counter = 0usize;
+        for i in 0..vec_model.row_count() {
+            let mut r = vec_model.row_data(i).unwrap();
+            if !r.left_line_no.is_empty() {
+                left_counter += 1;
+                r.left_line_no = SharedString::from(left_counter.to_string());
+            }
+            if !r.right_line_no.is_empty() {
+                right_counter += 1;
+                r.right_line_no = SharedString::from(right_counter.to_string());
+            }
+            vec_model.set_row_data(i, r);
+        }
+
+        let tab = state.current_tab_mut();
+        tab.has_unsaved_changes = true;
+        if !tab.editing_dirty {
+            tab.editing_dirty = true;
+            window.set_status_text(SharedString::from("Editing — press F5 to compare"));
+        }
+        window.set_has_unsaved_changes(true);
+        window.set_can_undo(true);
+    }
+    // Find the nearest previous editable (non-ghost) row
+    let mut prev = if line_index > 0 { line_index - 1 } else { 0 };
+    while prev > 0 {
+        if let Some(r) = vec_model.row_data(prev as usize) {
+            let has_line_no = if is_left {
+                !r.left_line_no.is_empty()
+            } else {
+                !r.right_line_no.is_empty()
+            };
+            if has_line_no {
+                break;
+            }
+        }
+        prev -= 1;
+    }
+    if is_left {
+        window.set_diff_edit_focus_row(prev);
+    } else {
+        window.set_diff_edit_focus_right_row(prev);
+    }
+}
+
 pub fn edit_line(
     window: &MainWindow,
     state: &mut AppState,
@@ -1457,6 +1735,7 @@ pub fn edit_line(
     new_text: &str,
     is_left: bool,
 ) {
+    // Always operate on the shared diff model
     let model = window.get_diff_lines();
     let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
         Some(m) => m,
@@ -1467,7 +1746,6 @@ pub fn edit_line(
         return;
     }
 
-    // Push undo snapshot before edit
     push_undo_snapshot(state, vec_model);
 
     let mut row = vec_model.row_data(line_index as usize).unwrap();
@@ -1478,9 +1756,7 @@ pub fn edit_line(
     }
     vec_model.set_row_data(line_index as usize, row);
 
-    // Update the internal line data
     let tab = state.current_tab_mut();
-    // Find the actual line number from the diff model to update left_lines/right_lines
     let data = &vec_model.row_data(line_index as usize).unwrap();
     if is_left {
         if let Ok(line_no) = data.left_line_no.parse::<usize>() {
@@ -1499,6 +1775,177 @@ pub fn edit_line(
     tab.has_unsaved_changes = true;
     window.set_has_unsaved_changes(true);
     window.set_can_undo(true);
+    if !tab.editing_dirty {
+        tab.editing_dirty = true;
+        window.set_status_text(SharedString::from("Editing — press F5 to compare"));
+    }
+}
+
+/// Edit a cell in the 3-way diff view. pane: 0=left, 1=base, 2=right.
+pub fn three_way_edit_line(
+    window: &MainWindow,
+    state: &mut AppState,
+    row_index: i32,
+    new_text: &str,
+    pane: i32,
+) {
+    let model = window.get_three_way_lines();
+    let vec_model = match model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+    if row_index < 0 || row_index as usize >= vec_model.row_count() {
+        return;
+    }
+    let mut row = vec_model.row_data(row_index as usize).unwrap();
+    match pane {
+        0 => row.left_text = SharedString::from(new_text),
+        1 => row.base_text = SharedString::from(new_text),
+        _ => row.right_text = SharedString::from(new_text),
+    }
+    vec_model.set_row_data(row_index as usize, row);
+    let tab = state.current_tab_mut();
+    tab.has_unsaved_changes = true;
+    window.set_has_unsaved_changes(true);
+    if !tab.editing_dirty {
+        tab.editing_dirty = true;
+        window.set_status_text(SharedString::from("Editing — press F5 to compare"));
+    }
+}
+
+/// Insert a blank row after `row_index` in the 3-way view. pane: 0=left, 1=base, 2=right.
+pub fn three_way_insert_line_after(
+    window: &MainWindow,
+    state: &mut AppState,
+    row_index: i32,
+    pane: i32,
+) {
+    let model = window.get_three_way_lines();
+    let vec_model = match model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+    let insert_at = (row_index + 1) as usize;
+    let count = vec_model.row_count();
+    if insert_at > count {
+        return;
+    }
+    // Build new row: only the edited pane gets a placeholder line number, others empty
+    let new_row = ThreeWayLineData {
+        left_line_no: if pane == 0 {
+            SharedString::from("?")
+        } else {
+            SharedString::from("")
+        },
+        base_line_no: if pane == 1 {
+            SharedString::from("?")
+        } else {
+            SharedString::from("")
+        },
+        right_line_no: if pane == 2 {
+            SharedString::from("?")
+        } else {
+            SharedString::from("")
+        },
+        left_text: SharedString::from(""),
+        base_text: SharedString::from(""),
+        right_text: SharedString::from(""),
+        // 1=LeftChanged, 3=BothChanged(base), 2=RightChanged
+        status: match pane {
+            0 => 1,
+            1 => 3,
+            _ => 2,
+        },
+        is_current: false,
+        conflict_index: -1,
+    };
+    vec_model.insert(insert_at, new_row);
+    // Renumber each pane independently
+    let mut left_counter = 0usize;
+    let mut base_counter = 0usize;
+    let mut right_counter = 0usize;
+    for i in 0..vec_model.row_count() {
+        let mut r = vec_model.row_data(i).unwrap();
+        if !r.left_line_no.is_empty() {
+            left_counter += 1;
+            r.left_line_no = SharedString::from(left_counter.to_string());
+        }
+        if !r.base_line_no.is_empty() {
+            base_counter += 1;
+            r.base_line_no = SharedString::from(base_counter.to_string());
+        }
+        if !r.right_line_no.is_empty() {
+            right_counter += 1;
+            r.right_line_no = SharedString::from(right_counter.to_string());
+        }
+        vec_model.set_row_data(i, r);
+    }
+    // Move focus to the new row in the correct pane
+    match pane {
+        0 => window.set_three_way_edit_focus_left_row(insert_at as i32),
+        1 => window.set_three_way_edit_focus_base_row(insert_at as i32),
+        _ => window.set_three_way_edit_focus_right_row(insert_at as i32),
+    }
+    let tab = state.current_tab_mut();
+    tab.has_unsaved_changes = true;
+    window.set_has_unsaved_changes(true);
+    if !tab.editing_dirty {
+        tab.editing_dirty = true;
+        window.set_status_text(SharedString::from("Editing — press F5 to compare"));
+    }
+}
+
+/// Delete the row at `row_index` in the 3-way view if the pane's cell is empty.
+pub fn three_way_delete_line(window: &MainWindow, state: &mut AppState, row_index: i32, pane: i32) {
+    if row_index < 0 {
+        return;
+    }
+    let model = window.get_three_way_lines();
+    let vec_model = match model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+        Some(m) => m,
+        None => return,
+    };
+    let idx = row_index as usize;
+    if idx >= vec_model.row_count() {
+        return;
+    }
+    let row = vec_model.row_data(idx).unwrap();
+    let can_delete = match pane {
+        0 => row.left_text.is_empty(),
+        1 => row.base_text.is_empty(),
+        _ => row.right_text.is_empty(),
+    };
+    if can_delete {
+        vec_model.remove(idx);
+        // Renumber each pane independently
+        let mut left_counter = 0usize;
+        let mut base_counter = 0usize;
+        let mut right_counter = 0usize;
+        for i in 0..vec_model.row_count() {
+            let mut r = vec_model.row_data(i).unwrap();
+            if !r.left_line_no.is_empty() {
+                left_counter += 1;
+                r.left_line_no = SharedString::from(left_counter.to_string());
+            }
+            if !r.base_line_no.is_empty() {
+                base_counter += 1;
+                r.base_line_no = SharedString::from(base_counter.to_string());
+            }
+            if !r.right_line_no.is_empty() {
+                right_counter += 1;
+                r.right_line_no = SharedString::from(right_counter.to_string());
+            }
+            vec_model.set_row_data(i, r);
+        }
+        state.current_tab_mut().has_unsaved_changes = true;
+        window.set_has_unsaved_changes(true);
+    }
+    let prev = if row_index > 0 { row_index - 1 } else { 0 };
+    match pane {
+        0 => window.set_three_way_edit_focus_left_row(prev),
+        1 => window.set_three_way_edit_focus_base_row(prev),
+        _ => window.set_three_way_edit_focus_right_row(prev),
+    }
 }
 
 pub fn copy_current_line_text(window: &MainWindow, state: &AppState, is_left: bool) {
@@ -1957,20 +2404,40 @@ pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
         )
     };
 
-    if let Some(path) = path {
-        let bytes = encode_text(&text, &encoding);
-        if let Err(e) = fs::write(&path, &bytes) {
-            window.set_status_text(SharedString::from(format!("Error saving: {}", e)));
-            return;
+    let path = if let Some(p) = path {
+        p
+    } else {
+        // New document (no path yet) — show Save As dialog
+        match rfd::FileDialog::new().set_title("Save As").save_file() {
+            Some(p) => {
+                if save_left {
+                    state.current_tab_mut().left_path = Some(p.clone());
+                    window.set_left_path(SharedString::from(p.to_string_lossy().to_string()));
+                } else {
+                    state.current_tab_mut().right_path = Some(p.clone());
+                    window.set_right_path(SharedString::from(p.to_string_lossy().to_string()));
+                }
+                sync_tab_list(window, state);
+                p
+            }
+            None => return,
         }
-        let side = if save_left { "Left" } else { "Right" };
-        window.set_status_text(SharedString::from(format!(
-            "{} file saved: {} ({})",
-            side,
-            path.to_string_lossy(),
-            encoding
-        )));
+    };
+
+    let bytes = encode_text(&text, &encoding);
+    if let Err(e) = fs::write(&path, &bytes) {
+        window.set_status_text(SharedString::from(format!("Error saving: {}", e)));
+        return;
     }
+    state.current_tab_mut().has_unsaved_changes = false;
+    window.set_has_unsaved_changes(false);
+    let side = if save_left { "Left" } else { "Right" };
+    window.set_status_text(SharedString::from(format!(
+        "{} file saved: {} ({})",
+        side,
+        path.to_string_lossy(),
+        encoding
+    )));
 }
 
 pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut AppSettings) {
@@ -2274,6 +2741,180 @@ pub fn start_three_way_compare(
     run_three_way_diff(window, state);
 }
 
+pub fn new_blank_text(window: &MainWindow, state: &mut AppState) {
+    // Reuse current tab if it is blank; otherwise open a new tab
+    let current_is_blank = {
+        let tab = state.current_tab();
+        tab.view_mode == 7 && tab.left_path.is_none() && tab.right_path.is_none()
+    };
+    if !current_is_blank {
+        add_tab(window, state);
+    }
+
+    {
+        let tab = state.current_tab_mut();
+        tab.view_mode = 0;
+        tab.left_path = None;
+        tab.right_path = None;
+        tab.title = "Untitled".to_string();
+        tab.diff_line_data = vec![DiffLineData {
+            left_line_no: SharedString::from("1"),
+            right_line_no: SharedString::from("1"),
+            left_text: SharedString::from(""),
+            right_text: SharedString::from(""),
+            status: 0,
+            is_current_diff: false,
+            diff_index: -1,
+            left_highlight: -1,
+            right_highlight: -1,
+            left_word_diff: SharedString::from(""),
+            right_word_diff: SharedString::from(""),
+            is_search_match: false,
+            is_selected: false,
+        }];
+        tab.left_lines = vec![String::new()];
+        tab.right_lines = vec![String::new()];
+        tab.diff_positions.clear();
+        tab.diff_stats = String::new();
+        tab.has_unsaved_changes = false;
+        tab.editing_dirty = false;
+        tab.left_encoding = "UTF-8".to_string();
+        tab.right_encoding = "UTF-8".to_string();
+        tab.left_eol_type = "LF".to_string();
+        tab.right_eol_type = "LF".to_string();
+    }
+
+    window.set_view_mode(0);
+    let model = ModelRc::new(VecModel::from(state.current_tab().diff_line_data.clone()));
+    window.set_diff_lines(model);
+    window.set_diff_count(0);
+    window.set_current_diff_index(-1);
+    window.set_left_path(SharedString::from(""));
+    window.set_right_path(SharedString::from(""));
+    window.set_has_unsaved_changes(false);
+    window.set_left_encoding_display(SharedString::from("UTF-8"));
+    window.set_right_encoding_display(SharedString::from("UTF-8"));
+    window.set_left_eol_type(SharedString::from("LF"));
+    window.set_right_eol_type(SharedString::from("LF"));
+    window.set_status_text(SharedString::from("New blank document"));
+    sync_tab_list(window, state);
+}
+
+pub fn new_blank_text_3way(window: &MainWindow, state: &mut AppState) {
+    let current_is_blank = {
+        let tab = state.current_tab();
+        tab.view_mode == 7 && tab.left_path.is_none() && tab.right_path.is_none()
+    };
+    if !current_is_blank {
+        add_tab(window, state);
+    }
+
+    {
+        let tab = state.current_tab_mut();
+        tab.view_mode = 3;
+        tab.left_path = None;
+        tab.right_path = None;
+        tab.base_path = None;
+        tab.title = "Untitled (3-way)".to_string();
+        tab.diff_line_data.clear();
+        tab.diff_positions.clear();
+        tab.diff_stats = String::new();
+        tab.has_unsaved_changes = false;
+        tab.left_encoding = "UTF-8".to_string();
+        tab.right_encoding = "UTF-8".to_string();
+        tab.left_eol_type = "LF".to_string();
+        tab.right_eol_type = "LF".to_string();
+    }
+
+    let empty_row = ThreeWayLineData {
+        base_line_no: SharedString::from("1"),
+        left_line_no: SharedString::from("1"),
+        right_line_no: SharedString::from("1"),
+        base_text: SharedString::from(""),
+        left_text: SharedString::from(""),
+        right_text: SharedString::from(""),
+        status: 0,
+        is_current: false,
+        conflict_index: -1,
+    };
+    window.set_view_mode(3);
+    window.set_three_way_lines(ModelRc::new(VecModel::from(vec![empty_row])));
+    window.set_diff_count(0);
+    window.set_current_diff_index(-1);
+    window.set_left_path(SharedString::from(""));
+    window.set_right_path(SharedString::from(""));
+    window.set_base_path(SharedString::from(""));
+    window.set_has_unsaved_changes(false);
+    window.set_status_text(SharedString::from("New blank 3-way document"));
+    sync_tab_list(window, state);
+}
+
+pub fn new_blank_table_3way(
+    window: &MainWindow,
+    state: &mut AppState,
+    file_type: i32,
+    delimiter: &str,
+    newline_in_quotes: bool,
+    quote_char: &str,
+) {
+    // 3-way table: base + left + right — reuse new_blank_table logic but with view_mode awareness
+    // For now, open as a 2-pane table view since 3-way table merge is the same as 2-pane in WinMerge
+    new_blank_table(
+        window,
+        state,
+        file_type,
+        delimiter,
+        newline_in_quotes,
+        quote_char,
+    );
+}
+
+pub fn new_blank_table(
+    window: &MainWindow,
+    state: &mut AppState,
+    _file_type: i32,
+    delimiter: &str,
+    _newline_in_quotes: bool,
+    _quote_char: &str,
+) {
+    // "TAB" sentinel from Slint (can't pass \t directly)
+    let _delimiter = if delimiter == "TAB" { "\t" } else { delimiter };
+    let current_is_blank = {
+        let tab = state.current_tab();
+        tab.view_mode == 7 && tab.left_path.is_none() && tab.right_path.is_none()
+    };
+    if !current_is_blank {
+        add_tab(window, state);
+    }
+
+    {
+        let tab = state.current_tab_mut();
+        tab.view_mode = 6; // CSV view
+        tab.left_path = None;
+        tab.right_path = None;
+        tab.title = "Untitled".to_string();
+        tab.excel_cells = Vec::new();
+        tab.diff_positions.clear();
+        tab.diff_stats = String::new();
+        tab.has_unsaved_changes = false;
+        tab.left_encoding = "UTF-8".to_string();
+        tab.right_encoding = "UTF-8".to_string();
+    }
+
+    window.set_view_mode(6);
+    window.set_excel_cells(ModelRc::new(VecModel::from(Vec::<ExcelCellData>::new())));
+    let sheet_model: ModelRc<SharedString> =
+        ModelRc::new(VecModel::from(vec![SharedString::from("")]));
+    window.set_excel_sheet_names(sheet_model);
+    window.set_excel_active_sheet(SharedString::from(""));
+    window.set_diff_count(0);
+    window.set_left_path(SharedString::from(""));
+    window.set_right_path(SharedString::from(""));
+    window.set_has_unsaved_changes(false);
+    window.set_status_text(SharedString::from("New blank table document"));
+    sync_tab_list(window, state);
+}
+
 pub fn start_compare(
     window: &MainWindow,
     state: &mut AppState,
@@ -2370,9 +3011,8 @@ pub fn discard_and_proceed(
             }
         }
         5 => {
-            // New compare (go to open dialog)
-            state.current_tab_mut().view_mode = 2;
-            window.set_view_mode(2);
+            // New compare: show open dialog as modal
+            window.set_show_open_dialog(true);
         }
         _ => {}
     }
@@ -2989,9 +3629,22 @@ pub fn check_files_changed(state: &AppState) -> bool {
 
 pub fn rescan(window: &MainWindow, state: &mut AppState) {
     let tab = state.current_tab();
-    if tab.view_mode == 0 && tab.left_path.is_some() && tab.right_path.is_some() {
+    if tab.view_mode == 0
+        && tab.left_path.is_some()
+        && tab.right_path.is_some()
+        && !tab.editing_dirty
+    {
         run_diff(window, state);
         window.set_status_text(SharedString::from("Files rescanned"));
+    } else if tab.view_mode == 0 {
+        // Editing in progress or blank document: rebuild from VecModel (authoritative source)
+        let model = window.get_diff_lines();
+        if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+            let left_text = rebuild_left(vec_model);
+            let right_text = rebuild_right(vec_model);
+            recompute_diff_from_text(window, state, &left_text, &right_text);
+            window.set_status_text(SharedString::from("Compared"));
+        }
     } else if tab.view_mode == 1 {
         run_folder_compare(window, state);
         window.set_status_text(SharedString::from("Folders rescanned"));

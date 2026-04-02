@@ -46,6 +46,36 @@ component DiffLineRow inherits Rectangle {
 
     callback line-clicked(int);
     callback text-edited(string);
+    callback return-pressed();
+    callback focus-applied();
+    callback backspace-at-start();
+    callback move-up();
+    callback move-down();
+
+    in property <bool> force-focus: false;
+    // When true, place cursor at end of text when gaining focus
+    in property <bool> focus-at-end: false;
+
+    // For rows that exist when edit-focus-row changes
+    changed force-focus => {
+        if self.force-focus {
+            if root.focus-at-end {
+                // Force cursor to end by toggling text, which resets cursor position to end
+                ti.text = ti.text + " ";
+                ti.text = root.text;
+            }
+            ti.focus();
+            root.focus-applied();
+        }
+    }
+
+    // For newly created rows that already have force-focus=true on init
+    init => {
+        if self.force-focus {
+            ti.focus();
+            root.focus-applied();
+        }
+    }
 
     background: is-current ? current-bg
               : is-selected ? Palette.accent-background.transparentize(0.6)
@@ -112,14 +142,34 @@ component DiffLineRow inherits Rectangle {
                 wrap: root.word-wrap-mode ? word-wrap : no-wrap;
                 color: parent.text-color;
             }
-            if root.editable : TextInput {
+            // TextInput is always instantiated (so `ti` id is in scope for focus()),
+            // but collapsed/hidden when not editable.
+            ti := TextInput {
+                visible: root.editable;
+                height: root.editable ? (root.text-font-size + 2) * 1px : 0;
                 text: root.text;
                 font-size: root.text-font-size * 1px;
                 font-family: "monospace";
                 vertical-alignment: center;
                 color: parent.text-color;
-                edited => {
-                    root.text-edited(self.text);
+                edited => { root.text-edited(self.text); }
+                accepted => { root.return-pressed(); }
+                key-pressed(event) => {
+                    if event.text == "\u{0009}" {
+                        // Tab: consume to prevent focus-move (insert-text not in Slint 1.15)
+                        accept
+                    } else if event.text == "\u{0008}" && self.cursor-position-byte-offset == 0 {
+                        root.backspace-at-start();
+                        accept
+                    } else if event.text == Key.UpArrow {
+                        root.move-up();
+                        accept
+                    } else if event.text == Key.DownArrow {
+                        root.move-down();
+                        accept
+                    } else {
+                        reject
+                    }
                 }
             }
 
@@ -168,6 +218,12 @@ export component DiffView inherits Rectangle {
     in property <bool> diff-only-mode: false;
     // 0=All, 1=Added, 2=Removed, 3=Modified, 4=Moved
     in property <int> diff-status-filter: 0;
+    // Row index to focus in the edit TextInput (-1 = none)
+    in-out property <int> edit-focus-row: -1;
+    in-out property <int> edit-focus-right-row: -1;
+    // Set to true when backspace moves focus to previous line (cursor should go to end)
+    in-out property <bool> focus-left-at-end: false;
+    in-out property <bool> focus-right-at-end: false;
 
     accessible-role: list;
     accessible-label: "File difference view";
@@ -196,6 +252,10 @@ export component DiffView inherits Rectangle {
     callback select-diff(/* diff-index */ int);
     callback edit-left-line(/* line-index */ int, /* new-text */ string);
     callback edit-right-line(/* line-index */ int, /* new-text */ string);
+    callback insert-line-after(/* line-index */ int, /* is-left */ bool);
+    callback delete-line(/* line-index */ int, /* is-left */ bool);
+    callback move-focus-up(/* line-index */ int, /* is-left */ bool);
+    callback move-focus-down(/* line-index */ int, /* is-left */ bool);
     callback next-diff();
     callback prev-diff();
     callback copy-left-text();
@@ -300,8 +360,15 @@ export component DiffView inherits Rectangle {
                         word-diff: root.show-word-diff ? line.left-word-diff : "";
                         editable: root.inline-edit-enabled && line.left-line-no != "";
                         word-wrap-mode: root.word-wrap-mode;
+                        force-focus: root.inline-edit-enabled && idx == root.edit-focus-row;
+                        focus-at-end: root.focus-left-at-end;
                         line-clicked(didx) => { root.select-diff(didx); }
                         text-edited(new-text) => { root.edit-left-line(idx, new-text); }
+                        return-pressed => { root.insert-line-after(idx, true); }
+                        focus-applied => { root.edit-focus-row = -1; root.focus-left-at-end = false; }
+                        backspace-at-start => { root.focus-left-at-end = true; root.delete-line(idx, true); }
+                        move-up => { root.move-focus-up(idx, true); }
+                        move-down => { root.move-focus-down(idx, true); }
                     }
                 }
             }
@@ -344,8 +411,15 @@ export component DiffView inherits Rectangle {
                         word-diff: root.show-word-diff ? line.right-word-diff : "";
                         editable: root.inline-edit-enabled && line.right-line-no != "";
                         word-wrap-mode: root.word-wrap-mode;
+                        force-focus: root.inline-edit-enabled && idx == root.edit-focus-right-row;
+                        focus-at-end: root.focus-right-at-end;
                         line-clicked(didx) => { root.select-diff(didx); }
                         text-edited(new-text) => { root.edit-right-line(idx, new-text); }
+                        return-pressed => { root.insert-line-after(idx, false); }
+                        focus-applied => { root.edit-focus-right-row = -1; root.focus-right-at-end = false; }
+                        backspace-at-start => { root.focus-right-at-end = true; root.delete-line(idx, false); }
+                        move-up => { root.move-focus-up(idx, false); }
+                        move-down => { root.move-focus-down(idx, false); }
                     }
                 }
             }

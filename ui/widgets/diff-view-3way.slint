@@ -16,11 +16,35 @@ export struct ThreeWayLineData {
 
 component ThreeWayLineRow inherits Rectangle {
     in property <string> line-no;
-    in property <string> text;
+    in-out property <string> text;
     in property <int> status;
     in property <bool> is-current;
     in property <bool> show-line-no: true;
     in property <int> text-font-size: 13;
+    in property <bool> editable: false;
+    in property <bool> force-focus: false;
+
+    callback text-edited(string);
+    callback return-pressed();
+    callback backspace-at-start();
+    callback focus-applied();
+
+    // For rows that exist when focus property changes
+    changed force-focus => {
+        if self.force-focus {
+            ti.focus();
+            root.focus-applied();
+        }
+    }
+    // For newly created rows that already have force-focus=true on init
+    init => {
+        if self.force-focus {
+            ti.focus();
+            root.focus-applied();
+        }
+    }
+
+    property <color> text-color: Palette.foreground;
 
     background: is-current ? current-bg :
                 status == 1 ? ThemeColors.left-changed-bg :
@@ -67,12 +91,35 @@ component ThreeWayLineRow inherits Rectangle {
             }
         }
 
-        Text {
-            text: text;
-            font-size: text-font-size * 1px;
+        if !root.editable : Text {
+            text: root.text;
+            font-size: root.text-font-size * 1px;
             font-family: "monospace";
             vertical-alignment: center;
             overflow: elide;
+            color: root.text-color;
+        }
+        // TextInput always instantiated so `ti` id is in scope for focus()
+        ti := TextInput {
+            visible: root.editable;
+            height: root.editable ? (root.text-font-size + 2) * 1px : 0;
+            text: root.text;
+            font-size: root.text-font-size * 1px;
+            font-family: "monospace";
+            vertical-alignment: center;
+            color: root.text-color;
+            edited => { root.text-edited(self.text); }
+            accepted => { root.return-pressed(); }
+            key-pressed(event) => {
+                if event.text == "\u{0009}" {
+                    accept
+                } else if event.text == "\u{0008}" && self.cursor-position-byte-offset == 0 {
+                    root.backspace-at-start();
+                    accept
+                } else {
+                    reject
+                }
+            }
         }
     }
 }
@@ -85,11 +132,22 @@ export component DiffView3Way inherits Rectangle {
     in property <int> current-conflict-index: -1;
     in property <bool> show-line-numbers: true;
     in property <int> editor-font-size: 13;
+    in property <bool> inline-edit-enabled: false;
+
+    // Row index to focus for each pane (-1 = none)
+    in-out property <int> edit-focus-left-row: -1;
+    in-out property <int> edit-focus-base-row: -1;
+    in-out property <int> edit-focus-right-row: -1;
 
     callback next-conflict();
     callback prev-conflict();
     callback use-left(int);
     callback use-right(int);
+
+    // pane: 0=left, 1=base, 2=right
+    callback edit-text-changed(/* row */ int, /* text */ string, /* pane */ int);
+    callback insert-line-after(/* row */ int, /* pane */ int);
+    callback delete-line(/* row */ int, /* pane */ int);
 
     border-color: Palette.border;
     border-width: 1px;
@@ -167,7 +225,7 @@ export component DiffView3Way inherits Rectangle {
         HorizontalLayout {
             // Left pane
             left-list := ListView {
-                for line in lines: ThreeWayLineRow {
+                for line[idx] in lines: ThreeWayLineRow {
                     height: 24px;
                     line-no: line.left-line-no;
                     text: line.left-text;
@@ -175,13 +233,19 @@ export component DiffView3Way inherits Rectangle {
                     is-current: line.is-current;
                     show-line-no: root.show-line-numbers;
                     text-font-size: root.editor-font-size;
+                    editable: root.inline-edit-enabled && line.left-line-no != "";
+                    force-focus: root.inline-edit-enabled && idx == root.edit-focus-left-row;
+                    text-edited(t) => { root.edit-text-changed(idx, t, 0); }
+                    return-pressed => { root.insert-line-after(idx, 0); }
+                    backspace-at-start => { root.delete-line(idx, 0); }
+                    focus-applied => { root.edit-focus-left-row = -1; }
                 }
             }
 
             // Base pane
             ListView {
                 viewport-y: left-list.viewport-y;
-                for line in lines: ThreeWayLineRow {
+                for line[idx] in lines: ThreeWayLineRow {
                     height: 24px;
                     line-no: line.base-line-no;
                     text: line.base-text;
@@ -189,6 +253,12 @@ export component DiffView3Way inherits Rectangle {
                     is-current: line.is-current;
                     show-line-no: root.show-line-numbers;
                     text-font-size: root.editor-font-size;
+                    editable: root.inline-edit-enabled && line.base-line-no != "";
+                    force-focus: root.inline-edit-enabled && idx == root.edit-focus-base-row;
+                    text-edited(t) => { root.edit-text-changed(idx, t, 1); }
+                    return-pressed => { root.insert-line-after(idx, 1); }
+                    backspace-at-start => { root.delete-line(idx, 1); }
+                    focus-applied => { root.edit-focus-base-row = -1; }
                 }
             }
 
@@ -251,7 +321,7 @@ export component DiffView3Way inherits Rectangle {
             // Right pane
             ListView {
                 viewport-y: left-list.viewport-y;
-                for line in lines: ThreeWayLineRow {
+                for line[idx] in lines: ThreeWayLineRow {
                     height: 24px;
                     line-no: line.right-line-no;
                     text: line.right-text;
@@ -259,6 +329,12 @@ export component DiffView3Way inherits Rectangle {
                     is-current: line.is-current;
                     show-line-no: root.show-line-numbers;
                     text-font-size: root.editor-font-size;
+                    editable: root.inline-edit-enabled && line.right-line-no != "";
+                    force-focus: root.inline-edit-enabled && idx == root.edit-focus-right-row;
+                    text-edited(t) => { root.edit-text-changed(idx, t, 2); }
+                    return-pressed => { root.insert-line-after(idx, 2); }
+                    backspace-at-start => { root.delete-line(idx, 2); }
+                    focus-applied => { root.edit-focus-right-row = -1; }
                 }
             }
         }

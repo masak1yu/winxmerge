@@ -1,0 +1,188 @@
+import { Button, Palette } from "std-widgets.slint";
+
+component RadioOption inherits HorizontalLayout {
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked();
+
+    spacing: 8px;
+
+    Rectangle {
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        border-width: 2px;
+        border-color: root.selected ? Palette.accent-background : Palette.border;
+        background: transparent;
+        Rectangle {
+            width: 8px;
+            height: 8px;
+            x: 4px;
+            y: 4px;
+            border-radius: 4px;
+            background: root.selected ? Palette.accent-background : transparent;
+        }
+        TouchArea { clicked => { root.clicked(); } }
+    }
+    Text {
+        text: root.label;
+        font-size: 12px;
+        vertical-alignment: center;
+        color: Palette.foreground;
+    }
+    TouchArea {
+        width: 150px;
+        height: 20px;
+        clicked => { root.clicked(); }
+    }
+}
+
+export component SaveConfirmDialog inherits Rectangle {
+    in-out property <bool> visible-flag: false;
+    in property <string> left-filename: "";
+    in property <string> right-filename: "";
+    in property <string> base-filename: "";
+    in property <bool> show-base: false;
+
+    out property <int> left-choice: 0;
+    out property <int> right-choice: 0;
+
+    callback confirmed(int, int);
+    callback cancelled();
+    callback discard-all();
+
+    if visible-flag : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000060;
+
+        Rectangle {
+            width: Math.min(480px, parent.width - 48px);
+            height: dlg.preferred-height + 32px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: Palette.background;
+            border-radius: 8px;
+            border-color: Palette.border;
+            border-width: 1px;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000040;
+
+            dlg := VerticalLayout {
+                padding: 20px;
+                spacing: 14px;
+
+                Text {
+                    text: @tr("Do you want to save the modified files?");
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: Palette.foreground;
+                    wrap: word-wrap;
+                }
+
+                Rectangle { height: 1px; background: Palette.border; }
+
+                // Left file
+                VerticalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: @tr("Left File");
+                        font-size: 11px;
+                        font-weight: 600;
+                        color: Palette.foreground.transparentize(0.4);
+                    }
+                    Text {
+                        text: root.left-filename == "" ? @tr("Untitled") : root.left-filename;
+                        font-size: 12px;
+                        color: Palette.foreground;
+                        overflow: elide;
+                    }
+                    HorizontalLayout {
+                        spacing: 20px;
+                        RadioOption {
+                            label: @tr("Save changes(S)");
+                            selected: root.left-choice == 0;
+                            clicked => { root.left-choice = 0; }
+                        }
+                        RadioOption {
+                            label: @tr("Discard changes(D)");
+                            selected: root.left-choice == 1;
+                            clicked => { root.left-choice = 1; }
+                        }
+                    }
+                }
+
+                // Base file (3-way only)
+                if root.show-base : VerticalLayout {
+                    spacing: 4px;
+                    Text {
+                        text: @tr("Base File");
+                        font-size: 11px;
+                        font-weight: 600;
+                        color: Palette.foreground.transparentize(0.4);
+                    }
+                    Text {
+                        text: root.base-filename == "" ? @tr("Untitled") : root.base-filename;
+                        font-size: 12px;
+                        color: Palette.foreground.transparentize(0.4);
+                        overflow: elide;
+                    }
+                    Text {
+                        text: @tr("(No changes)");
+                        font-size: 11px;
+                        color: Palette.foreground.transparentize(0.5);
+                    }
+                }
+
+                // Right file
+                VerticalLayout {
+                    spacing: 6px;
+                    Text {
+                        text: @tr("Right File");
+                        font-size: 11px;
+                        font-weight: 600;
+                        color: Palette.foreground.transparentize(0.4);
+                    }
+                    Text {
+                        text: root.right-filename == "" ? @tr("Untitled") : root.right-filename;
+                        font-size: 12px;
+                        color: Palette.foreground;
+                        overflow: elide;
+                    }
+                    HorizontalLayout {
+                        spacing: 20px;
+                        RadioOption {
+                            label: @tr("Save changes(A)");
+                            selected: root.right-choice == 0;
+                            clicked => { root.right-choice = 0; }
+                        }
+                        RadioOption {
+                            label: @tr("Discard changes(C)");
+                            selected: root.right-choice == 1;
+                            clicked => { root.right-choice = 1; }
+                        }
+                    }
+                }
+
+                Rectangle { height: 1px; background: Palette.border; }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    Button {
+                        text: @tr("Discard All(R)");
+                        clicked => { root.discard-all(); }
+                    }
+                    Rectangle { horizontal-stretch: 1; }
+                    Button {
+                        text: @tr("OK");
+                        clicked => { root.confirmed(root.left-choice, root.right-choice); }
+                    }
+                    Button {
+                        text: @tr("Cancel");
+                        clicked => { root.cancelled(); }
+                    }
+                }
+            }
+        }
+    }
+}

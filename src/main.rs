@@ -23,28 +23,34 @@ slint::include_modules!();
 #[cfg(not(target_arch = "wasm32"))]
 use std::cell::{Cell, RefCell};
 #[cfg(not(target_arch = "wasm32"))]
+use std::fs;
+#[cfg(not(target_arch = "wasm32"))]
 use std::rc::Rc;
 
 #[cfg(not(target_arch = "wasm32"))]
+use crate::encoding::encode_text;
+#[cfg(not(target_arch = "wasm32"))]
 use app::{
     AppState, add_tab, apply_options, apply_pending_diff_if_ready, check_files_changed, close_tab,
-    compare_clipboard_as_left, compare_clipboard_as_right, copy_all_diffs_to_left,
-    copy_all_diffs_to_right, copy_all_text, copy_current_line_text, copy_left_and_next,
-    copy_right_and_next, copy_selection_to_left, copy_selection_to_right, copy_to_left,
-    copy_to_right, discard_and_proceed, edit_line, export_all_comments, export_csv_report,
-    export_folder_html_report, export_html_report, export_patch, export_xlsx_report, first_diff,
-    folder_copy_to_left, folder_copy_to_right, folder_delete_item, goto_line, last_diff,
-    navigate_bookmark, navigate_conflict, navigate_diff, navigate_diff_by_status, navigate_search,
-    open_file_dialog, open_folder_dialog, open_folder_item, open_in_editor,
-    paste_clipboard_path_left, paste_clipboard_path_right, preview_folder_item, print_diff, redo,
-    reorder_tab, replace_all_text, replace_text, rescan, resolve_conflict_use_left,
-    resolve_conflict_use_right, run_diff, run_folder_compare, run_plugin, save_file, search_text,
-    select_diff, set_diff_comment, set_diff_filter, set_row_selection, sort_folder, start_compare,
-    start_three_way_compare, switch_tab, toggle_bookmark, toggle_ignore_case,
-    toggle_ignore_whitespace, undo,
+    collect_pending_saves, compare_clipboard_as_left, compare_clipboard_as_right,
+    copy_all_diffs_to_left, copy_all_diffs_to_right, copy_all_text, copy_current_line_text,
+    copy_left_and_next, copy_right_and_next, copy_selection_to_left, copy_selection_to_right,
+    copy_to_left, copy_to_right, delete_line, discard_and_proceed, edit_line, export_all_comments,
+    export_csv_report, export_folder_html_report, export_html_report, export_patch,
+    export_xlsx_report, first_diff, folder_copy_to_left, folder_copy_to_right, folder_delete_item,
+    goto_line, insert_line_after, last_diff, navigate_bookmark, navigate_conflict, navigate_diff,
+    navigate_diff_by_status, navigate_search, new_blank_table, new_blank_table_3way,
+    new_blank_text, new_blank_text_3way, open_file_dialog, open_folder_dialog, open_folder_item,
+    open_in_editor, paste_clipboard_path_left, paste_clipboard_path_right, preview_folder_item,
+    print_diff, redo, reorder_tab, replace_all_text, replace_text, rescan,
+    resolve_conflict_use_left, resolve_conflict_use_right, run_diff, run_folder_compare,
+    run_plugin, save_file, search_text, select_diff, set_diff_comment, set_diff_filter,
+    set_row_selection, sort_folder, start_compare, start_three_way_compare, switch_tab,
+    three_way_delete_line, three_way_edit_line, three_way_insert_line_after, toggle_bookmark,
+    toggle_ignore_case, toggle_ignore_whitespace, undo,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use slint::{ModelRc, SharedString, VecModel};
+use slint::{Model, ModelRc, SharedString, VecModel};
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
@@ -236,68 +242,89 @@ fn main() {
         app::run_diff(&window, &mut s);
         app::sync_tab_list(&window, &s);
     } else {
-        // No CLI args: restore previous session
-        let session = settings.borrow().session.clone();
-        if !session.is_empty() {
-            let mut first = true;
-            for entry in &session {
-                if entry.left_path.is_empty() || entry.right_path.is_empty() {
-                    continue;
-                }
-                // Skip entries where files/folders no longer exist on disk
-                if !std::path::Path::new(&entry.left_path).exists()
-                    || !std::path::Path::new(&entry.right_path).exists()
-                {
-                    continue;
-                }
-                if !first {
-                    add_tab(&window, &mut state.borrow_mut());
-                }
-                first = false;
+        // No CLI args: start with blank screen (WinMerge style — no session restore)
+    }
+
+    // New blank text document
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_new_blank_text(move || {
+            let window = window_weak.unwrap();
+            new_blank_text(&window, &mut state.borrow_mut());
+        });
+    }
+
+    // New blank 3-way text document
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_new_blank_text_3way(move || {
+            let window = window_weak.unwrap();
+            new_blank_text_3way(&window, &mut state.borrow_mut());
+        });
+    }
+
+    // New blank table document
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_new_blank_table(move |file_type, delimiter, newline_in_quotes, quote_char| {
+            let window = window_weak.unwrap();
+            new_blank_table(
+                &window,
+                &mut state.borrow_mut(),
+                file_type,
+                &delimiter,
+                newline_in_quotes,
+                &quote_char,
+            );
+        });
+    }
+
+    // New blank table (3-pane)
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_new_blank_table_3way(
+            move |file_type, delimiter, newline_in_quotes, quote_char| {
+                let window = window_weak.unwrap();
+                new_blank_table_3way(
+                    &window,
+                    &mut state.borrow_mut(),
+                    file_type,
+                    &delimiter,
+                    newline_in_quotes,
+                    &quote_char,
+                );
+            },
+        );
+    }
+
+    // Save and proceed (save-confirm dialog)
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        let browse_ctx = browse_ctx.clone();
+        window.on_save_and_proceed(move |left_choice, right_choice| {
+            let window = window_weak.unwrap();
+            {
                 let mut s = state.borrow_mut();
-                if !entry.base_path.is_empty() {
-                    start_three_way_compare(
-                        &window,
-                        &mut s,
-                        &entry.base_path,
-                        &entry.left_path,
-                        &entry.right_path,
-                    );
-                } else {
-                    let left_p = std::path::PathBuf::from(&entry.left_path);
-                    let is_folder = left_p.is_dir();
-                    start_compare(
-                        &window,
-                        &mut s,
-                        &entry.left_path,
-                        &entry.right_path,
-                        is_folder,
-                    );
+                if left_choice == 0 {
+                    save_file(&window, &mut s, true);
                 }
-                // Restore extended session fields
-                {
-                    let tab = s.current_tab_mut();
-                    if !entry.left_encoding.is_empty() {
-                        tab.left_encoding = entry.left_encoding.clone();
-                    }
-                    if !entry.right_encoding.is_empty() {
-                        tab.right_encoding = entry.right_encoding.clone();
-                    }
-                    if !entry.left_eol.is_empty() {
-                        tab.left_eol_type = entry.left_eol.clone();
-                    }
-                    if !entry.right_eol.is_empty() {
-                        tab.right_eol_type = entry.right_eol.clone();
-                    }
-                    // tab_width is a UI setting, not per-tab state
-                    tab.diff_status_filter = entry.diff_status_filter;
-                    for sc in &entry.diff_comments {
-                        tab.diff_comments.insert(sc.block_index, sc.text.clone());
-                    }
+                if right_choice == 0 {
+                    save_file(&window, &mut s, false);
                 }
-                app::sync_tab_list(&window, &s);
             }
-        }
+            let ww = window.as_weak();
+            let bc = browse_ctx.clone();
+            discard_and_proceed(&window, &mut state.borrow_mut(), move |ctx, _title| {
+                let w = ww.unwrap();
+                let is_folder = ctx == 13 || ctx == 14;
+                show_file_browser(&w, &bc, ctx, SharedString::from(""), is_folder);
+            });
+        });
     }
 
     // --- Tab management ---
@@ -942,6 +969,116 @@ fn main() {
         });
     }
 
+    // Insert line after (Enter key in blank text editor)
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_insert_line_after(move |idx, is_left| {
+            let window = window_weak.unwrap();
+            insert_line_after(&window, &mut state.borrow_mut(), idx, is_left);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_delete_line(move |idx, is_left| {
+            let window = window_weak.unwrap();
+            delete_line(&window, &mut state.borrow_mut(), idx, is_left);
+        });
+    }
+
+    // Arrow key up/down: move focus to prev/next editable (non-ghost) row
+    {
+        let window_weak = window.as_weak();
+        window.on_move_focus_up(move |line_index, is_left| {
+            let window = window_weak.unwrap();
+            let model = window.get_diff_lines();
+            if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+                let mut target = line_index - 1;
+                while target >= 0 {
+                    if let Some(r) = vec_model.row_data(target as usize) {
+                        let has_line_no = if is_left {
+                            !r.left_line_no.is_empty()
+                        } else {
+                            !r.right_line_no.is_empty()
+                        };
+                        if has_line_no {
+                            break;
+                        }
+                    }
+                    target -= 1;
+                }
+                if target >= 0 {
+                    if is_left {
+                        window.set_diff_edit_focus_row(target);
+                    } else {
+                        window.set_diff_edit_focus_right_row(target);
+                    }
+                }
+            }
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        window.on_move_focus_down(move |line_index, is_left| {
+            let window = window_weak.unwrap();
+            let model = window.get_diff_lines();
+            if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+                let count = vec_model.row_count() as i32;
+                let mut target = line_index + 1;
+                while target < count {
+                    if let Some(r) = vec_model.row_data(target as usize) {
+                        let has_line_no = if is_left {
+                            !r.left_line_no.is_empty()
+                        } else {
+                            !r.right_line_no.is_empty()
+                        };
+                        if has_line_no {
+                            break;
+                        }
+                    }
+                    target += 1;
+                }
+                if target < count {
+                    if is_left {
+                        window.set_diff_edit_focus_row(target);
+                    } else {
+                        window.set_diff_edit_focus_right_row(target);
+                    }
+                }
+            }
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_three_way_edit_line(move |row, text, pane| {
+            let window = window_weak.unwrap();
+            three_way_edit_line(&window, &mut state.borrow_mut(), row, text.as_str(), pane);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_three_way_insert_line_after(move |row, pane| {
+            let window = window_weak.unwrap();
+            three_way_insert_line_after(&window, &mut state.borrow_mut(), row, pane);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_three_way_delete_line(move |row, pane| {
+            let window = window_weak.unwrap();
+            three_way_delete_line(&window, &mut state.borrow_mut(), row, pane);
+        });
+    }
+
     // Apply options
     {
         let window_weak = window.as_weak();
@@ -1427,13 +1564,11 @@ fn main() {
         });
     }
 
-    // Save window size on close
-    {
+    // Save window size/settings and session to disk
+    let do_save_settings = {
         let settings = settings.clone();
         let state = state.clone();
-        let window_weak = window.as_weak();
-        window.window().on_close_requested(move || {
-            let window = window_weak.unwrap();
+        move |window: &MainWindow| {
             let size = window
                 .window()
                 .size()
@@ -1451,12 +1586,11 @@ fn main() {
             s.folder_max_size = window.get_opt_folder_max_size().max(0) as u64;
             s.folder_modified_after = window.get_opt_folder_modified_after().to_string();
             s.folder_modified_before = window.get_opt_folder_modified_before().to_string();
-            // Save session (open tabs)
             let app = state.borrow();
             s.session = app
                 .tabs
                 .iter()
-                .filter(|tab| tab.view_mode != 2) // skip open-dialog tabs
+                .filter(|tab| tab.view_mode != 7)
                 .filter_map(|tab| {
                     let left = match tab.view_mode {
                         1 => tab
@@ -1507,7 +1641,203 @@ fn main() {
                 })
                 .collect();
             s.save();
+        }
+    };
+
+    // Close handler: check for unsaved changes before quitting
+    {
+        let state = state.clone();
+        let window_weak = window.as_weak();
+        let do_save = do_save_settings.clone();
+        window.window().on_close_requested(move || {
+            let window = window_weak.unwrap();
+            let has_unsaved = state.borrow().tabs.iter().any(|t| t.has_unsaved_changes);
+            if has_unsaved {
+                window.set_show_quit_confirm(true);
+                return slint::CloseRequestResponse::KeepWindowShown;
+            }
+            do_save(&window);
             slint::CloseRequestResponse::HideWindow
+        });
+    }
+
+    // Pending save-as queue: each item is (tab_index, is_left, text, encoding)
+    let pending_saves: Rc<RefCell<Vec<(usize, bool, String, String)>>> =
+        Rc::new(RefCell::new(Vec::new()));
+
+    // Helper: populate save-as dialog directory listing
+    fn populate_save_as_browser(window: &MainWindow, dir: &std::path::Path) {
+        let dir_str = dir.to_string_lossy();
+        let display_dir = dir_str.trim_end_matches('/').to_string();
+        window.set_save_as_dir(SharedString::from(display_dir));
+        window.set_save_as_selected_index(-1);
+
+        let mut dirs: Vec<String> = Vec::new();
+        let mut files: Vec<String> = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            for entry in rd.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with('.') {
+                    continue;
+                }
+                if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    dirs.push(name);
+                } else {
+                    files.push(name);
+                }
+            }
+        }
+        dirs.sort();
+        files.sort();
+        let entries: Vec<FileEntryData> = dirs
+            .into_iter()
+            .map(|n| FileEntryData {
+                name: SharedString::from(n),
+                is_dir: true,
+            })
+            .chain(files.into_iter().map(|n| FileEntryData {
+                name: SharedString::from(n),
+                is_dir: false,
+            }))
+            .collect();
+        window.set_save_as_entries(ModelRc::new(VecModel::from(entries)));
+    }
+
+    // Show the next pending save-as dialog, or quit if queue is empty
+    let advance_pending = {
+        let pending_saves = pending_saves.clone();
+        let window_weak = window.as_weak();
+        let do_save = do_save_settings.clone();
+        Rc::new(move || {
+            let window = window_weak.unwrap();
+            if pending_saves.borrow().is_empty() {
+                window.set_show_quit_confirm(false);
+                window.set_show_save_as_dialog(false);
+                do_save(&window);
+                let _ = slint::quit_event_loop();
+            } else {
+                let (_, is_left, _, _) = pending_saves.borrow()[0].clone();
+                let title = if is_left {
+                    "Save Left File As"
+                } else {
+                    "Save Right File As"
+                };
+                window.set_save_as_title(SharedString::from(title));
+                window.set_save_as_filename(SharedString::from(""));
+                let start = std::env::current_dir().unwrap_or_else(|_| {
+                    dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("/"))
+                });
+                populate_save_as_browser(&window, &start);
+                window.set_show_quit_confirm(false);
+                window.set_show_save_as_dialog(true);
+            }
+        })
+    };
+
+    // Quit: save all unsaved files, using in-app dialog for pathless files
+    {
+        let state = state.clone();
+        let window_weak = window.as_weak();
+        let pending_saves = pending_saves.clone();
+        let advance = advance_pending.clone();
+        window.on_quit_save_all(move || {
+            let window = window_weak.unwrap();
+            let queue = collect_pending_saves(&window, &mut state.borrow_mut());
+            *pending_saves.borrow_mut() = queue;
+            advance();
+        });
+    }
+
+    // Save As: user confirmed a path
+    {
+        let state = state.clone();
+        let pending_saves = pending_saves.clone();
+        let advance = advance_pending.clone();
+        let window_weak = window.as_weak();
+        window.on_save_as_confirmed(move |path_str| {
+            let window = window_weak.unwrap();
+            let path = std::path::PathBuf::from(path_str.as_str());
+            if !path_str.is_empty() {
+                if let Some((tab_idx, is_left, text, enc)) = {
+                    let b = pending_saves.borrow();
+                    b.first().cloned()
+                } {
+                    let bytes = encode_text(&text, &enc);
+                    if fs::write(&path, bytes).is_ok() {
+                        let mut s = state.borrow_mut();
+                        if is_left {
+                            s.tabs[tab_idx].left_path = Some(path);
+                        } else {
+                            s.tabs[tab_idx].right_path = Some(path);
+                        }
+                        // Check if this tab is now fully saved (both sides have paths)
+                        if s.tabs[tab_idx].left_path.is_some()
+                            && s.tabs[tab_idx].right_path.is_some()
+                        {
+                            s.tabs[tab_idx].has_unsaved_changes = false;
+                        }
+                        // Check if there are still unsaved tabs remaining
+                        let still_unsaved = s.tabs.iter().any(|t| t.has_unsaved_changes);
+                        window.set_has_unsaved_changes(still_unsaved);
+                    }
+                }
+            }
+            pending_saves.borrow_mut().remove(0);
+            advance();
+        });
+    }
+
+    // Save As: user cancelled → cancel quit entirely (WinMerge spec)
+    {
+        let pending_saves = pending_saves.clone();
+        let window_weak = window.as_weak();
+        window.on_save_as_cancelled(move || {
+            let window = window_weak.unwrap();
+            pending_saves.borrow_mut().clear();
+            window.set_show_save_as_dialog(false);
+            // Do NOT quit — user chose to cancel
+        });
+    }
+
+    // Save As: navigate to directory
+    {
+        let window_weak = window.as_weak();
+        window.on_save_as_navigate(move |path_str| {
+            let window = window_weak.unwrap();
+            let path = std::path::PathBuf::from(path_str.as_str());
+            if path.is_dir() {
+                populate_save_as_browser(&window, &path);
+            }
+        });
+    }
+
+    // Save As: go to parent directory
+    {
+        let window_weak = window.as_weak();
+        window.on_save_as_go_parent(move || {
+            let window = window_weak.unwrap();
+            let current = window.get_save_as_dir();
+            let current_path = std::path::PathBuf::from(current.as_str());
+            if let Some(parent) = current_path.parent() {
+                populate_save_as_browser(&window, parent);
+            }
+        });
+    }
+
+    // Quit: discard all changes and close
+    {
+        let state = state.clone();
+        let window_weak = window.as_weak();
+        let do_save = do_save_settings.clone();
+        window.on_quit_discard_all(move || {
+            let window = window_weak.unwrap();
+            // Mark all tabs as clean so close won't re-prompt
+            for tab in &mut state.borrow_mut().tabs {
+                tab.has_unsaved_changes = false;
+            }
+            window.set_show_quit_confirm(false);
+            do_save(&window);
+            let _ = slint::quit_event_loop();
         });
     }
 
