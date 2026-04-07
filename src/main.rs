@@ -14,7 +14,7 @@ mod export;
 mod highlight;
 #[cfg(not(target_arch = "wasm32"))]
 mod image_compare;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), unix))]
 mod ipc;
 mod models;
 #[cfg(not(target_arch = "wasm32"))]
@@ -219,8 +219,9 @@ fn main() {
         }
     }
 
-    // IPC client mode: if we have file args and are NOT the server,
+    // IPC client mode (Unix only): if we have file args and are NOT the server,
     // copy files, send to running instance (or spawn one), then exit immediately.
+    #[cfg(unix)]
     if !is_server_mode && positional.len() >= 2 {
         let copied = ipc::copy_to_temp(&positional);
         if ipc::try_send(&copied).is_ok() {
@@ -235,8 +236,10 @@ fn main() {
         return;
     }
 
-    // Server mode (--server) or no-args launch: start IPC listener
+    // Server mode (--server) or no-args launch: start IPC listener (Unix only)
+    #[cfg(unix)]
     let (ipc_tx, ipc_rx) = std::sync::mpsc::channel::<Vec<String>>();
+    #[cfg(unix)]
     ipc::start_listener(ipc_tx);
 
     // Handle positional arguments (direct launch without IPC):
@@ -1680,7 +1683,8 @@ fn main() {
                 if let Some(window) = window_weak.upgrade() {
                     apply_pending_diff_if_ready(&window, &mut state.borrow_mut());
 
-                    // IPC: receive file paths from other instances and open as new tabs
+                    // IPC: receive file paths from other instances and open as new tabs (Unix only)
+                    #[cfg(unix)]
                     while let Ok(paths) = ipc_rx.try_recv() {
                         let mut s = state.borrow_mut();
                         if paths.len() >= 3 {
@@ -2069,6 +2073,7 @@ fn main() {
     }
 
     window.run().unwrap();
+    #[cfg(unix)]
     ipc::cleanup();
 }
 
