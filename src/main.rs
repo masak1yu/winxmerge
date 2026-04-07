@@ -59,6 +59,8 @@ use slint::{Model, ModelRc, SharedString, VecModel};
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
+    let is_server_mode = args.iter().any(|a| a == "--server");
+
     // --clear-history: wipe session + recent files and exit
     if args.iter().any(|a| a == "--clear-history") {
         let mut s = settings::AppSettings::load();
@@ -187,6 +189,7 @@ fn main() {
                 "--ignore-whitespace" | "-w" => cli_ignore_whitespace = true,
                 "--ignore-case" | "-i" => cli_ignore_case = true,
                 "--ignore-blank-lines" | "-B" => cli_ignore_blank_lines = true,
+                "--server" | "--clear-history" => {}
                 _ => positional.push(args[i].clone()),
             }
             i += 1;
@@ -216,18 +219,27 @@ fn main() {
         }
     }
 
-    // IPC: if another instance is running, send file paths to it and exit
-    if positional.len() >= 2 {
-        if ipc::try_send(&positional).is_ok() {
+    // IPC client mode: if we have file args and are NOT the server,
+    // copy files, send to running instance (or spawn one), then exit immediately.
+    if !is_server_mode && positional.len() >= 2 {
+        let copied = ipc::copy_to_temp(&positional);
+        if ipc::try_send(&copied).is_ok() {
             return;
         }
+        // No running instance — spawn a server and send via IPC
+        ipc::spawn_server();
+        if ipc::try_send_with_retry(&copied, 30).is_ok() {
+            return;
+        }
+        eprintln!("[winxmerge] failed to connect to server");
+        return;
     }
 
-    // Start IPC listener for subsequent instances
+    // Server mode (--server) or no-args launch: start IPC listener
     let (ipc_tx, ipc_rx) = std::sync::mpsc::channel::<Vec<String>>();
     ipc::start_listener(ipc_tx);
 
-    // Handle positional arguments:
+    // Handle positional arguments (direct launch without IPC):
     //   winxmerge <left> <right>           — 2-way diff
     //   winxmerge <base> <left> <right>    — 3-way merge
     if positional.len() >= 3 {
@@ -256,7 +268,7 @@ fn main() {
         app::run_diff(&window, &mut s);
         app::sync_tab_list(&window, &s);
     } else {
-        // No CLI args: start with blank screen (WinMerge style — no session restore)
+        // No CLI args / --server: start with blank screen, wait for IPC
     }
 
     // New blank text document
