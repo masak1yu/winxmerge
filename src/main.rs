@@ -14,6 +14,8 @@ mod export;
 mod highlight;
 #[cfg(not(target_arch = "wasm32"))]
 mod image_compare;
+#[cfg(all(not(target_arch = "wasm32"), unix))]
+mod ipc;
 mod models;
 #[cfg(not(target_arch = "wasm32"))]
 mod settings;
@@ -56,6 +58,8 @@ use slint::{Model, ModelRc, SharedString, VecModel};
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+
+    let is_server_mode = args.iter().any(|a| a == "--server");
 
     // --clear-history: wipe session + recent files and exit
     if args.iter().any(|a| a == "--clear-history") {
@@ -185,6 +189,7 @@ fn main() {
                 "--ignore-whitespace" | "-w" => cli_ignore_whitespace = true,
                 "--ignore-case" | "-i" => cli_ignore_case = true,
                 "--ignore-blank-lines" | "-B" => cli_ignore_blank_lines = true,
+                "--server" | "--clear-history" => {}
                 _ => positional.push(args[i].clone()),
             }
             i += 1;
@@ -214,7 +219,30 @@ fn main() {
         }
     }
 
-    // Handle positional arguments:
+    // IPC client mode (Unix only): if we have file args and are NOT the server,
+    // copy files, send to running instance (or spawn one), then exit immediately.
+    #[cfg(unix)]
+    if !is_server_mode && positional.len() >= 2 {
+        let copied = ipc::copy_to_temp(&positional);
+        if ipc::try_send(&copied).is_ok() {
+            return;
+        }
+        // No running instance — spawn a server and send via IPC
+        ipc::spawn_server();
+        if ipc::try_send_with_retry(&copied, 30).is_ok() {
+            return;
+        }
+        eprintln!("[winxmerge] failed to connect to server");
+        return;
+    }
+
+    // Server mode (--server) or no-args launch: start IPC listener (Unix only)
+    #[cfg(unix)]
+    let (ipc_tx, ipc_rx) = std::sync::mpsc::channel::<Vec<String>>();
+    #[cfg(unix)]
+    ipc::start_listener(ipc_tx);
+
+    // Handle positional arguments (direct launch without IPC):
     //   winxmerge <left> <right>           — 2-way diff
     //   winxmerge <base> <left> <right>    — 3-way merge
     if positional.len() >= 3 {
@@ -243,7 +271,7 @@ fn main() {
         app::run_diff(&window, &mut s);
         app::sync_tab_list(&window, &s);
     } else {
-        // No CLI args: start with blank screen (WinMerge style — no session restore)
+        // No CLI args / --server: start with blank screen, wait for IPC
     }
 
     // New blank text document
@@ -1646,6 +1674,7 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
+        let settings = settings.clone();
         let timer = slint::Timer::default();
         timer.start(
             slint::TimerMode::Repeated,
@@ -1653,6 +1682,37 @@ fn main() {
             move || {
                 if let Some(window) = window_weak.upgrade() {
                     apply_pending_diff_if_ready(&window, &mut state.borrow_mut());
+
+                    // IPC: receive file paths from other instances and open as new tabs (Unix only)
+                    #[cfg(unix)]
+                    while let Ok(paths) = ipc_rx.try_recv() {
+                        let mut s = state.borrow_mut();
+                        if paths.len() >= 3 {
+                            // 3-way merge
+                            add_tab(&window, &mut s);
+                            start_three_way_compare(
+                                &window, &mut s, &paths[0], &paths[1], &paths[2],
+                            );
+                        } else if paths.len() >= 2 {
+                            // 2-way diff
+                            add_tab(&window, &mut s);
+                            {
+                                let tab = s.current_tab_mut();
+                                tab.left_path = Some(std::path::PathBuf::from(&paths[0]));
+                                tab.right_path = Some(std::path::PathBuf::from(&paths[1]));
+                                tab.view_mode = 0;
+                            }
+                            window.set_view_mode(0);
+                            run_diff(&window, &mut s);
+                        }
+                        app::sync_tab_list(&window, &s);
+                        // Save to recent
+                        if paths.len() >= 2 {
+                            let mut ss = settings.borrow_mut();
+                            ss.add_recent(&paths[0], &paths[1], false);
+                            sync_recent_entries(&window, &ss);
+                        }
+                    }
                 }
             },
         );
@@ -2013,6 +2073,8 @@ fn main() {
     }
 
     window.run().unwrap();
+    #[cfg(unix)]
+    ipc::cleanup();
 }
 
 #[cfg(not(target_arch = "wasm32"))]
