@@ -8,11 +8,21 @@ Web アプリ: `https://winxmerge.app`
 
 ## 現在の状態
 
-- **バージョン:** 0.33.0 開発中
-- **ブランチ:** `v0.33.0`
+- **バージョン:** 0.34.1
+- **ブランチ:** `feature/v0.34.1`
+- **テスト:** 29件すべてパス
+- **ビルド:** `cargo build --features desktop` 成功
 - **CI:** GitHub Actions（Ubuntu / macOS (aarch64) / Windows）+ Cloudflare Pages (WASM)
 
-## v0.33.0 の変更内容（開発中）
+## v0.34.1 の変更内容
+
+### IPC によるシングルインスタンス・タブ追加
+- Unix domain socket (`/tmp/winxmerge-<user>.sock`) による IPC
+- 2回目以降の起動は既存インスタンスにファイルパスを送信して即終了
+- 既存インスタンスが新しいタブとして diff を開く
+- `git difftool` で複数ファイル差分が1ウィンドウのタブとして表示可能に
+
+## v0.33.0 の変更内容
 
 ### インライン編集（WinMerge 仕様準拠）
 - [x] `editing_mode` 廃止 — 常に Ghost 行込み整列ビューで編集
@@ -79,6 +89,9 @@ trunk build --release  # 本番ビルド → dist/
 
 | バージョン | PR | 内容 |
 |-----------|-----|------|
+| v0.34.1 | #38 | IPC シングルインスタンス — git difftool でタブ式に複数ファイル差分を開く |
+| v0.34.0 | #37 | 3-way diff エンジン全面書き換え、コピー/F5 バグ修正、保存ドロップダウン |
+| v0.33.0 | #36 | インライン編集、新規ドキュメント、Save As ファイルブラウザ、終了時保存導線 |
 | v0.32.0 | #35 | WASM フルスクリーン、ダークテーマ、ペースト、diff 統計 |
 | v0.31.0 | #34 | WASM 表示修正（lib+bin ハイブリッド、canvas DOM 挿入） |
 | v0.30.0 | #33 | WASM ファイルアップロード、diff ナビゲーション |

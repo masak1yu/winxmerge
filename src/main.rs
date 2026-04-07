@@ -14,6 +14,8 @@ mod export;
 mod highlight;
 #[cfg(not(target_arch = "wasm32"))]
 mod image_compare;
+#[cfg(not(target_arch = "wasm32"))]
+mod ipc;
 mod models;
 #[cfg(not(target_arch = "wasm32"))]
 mod settings;
@@ -213,6 +215,17 @@ fn main() {
             window.set_ignore_case(true);
         }
     }
+
+    // IPC: if another instance is running, send file paths to it and exit
+    if positional.len() >= 2 {
+        if ipc::try_send(&positional).is_ok() {
+            return;
+        }
+    }
+
+    // Start IPC listener for subsequent instances
+    let (ipc_tx, ipc_rx) = std::sync::mpsc::channel::<Vec<String>>();
+    ipc::start_listener(ipc_tx);
 
     // Handle positional arguments:
     //   winxmerge <left> <right>           — 2-way diff
@@ -1646,6 +1659,7 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
+        let settings = settings.clone();
         let timer = slint::Timer::default();
         timer.start(
             slint::TimerMode::Repeated,
@@ -1653,6 +1667,36 @@ fn main() {
             move || {
                 if let Some(window) = window_weak.upgrade() {
                     apply_pending_diff_if_ready(&window, &mut state.borrow_mut());
+
+                    // IPC: receive file paths from other instances and open as new tabs
+                    while let Ok(paths) = ipc_rx.try_recv() {
+                        let mut s = state.borrow_mut();
+                        if paths.len() >= 3 {
+                            // 3-way merge
+                            add_tab(&window, &mut s);
+                            start_three_way_compare(
+                                &window, &mut s, &paths[0], &paths[1], &paths[2],
+                            );
+                        } else if paths.len() >= 2 {
+                            // 2-way diff
+                            add_tab(&window, &mut s);
+                            {
+                                let tab = s.current_tab_mut();
+                                tab.left_path = Some(std::path::PathBuf::from(&paths[0]));
+                                tab.right_path = Some(std::path::PathBuf::from(&paths[1]));
+                                tab.view_mode = 0;
+                            }
+                            window.set_view_mode(0);
+                            run_diff(&window, &mut s);
+                        }
+                        app::sync_tab_list(&window, &s);
+                        // Save to recent
+                        if paths.len() >= 2 {
+                            let mut ss = settings.borrow_mut();
+                            ss.add_recent(&paths[0], &paths[1], false);
+                            sync_recent_entries(&window, &ss);
+                        }
+                    }
                 }
             },
         );
@@ -2013,6 +2057,7 @@ fn main() {
     }
 
     window.run().unwrap();
+    ipc::cleanup();
 }
 
 #[cfg(not(target_arch = "wasm32"))]

@@ -351,6 +351,12 @@ git difftool main..feature-branch
 git mergetool
 ```
 
+### Single-Instance Tab Mode
+
+When multiple files are changed, `git difftool` invokes WinXMerge once per file.
+WinXMerge uses IPC (Unix domain socket) to detect a running instance and opens
+subsequent diffs as new tabs in the existing window instead of spawning separate processes.
+
 ## Project Structure
 
 ```
