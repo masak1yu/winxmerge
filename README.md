@@ -89,6 +89,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 ### Search & Replace
 - Text search (match count display, previous/next navigation)
 - Replace / Replace All
+- Available in both 2-way and 3-way diff views
 
 ### Go to Line
 - Jump to a specific line number (Cmd+G)
@@ -127,8 +128,9 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Available via Plugins menu
 
 ### Auto-rescan
-- Automatic file change detection (polls every 2 seconds)
+- Automatic file change detection (polls every 500ms)
 - Re-runs diff when files are modified externally
+- Skips reload while user has unsaved inline edits (prevents data loss)
 - Toggle via Edit → Options... → Auto-rescan
 
 ### Accessibility
@@ -222,6 +224,12 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Shown when saving documents without file paths (new/clipboard)
 - Directory defaults to current working directory
 - On quit with unsaved changes: Save / Don't Save / Cancel (cancel aborts quit)
+
+### Git Difftool Integration
+- Single-instance mode via Unix domain socket IPC
+- `git difftool` opens diffs as tabs in the existing window
+- Multiple file pairs (2+) displayed as a virtual folder comparison view
+- Double-click a file in the folder view to open detailed diff in a new tab
 
 ### Other
 - WinMerge-style initial file selection dialog (with recent files list)

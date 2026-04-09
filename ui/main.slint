@@ -925,7 +925,7 @@ export component MainWindow inherits Window {
         }
 
         // Search & Replace bar
-        if root.show-search && root.view-mode == 0 : Rectangle {
+        if root.show-search && (root.view-mode == 0 || root.view-mode == 3) : Rectangle {
             height: 72px;
             background: Palette.background.darker(0.02);
             border-color: Palette.border;
@@ -962,15 +962,15 @@ export component MainWindow inherits Window {
                         }
                     }
 
-                    Button {
-                        text: "▲";
-                        enabled: search-match-count > 0;
+                    ToolBtn {
+                        icon: @image-url("icons/search-prev.svg");
+                        btn-enabled: search-match-count > 0;
                         clicked => { root.search-prev(); }
                     }
 
-                    Button {
-                        text: "▼";
-                        enabled: search-match-count > 0;
+                    ToolBtn {
+                        icon: @image-url("icons/search-next.svg");
+                        btn-enabled: search-match-count > 0;
                         clicked => { root.search-next(); }
                     }
 
@@ -983,8 +983,8 @@ export component MainWindow inherits Window {
 
                     Rectangle { horizontal-stretch: 1; }
 
-                    Button {
-                        text: "✕";
+                    ToolBtn {
+                        icon: @image-url("icons/close.svg");
                         clicked => {
                             root.show-search = false;
                             root.search-query = "";
@@ -2315,7 +2315,7 @@ export component MainWindow inherits Window {
                     LineEdit {
                         horizontal-stretch: 1;
                         text <=> root.save-as-filename;
-                        placeholder-text: "filename.txt";
+                        placeholder-text: @tr("filename.txt");
                         accepted(t) => {
                             root.save-as-confirmed(root.save-as-dir + "/" + t);
                         }

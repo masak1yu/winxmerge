@@ -119,6 +119,8 @@ pub struct TabState {
     /// Folder sort column: -1=none, 0=Name, 1=Status, 2=LeftSize, 3=RightSize, 4=LeftModified, 5=RightModified
     pub folder_sort_column: i32,
     pub folder_sort_ascending: bool,
+    /// True when folder view was built from IPC-received file pairs (not real directory scan)
+    pub is_virtual_folder: bool,
 }
 
 impl TabState {
@@ -177,6 +179,7 @@ impl TabState {
             diff_status_filter: 0,
             folder_sort_column: -1,
             folder_sort_ascending: true,
+            is_virtual_folder: false,
         }
     }
 }
@@ -1989,6 +1992,7 @@ pub fn three_way_insert_line_after(
         },
         is_current: false,
         conflict_index: -1,
+        is_search_match: false,
     };
     vec_model.insert(insert_at, new_row);
     // Renumber each pane independently
@@ -2788,7 +2792,12 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
         .collect();
 
     if tab.left_path.is_some() && tab.right_path.is_some() {
-        run_diff(window, state);
+        if tab.has_unsaved_changes || tab.editing_dirty {
+            // Preserve user edits: rebuild diff from current VecModel text
+            rescan(window, state);
+        } else {
+            run_diff(window, state);
+        }
     }
 
     window.set_status_text(SharedString::from("Options applied"));
@@ -2798,20 +2807,24 @@ pub fn toggle_ignore_whitespace(window: &MainWindow, state: &mut AppState) {
     let tab = state.current_tab_mut();
     tab.diff_options.ignore_whitespace = !tab.diff_options.ignore_whitespace;
     window.set_ignore_whitespace(tab.diff_options.ignore_whitespace);
-    rerun_diff(window, state);
+    rerun_diff_safe(window, state);
 }
 
 pub fn toggle_ignore_case(window: &MainWindow, state: &mut AppState) {
     let tab = state.current_tab_mut();
     tab.diff_options.ignore_case = !tab.diff_options.ignore_case;
     window.set_ignore_case(tab.diff_options.ignore_case);
-    rerun_diff(window, state);
+    rerun_diff_safe(window, state);
 }
 
-fn rerun_diff(window: &MainWindow, state: &mut AppState) {
+fn rerun_diff_safe(window: &MainWindow, state: &mut AppState) {
     let tab = state.current_tab();
     if tab.left_path.is_some() && tab.right_path.is_some() {
-        run_diff(window, state);
+        if tab.has_unsaved_changes || tab.editing_dirty {
+            rescan(window, state);
+        } else {
+            run_diff(window, state);
+        }
     }
 }
 
@@ -2820,6 +2833,72 @@ pub fn search_text(window: &MainWindow, state: &mut AppState, query: &str) {
     tab.search_matches.clear();
     tab.current_search_match = -1;
 
+    // 3-way search
+    if tab.view_mode == 3 {
+        if query.is_empty() {
+            let model = window.get_three_way_lines();
+            if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+                for i in 0..vec_model.row_count() {
+                    let mut row = vec_model.row_data(i).unwrap();
+                    if row.is_search_match {
+                        row.is_search_match = false;
+                        vec_model.set_row_data(i, row);
+                    }
+                }
+            }
+            window.set_search_match_count(0);
+            window.set_status_text(SharedString::from("Search cleared"));
+            return;
+        }
+
+        let query_lower = query.to_lowercase();
+        let model = window.get_three_way_lines();
+        if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+            for i in 0..vec_model.row_count() {
+                let mut row = vec_model.row_data(i).unwrap();
+                let matched = row
+                    .left_text
+                    .to_string()
+                    .to_lowercase()
+                    .contains(&query_lower)
+                    || row
+                        .base_text
+                        .to_string()
+                        .to_lowercase()
+                        .contains(&query_lower)
+                    || row
+                        .right_text
+                        .to_string()
+                        .to_lowercase()
+                        .contains(&query_lower);
+                if matched {
+                    tab.search_matches.push(i);
+                }
+                if row.is_search_match != matched {
+                    row.is_search_match = matched;
+                    vec_model.set_row_data(i, row);
+                }
+            }
+        }
+
+        let count = tab.search_matches.len();
+        window.set_search_match_count(count as i32);
+        if count > 0 {
+            tab.current_search_match = 0;
+            window.set_status_text(SharedString::from(format!(
+                "Found {} matches for \"{}\"",
+                count, query
+            )));
+        } else {
+            window.set_status_text(SharedString::from(format!(
+                "No matches found for \"{}\"",
+                query
+            )));
+        }
+        return;
+    }
+
+    // 2-way search
     if query.is_empty() {
         // Clear any existing search highlights
         let model = window.get_diff_lines();
@@ -2885,6 +2964,39 @@ pub fn replace_text(window: &MainWindow, state: &mut AppState, search: &str, rep
         return;
     }
 
+    let search_lower = search.to_lowercase();
+
+    if tab.view_mode == 3 {
+        let model = window.get_three_way_lines();
+        let vec_model = match model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+            Some(m) => m,
+            None => return,
+        };
+        let match_idx = tab.search_matches[tab.current_search_match as usize];
+        let mut row = vec_model.row_data(match_idx).unwrap();
+        row.left_text = SharedString::from(case_insensitive_replace(
+            &row.left_text.to_string(),
+            &search_lower,
+            replacement,
+        ));
+        row.base_text = SharedString::from(case_insensitive_replace(
+            &row.base_text.to_string(),
+            &search_lower,
+            replacement,
+        ));
+        row.right_text = SharedString::from(case_insensitive_replace(
+            &row.right_text.to_string(),
+            &search_lower,
+            replacement,
+        ));
+        vec_model.set_row_data(match_idx, row);
+
+        state.current_tab_mut().has_unsaved_changes = true;
+        window.set_has_unsaved_changes(true);
+        search_text(window, state, search);
+        return;
+    }
+
     let model = window.get_diff_lines();
     let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
         Some(m) => m,
@@ -2894,7 +3006,6 @@ pub fn replace_text(window: &MainWindow, state: &mut AppState, search: &str, rep
     let match_idx = tab.search_matches[tab.current_search_match as usize];
     let mut row = vec_model.row_data(match_idx).unwrap();
 
-    let search_lower = search.to_lowercase();
     let left = row.left_text.to_string();
     let right = row.right_text.to_string();
     row.left_text = SharedString::from(case_insensitive_replace(&left, &search_lower, replacement));
@@ -2919,23 +3030,50 @@ pub fn replace_all_text(
         return;
     }
 
-    let model = window.get_diff_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
-
     let search_lower = search.to_lowercase();
     let matches = tab.search_matches.clone();
-    for &match_idx in &matches {
-        let mut row = vec_model.row_data(match_idx).unwrap();
-        let left = row.left_text.to_string();
-        let right = row.right_text.to_string();
-        row.left_text =
-            SharedString::from(case_insensitive_replace(&left, &search_lower, replacement));
-        row.right_text =
-            SharedString::from(case_insensitive_replace(&right, &search_lower, replacement));
-        vec_model.set_row_data(match_idx, row);
+
+    if tab.view_mode == 3 {
+        let model = window.get_three_way_lines();
+        let vec_model = match model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+            Some(m) => m,
+            None => return,
+        };
+        for &match_idx in &matches {
+            let mut row = vec_model.row_data(match_idx).unwrap();
+            row.left_text = SharedString::from(case_insensitive_replace(
+                &row.left_text.to_string(),
+                &search_lower,
+                replacement,
+            ));
+            row.base_text = SharedString::from(case_insensitive_replace(
+                &row.base_text.to_string(),
+                &search_lower,
+                replacement,
+            ));
+            row.right_text = SharedString::from(case_insensitive_replace(
+                &row.right_text.to_string(),
+                &search_lower,
+                replacement,
+            ));
+            vec_model.set_row_data(match_idx, row);
+        }
+    } else {
+        let model = window.get_diff_lines();
+        let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+            Some(m) => m,
+            None => return,
+        };
+        for &match_idx in &matches {
+            let mut row = vec_model.row_data(match_idx).unwrap();
+            let left = row.left_text.to_string();
+            let right = row.right_text.to_string();
+            row.left_text =
+                SharedString::from(case_insensitive_replace(&left, &search_lower, replacement));
+            row.right_text =
+                SharedString::from(case_insensitive_replace(&right, &search_lower, replacement));
+            vec_model.set_row_data(match_idx, row);
+        }
     }
 
     let count = matches.len();
@@ -3078,6 +3216,7 @@ pub fn new_blank_text_3way(window: &MainWindow, state: &mut AppState) {
         status: 0,
         is_current: false,
         conflict_index: -1,
+        is_search_match: false,
     };
     window.set_view_mode(3);
     window.set_three_way_lines(ModelRc::new(VecModel::from(vec![empty_row])));
@@ -3204,14 +3343,14 @@ pub fn discard_and_proceed(
     match action {
         1 => {
             if let Some(path) = open_file_dialog("Select left file") {
+                let path_str = path.to_string_lossy().to_string();
                 {
                     let tab = state.current_tab_mut();
-                    tab.left_path = Some(path.clone());
+                    tab.left_path = Some(path);
                     tab.view_mode = 0;
                 }
-                window.set_open_left_path_input(SharedString::from(
-                    path.to_string_lossy().to_string(),
-                ));
+                window.set_open_left_path_input(SharedString::from(&path_str));
+                window.set_left_path(SharedString::from(&path_str));
                 window.set_view_mode(0);
                 run_diff(window, state);
             } else {
@@ -3220,14 +3359,14 @@ pub fn discard_and_proceed(
         }
         2 => {
             if let Some(path) = open_file_dialog("Select right file") {
+                let path_str = path.to_string_lossy().to_string();
                 {
                     let tab = state.current_tab_mut();
-                    tab.right_path = Some(path.clone());
+                    tab.right_path = Some(path);
                     tab.view_mode = 0;
                 }
-                window.set_open_right_path_input(SharedString::from(
-                    path.to_string_lossy().to_string(),
-                ));
+                window.set_open_right_path_input(SharedString::from(&path_str));
+                window.set_right_path(SharedString::from(&path_str));
                 window.set_view_mode(0);
                 run_diff(window, state);
             } else {
@@ -3403,6 +3542,102 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
     sync_tab_list(window, state);
 }
 
+/// Build FolderItemData from FolderItem list and compute summary.
+fn build_folder_item_data(
+    items: &[crate::models::folder_item::FolderItem],
+) -> (Vec<FolderItemData>, String) {
+    let folder_item_data: Vec<FolderItemData> = items
+        .iter()
+        .map(|item| {
+            let status: i32 = match item.status {
+                FileCompareStatus::Identical => 0,
+                FileCompareStatus::Different => 1,
+                FileCompareStatus::LeftOnly => 2,
+                FileCompareStatus::RightOnly => 3,
+            };
+            let depth = item
+                .relative_path
+                .chars()
+                .filter(|&c| c == '/' || c == '\\')
+                .count() as i32;
+            FolderItemData {
+                relative_path: SharedString::from(&item.relative_path),
+                is_directory: item.is_directory,
+                status,
+                left_size: item
+                    .left_size
+                    .map(|s| SharedString::from(format_size(s)))
+                    .unwrap_or_default(),
+                right_size: item
+                    .right_size
+                    .map(|s| SharedString::from(format_size(s)))
+                    .unwrap_or_default(),
+                left_modified: item
+                    .left_modified
+                    .as_ref()
+                    .map(|s| SharedString::from(s.as_str()))
+                    .unwrap_or_default(),
+                right_modified: item
+                    .right_modified
+                    .as_ref()
+                    .map(|s| SharedString::from(s.as_str()))
+                    .unwrap_or_default(),
+                depth,
+            }
+        })
+        .collect();
+
+    let identical = items
+        .iter()
+        .filter(|i| i.status == FileCompareStatus::Identical)
+        .count();
+    let different = items
+        .iter()
+        .filter(|i| i.status == FileCompareStatus::Different)
+        .count();
+    let left_only = items
+        .iter()
+        .filter(|i| i.status == FileCompareStatus::LeftOnly)
+        .count();
+    let right_only = items
+        .iter()
+        .filter(|i| i.status == FileCompareStatus::RightOnly)
+        .count();
+    let total = items.len();
+    let summary = format!(
+        "Identical: {} | Different: {} | Left only: {} | Right only: {} | Total: {}",
+        identical, different, left_only, right_only, total
+    );
+
+    (folder_item_data, summary)
+}
+
+/// Display a virtual folder comparison built from IPC-received file pairs.
+pub fn display_virtual_folder(
+    window: &MainWindow,
+    state: &mut AppState,
+    items: Vec<crate::models::folder_item::FolderItem>,
+) {
+    let (folder_item_data, summary) = build_folder_item_data(&items);
+    let count = items.len();
+
+    let tab = state.current_tab_mut();
+    tab.folder_items = items;
+    tab.folder_item_data = folder_item_data.clone();
+    tab.view_mode = 1;
+    tab.is_virtual_folder = true;
+    tab.title = format!("git diff ({} files)", count);
+    tab.folder_summary = summary.clone();
+
+    window.set_folder_items(ModelRc::new(VecModel::from(folder_item_data)));
+    window.set_view_mode(1);
+    window.set_folder_summary_text(SharedString::from(&summary));
+    window.set_status_text(SharedString::from(format!("git diff — {}", summary)));
+    window.set_has_folder_context(false);
+
+    sync_tab_list(window, state);
+}
+
 pub fn open_folder_item(window: &MainWindow, state: &mut AppState, index: i32) {
     let tab = state.current_tab();
     if index < 0 || index as usize >= tab.folder_items.len() {
@@ -3417,6 +3652,13 @@ pub fn open_folder_item(window: &MainWindow, state: &mut AppState, index: i32) {
     if let (Some(left), Some(right)) = (&item.left_path, &item.right_path) {
         let left = left.clone();
         let right = right.clone();
+        let is_virtual = tab.is_virtual_folder;
+
+        if is_virtual {
+            // Virtual folder: open diff in a new tab (folder tab stays intact)
+            add_tab(window, state);
+        }
+
         {
             let tab = state.current_tab_mut();
             tab.left_path = Some(left);
@@ -3424,7 +3666,9 @@ pub fn open_folder_item(window: &MainWindow, state: &mut AppState, index: i32) {
             tab.view_mode = 0;
         }
         window.set_view_mode(0);
-        window.set_has_folder_context(true);
+        if !is_virtual {
+            window.set_has_folder_context(true);
+        }
         run_diff(window, state);
     }
 }
@@ -3621,6 +3865,7 @@ fn build_three_way_line_data(result: &ThreeWayResult) -> Vec<ThreeWayLineData> {
                 status,
                 is_current: conflict_index == 0 && !result.conflict_positions.is_empty(),
                 conflict_index,
+                is_search_match: false,
             }
         })
         .collect()
@@ -4086,9 +4331,14 @@ pub fn run_plugin(window: &MainWindow, state: &AppState, command: &str) {
 
 pub fn check_files_changed(state: &AppState) -> bool {
     let tab = state.current_tab();
-    if tab.view_mode != 0 {
+    if tab.view_mode != 0 && tab.view_mode != 3 {
         return false;
     }
+    // Skip if user is editing inline (don't reload from disk while editing)
+    if tab.editing_dirty || tab.has_unsaved_changes {
+        return false;
+    }
+    // External file changes (mtime check)
     if let Some(left_path) = &tab.left_path {
         if let Some(old_mtime) = &tab.left_mtime {
             if let Ok(meta) = fs::metadata(left_path) {
@@ -4120,11 +4370,12 @@ pub fn rescan(window: &MainWindow, state: &mut AppState) {
         && tab.left_path.is_some()
         && tab.right_path.is_some()
         && !tab.editing_dirty
+        && !tab.has_unsaved_changes
     {
         run_diff(window, state);
         window.set_status_text(SharedString::from("Files rescanned"));
     } else if tab.view_mode == 0 {
-        // Editing in progress or blank document: rebuild from VecModel (authoritative source)
+        // Editing in progress, unsaved changes, or blank document: rebuild from VecModel (authoritative source)
         let model = window.get_diff_lines();
         if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
             let left_text = rebuild_left(vec_model);
@@ -4137,6 +4388,7 @@ pub fn rescan(window: &MainWindow, state: &mut AppState) {
         && tab.left_path.is_some()
         && tab.right_path.is_some()
         && !tab.editing_dirty
+        && !tab.has_unsaved_changes
     {
         run_three_way_diff(window, state);
         window.set_status_text(SharedString::from("Files rescanned"));
