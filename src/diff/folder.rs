@@ -228,7 +228,7 @@ fn collect_entries(
     entries
 }
 
-fn compare_file_contents(left: &Path, right: &Path) -> FileCompareStatus {
+pub fn compare_file_contents(left: &Path, right: &Path) -> FileCompareStatus {
     let left_content = fs::read(left);
     let right_content = fs::read(right);
     match (left_content, right_content) {

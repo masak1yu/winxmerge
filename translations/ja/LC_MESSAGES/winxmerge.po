@@ -562,3 +562,318 @@ msgstr "右フォルダを選択"
 
 msgid "Select base file"
 msgstr "ベースファイルを選択"
+
+# Save confirm dialog
+msgid "Do you want to save the modified files?"
+msgstr "変更されたファイルを保存しますか？"
+
+msgid "Left File"
+msgstr "左ファイル"
+
+msgid "Right File"
+msgstr "右ファイル"
+
+msgid "Base File"
+msgstr "ベースファイル"
+
+msgid "Untitled"
+msgstr "無題"
+
+msgid "(No changes)"
+msgstr "(変更なし)"
+
+msgid "Save changes(S)"
+msgstr "変更を保存(S)"
+
+msgid "Discard changes(D)"
+msgstr "変更を破棄(D)"
+
+msgid "Save changes(A)"
+msgstr "変更を保存(A)"
+
+msgid "Discard changes(C)"
+msgstr "変更を破棄(C)"
+
+msgid "Discard All(R)"
+msgstr "すべて破棄(R)"
+
+# Unsaved changes dialogs
+msgid "Unsaved Changes"
+msgstr "未保存の変更"
+
+msgid "There are unsaved changes. What would you like to do?"
+msgstr "未保存の変更があります。どうしますか？"
+
+msgid "This tab has unsaved changes. What would you like to do?"
+msgstr "このタブには未保存の変更があります。どうしますか？"
+
+msgid "Save(S)"
+msgstr "保存(S)"
+
+msgid "Don't Save(D)"
+msgstr "保存しない(D)"
+
+msgid "Save"
+msgstr "保存"
+
+msgid "Save..."
+msgstr "保存..."
+
+# Menu items
+msgid "New(N)"
+msgstr "新規(N)"
+
+msgid "New (3-pane)(N)"
+msgstr "新規 (3ペイン)(N)"
+
+msgid "Text"
+msgstr "テキスト"
+
+msgid "Table"
+msgstr "テーブル"
+
+msgid "Open(O)..."
+msgstr "開く(O)..."
+
+msgid "Recent Files or Folders(I)"
+msgstr "最近のファイルやフォルダ(I)"
+
+msgid "Help"
+msgstr "ヘルプ"
+
+msgid "Print..."
+msgstr "印刷..."
+
+msgid "Use Clipboard as Left"
+msgstr "クリップボードを左として使用"
+
+msgid "Use Clipboard as Right"
+msgstr "クリップボードを右として使用"
+
+# Export menu
+msgid "Export CSV..."
+msgstr "CSVエクスポート..."
+
+msgid "Export TSV..."
+msgstr "TSVエクスポート..."
+
+msgid "Export Excel (.xlsx)..."
+msgstr "Excelエクスポート (.xlsx)..."
+
+msgid "Export Folder Report..."
+msgstr "フォルダレポートをエクスポート..."
+
+msgid "Export All Comments (CSV)..."
+msgstr "全コメントをエクスポート (CSV)..."
+
+msgid "Export All Comments (JSON)..."
+msgstr "全コメントをエクスポート (JSON)..."
+
+# Filter bar
+msgid "Filter:"
+msgstr "フィルタ:"
+
+msgid "All"
+msgstr "すべて"
+
+msgid "Added (+)"
+msgstr "追加 (+)"
+
+msgid "Removed (-)"
+msgstr "削除 (-)"
+
+msgid "Modified (~)"
+msgstr "変更 (~)"
+
+msgid "Moved (↕)"
+msgstr "移動 (↕)"
+
+# Navigation menu
+msgid "Next Added"
+msgstr "次の追加"
+
+msgid "Prev Added"
+msgstr "前の追加"
+
+msgid "Next Removed"
+msgstr "次の削除"
+
+msgid "Prev Removed"
+msgstr "前の削除"
+
+msgid "Next Modified"
+msgstr "次の変更"
+
+msgid "Prev Modified"
+msgstr "前の変更"
+
+# Context menu
+msgid "Copy Selection →"
+msgstr "選択を右へコピー →"
+
+msgid "← Copy Selection"
+msgstr "← 選択を左へコピー"
+
+# Diff comment
+msgid "Note:"
+msgstr "メモ:"
+
+msgid "Add a note for this diff block..."
+msgstr "この差分ブロックにメモを追加..."
+
+# Plugin
+msgid "(No plugins configured)"
+msgstr "(プラグイン未設定)"
+
+# File dialog
+msgid "File name:"
+msgstr "ファイル名:"
+
+# Tab bar
+msgid "Close Tab"
+msgstr "タブを閉じる"
+
+msgid "Move Tab Left"
+msgstr "タブを左へ移動"
+
+msgid "Move Tab Right"
+msgstr "タブを右へ移動"
+
+# Keyboard shortcuts dialog
+msgid "Keyboard Shortcuts"
+msgstr "キーボードショートカット"
+
+msgid "Navigation"
+msgstr "ナビゲーション"
+
+msgid "New tab"
+msgstr "新規タブ"
+
+msgid "Close tab"
+msgstr "タブを閉じる"
+
+msgid "Next tab"
+msgstr "次のタブ"
+
+msgid "Previous tab"
+msgstr "前のタブ"
+
+msgid "Open files"
+msgstr "ファイルを開く"
+
+msgid "Find/search"
+msgstr "検索"
+
+msgid "Save left file"
+msgstr "左ファイルを保存"
+
+msgid "Save right file"
+msgstr "右ファイルを保存"
+
+msgid "Next diff"
+msgstr "次の差分"
+
+msgid "Previous diff"
+msgstr "前の差分"
+
+msgid "First diff"
+msgstr "最初の差分"
+
+msgid "Last diff"
+msgstr "最後の差分"
+
+msgid "Copy block to right"
+msgstr "ブロックを右へコピー"
+
+msgid "Copy block to left"
+msgstr "ブロックを左へコピー"
+
+msgid "Rescan/refresh"
+msgstr "再スキャン/更新"
+
+msgid "Increase font size"
+msgstr "フォントサイズを拡大"
+
+msgid "Decrease font size"
+msgstr "フォントサイズを縮小"
+
+msgid "Toggle diff-only mode"
+msgstr "差分のみ表示を切替"
+
+# Options dialog - folder filters
+msgid "Folder max depth (0 = unlimited):"
+msgstr "フォルダ最大深度 (0 = 無制限):"
+
+msgid "Min file size (bytes, 0 = no limit):"
+msgstr "最小ファイルサイズ (バイト、0 = 制限なし):"
+
+msgid "Max file size (bytes, 0 = no limit):"
+msgstr "最大ファイルサイズ (バイト、0 = 制限なし):"
+
+msgid "Modified after (YYYY-MM-DD, empty = no filter):"
+msgstr "この日付以降に変更 (YYYY-MM-DD、空 = フィルタなし):"
+
+msgid "Modified before (YYYY-MM-DD, empty = no filter):"
+msgstr "この日付以前に変更 (YYYY-MM-DD、空 = フィルタなし):"
+
+# New table dialog
+msgid "File Type"
+msgstr "ファイルタイプ"
+
+msgid "Delimiter(E)"
+msgstr "区切り文字(E)"
+
+msgid "User-defined delimiter(D)"
+msgstr "ユーザー定義の区切り文字(D)"
+
+msgid "Quote character(Q)"
+msgstr "引用符(Q)"
+
+msgid "Treat newlines within quotes as values(A)"
+msgstr "引用符内の改行を値として扱う(A)"
+
+# CSV/Excel view
+msgid "Row"
+msgstr "行"
+
+msgid "Col"
+msgstr "列"
+
+msgid "Cell"
+msgstr "セル"
+
+msgid "Changed"
+msgstr "変更あり"
+
+msgid "Left Value"
+msgstr "左の値"
+
+msgid "Right Value"
+msgstr "右の値"
+
+msgid "Sheet"
+msgstr "シート"
+
+msgid "Sheet:"
+msgstr "シート:"
+
+# Image view
+msgid "Diff Panel"
+msgstr "差分パネル"
+
+msgid "Diff  (changed pixels in red, identical pixels in gray)"
+msgstr "差分 (変更ピクセル=赤、同一ピクセル=灰)"
+
+msgid "Zoom:"
+msgstr "ズーム:"
+
+msgid "Fit"
+msgstr "フィット"
+
+msgid "Blend:"
+msgstr "ブレンド:"
+
+# Save As dialog
+msgid "filename.txt"
+msgstr "ファイル名.txt"
+

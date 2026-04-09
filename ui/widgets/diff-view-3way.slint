@@ -12,6 +12,7 @@ export struct ThreeWayLineData {
     status: int,
     is-current: bool,
     conflict-index: int,
+    is-search-match: bool,
 }
 
 component ThreeWayLineRow inherits Rectangle {
@@ -24,6 +25,7 @@ component ThreeWayLineRow inherits Rectangle {
     in property <bool> editable: false;
     in property <bool> force-focus: false;
     in property <bool> focus-at-end: false;
+    in property <bool> is-search-match: false;
 
     callback text-edited(string);
     callback return-pressed();
@@ -55,6 +57,7 @@ component ThreeWayLineRow inherits Rectangle {
     property <color> text-color: Palette.foreground;
 
     background: is-current ? current-bg :
+                is-search-match ? ThemeColors.search-match-bg :
                 status == 1 ? ThemeColors.added-bg :
                 status == 2 ? ThemeColors.added-bg :
                 status == 3 ? ThemeColors.modified-bg :
@@ -331,6 +334,7 @@ export component DiffView3Way inherits Rectangle {
                         text: line.left-text;
                         status: line.status;
                         is-current: line.is-current;
+                        is-search-match: line.is-search-match;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
                         editable: root.inline-edit-enabled && line.left-line-no != "";
@@ -361,6 +365,7 @@ export component DiffView3Way inherits Rectangle {
                         text: line.base-text;
                         status: line.status;
                         is-current: line.is-current;
+                        is-search-match: line.is-search-match;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
                         editable: root.inline-edit-enabled && line.base-line-no != "";
@@ -391,6 +396,7 @@ export component DiffView3Way inherits Rectangle {
                         text: line.right-text;
                         status: line.status;
                         is-current: line.is-current;
+                        is-search-match: line.is-search-match;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
                         editable: root.inline-edit-enabled && line.right-line-no != "";

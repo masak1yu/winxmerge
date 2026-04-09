@@ -238,7 +238,7 @@ fn main() {
 
     // Server mode (--server) or no-args launch: start IPC listener (Unix only)
     #[cfg(unix)]
-    let (ipc_tx, ipc_rx) = std::sync::mpsc::channel::<Vec<String>>();
+    let (ipc_tx, ipc_rx) = std::sync::mpsc::channel::<Vec<(String, String)>>();
     #[cfg(unix)]
     ipc::start_listener(ipc_tx);
 
@@ -511,10 +511,18 @@ fn main() {
                     );
                 }
             } else if let Some(path) = open_file_dialog("Select left file") {
-                window.set_open_left_path_input(SharedString::from(
-                    path.to_string_lossy().to_string(),
-                ));
-                state.borrow_mut().current_tab_mut().left_path = Some(path);
+                let path_str = path.to_string_lossy().to_string();
+                window.set_open_left_path_input(SharedString::from(&path_str));
+                window.set_left_path(SharedString::from(&path_str));
+                {
+                    let mut s = state.borrow_mut();
+                    let tab = s.current_tab_mut();
+                    tab.left_path = Some(path);
+                    if tab.view_mode == 7 {
+                        tab.view_mode = 0;
+                        window.set_view_mode(0);
+                    }
+                }
             } else {
                 show_file_browser(
                     &window,
@@ -550,10 +558,18 @@ fn main() {
                     );
                 }
             } else if let Some(path) = open_file_dialog("Select right file") {
-                window.set_open_right_path_input(SharedString::from(
-                    path.to_string_lossy().to_string(),
-                ));
-                state.borrow_mut().current_tab_mut().right_path = Some(path);
+                let path_str = path.to_string_lossy().to_string();
+                window.set_open_right_path_input(SharedString::from(&path_str));
+                window.set_right_path(SharedString::from(&path_str));
+                {
+                    let mut s = state.borrow_mut();
+                    let tab = s.current_tab_mut();
+                    tab.right_path = Some(path);
+                    if tab.view_mode == 7 {
+                        tab.view_mode = 0;
+                        window.set_view_mode(0);
+                    }
+                }
             } else {
                 show_file_browser(
                     &window,
@@ -667,9 +683,19 @@ fn main() {
         window.on_back_to_folder_view(move || {
             let window = window_weak.unwrap();
             let mut s = state.borrow_mut();
-            s.current_tab_mut().view_mode = 1;
+            let tab = s.current_tab_mut();
+            tab.view_mode = 1;
             window.set_view_mode(1);
-            run_folder_compare(&window, &mut s);
+            if tab.is_virtual_folder {
+                // Restore from cached data (no disk rescan)
+                let data = tab.folder_item_data.clone();
+                let summary = tab.folder_summary.clone();
+                window.set_folder_items(slint::ModelRc::new(slint::VecModel::from(data)));
+                window.set_folder_summary_text(slint::SharedString::from(&summary));
+                window.set_has_folder_context(false);
+            } else {
+                run_folder_compare(&window, &mut s);
+            }
         });
     }
 
@@ -1475,12 +1501,26 @@ fn main() {
             browse_ctx.set(0);
             match ctx {
                 1 => {
-                    window.set_open_left_path_input(normalized);
-                    state.borrow_mut().current_tab_mut().left_path = Some(path_buf);
+                    window.set_open_left_path_input(normalized.clone());
+                    window.set_left_path(normalized);
+                    let mut s = state.borrow_mut();
+                    let tab = s.current_tab_mut();
+                    tab.left_path = Some(path_buf);
+                    if tab.view_mode == 7 {
+                        tab.view_mode = 0;
+                        window.set_view_mode(0);
+                    }
                 }
                 2 => {
-                    window.set_open_right_path_input(normalized);
-                    state.borrow_mut().current_tab_mut().right_path = Some(path_buf);
+                    window.set_open_right_path_input(normalized.clone());
+                    window.set_right_path(normalized);
+                    let mut s = state.borrow_mut();
+                    let tab = s.current_tab_mut();
+                    tab.right_path = Some(path_buf);
+                    if tab.view_mode == 7 {
+                        tab.view_mode = 0;
+                        window.set_view_mode(0);
+                    }
                 }
                 3 => {
                     window.set_open_left_path_input(normalized);
@@ -1657,7 +1697,7 @@ fn main() {
         let timer = slint::Timer::default();
         timer.start(
             slint::TimerMode::Repeated,
-            std::time::Duration::from_secs(2),
+            std::time::Duration::from_millis(500),
             move || {
                 if let Some(window) = window_weak.upgrade() {
                     if window.get_opt_auto_rescan() {
@@ -1675,6 +1715,18 @@ fn main() {
         let window_weak = window.as_weak();
         let state = state.clone();
         let settings = settings.clone();
+
+        // IPC accumulation buffer: (orig_left, temp_left, orig_right, temp_right)
+        #[cfg(unix)]
+        let ipc_buffer: Rc<RefCell<Vec<(String, String, String, String)>>> =
+            Rc::new(RefCell::new(Vec::new()));
+        #[cfg(unix)]
+        let ipc_last_received: Rc<Cell<Option<std::time::Instant>>> = Rc::new(Cell::new(None));
+        #[cfg(unix)]
+        let ipc_buffer_clone = ipc_buffer.clone();
+        #[cfg(unix)]
+        let ipc_last_clone = ipc_last_received.clone();
+
         let timer = slint::Timer::default();
         timer.start(
             slint::TimerMode::Repeated,
@@ -1683,34 +1735,127 @@ fn main() {
                 if let Some(window) = window_weak.upgrade() {
                     apply_pending_diff_if_ready(&window, &mut state.borrow_mut());
 
-                    // IPC: receive file paths from other instances and open as new tabs (Unix only)
+                    // IPC: accumulate file pairs, then flush as virtual folder or single diff
                     #[cfg(unix)]
-                    while let Ok(paths) = ipc_rx.try_recv() {
-                        let mut s = state.borrow_mut();
-                        if paths.len() >= 3 {
-                            // 3-way merge
-                            add_tab(&window, &mut s);
-                            start_three_way_compare(
-                                &window, &mut s, &paths[0], &paths[1], &paths[2],
-                            );
-                        } else if paths.len() >= 2 {
-                            // 2-way diff
-                            add_tab(&window, &mut s);
-                            {
-                                let tab = s.current_tab_mut();
-                                tab.left_path = Some(std::path::PathBuf::from(&paths[0]));
-                                tab.right_path = Some(std::path::PathBuf::from(&paths[1]));
-                                tab.view_mode = 0;
+                    {
+                        // Phase 1: Drain incoming IPC messages into buffer
+                        while let Ok(pairs) = ipc_rx.try_recv() {
+                            let mut buf = ipc_buffer_clone.borrow_mut();
+                            // pairs is Vec<(orig, temp)>, expected in left/right order
+                            if pairs.len() >= 2 {
+                                buf.push((
+                                    pairs[0].0.clone(),
+                                    pairs[0].1.clone(),
+                                    pairs[1].0.clone(),
+                                    pairs[1].1.clone(),
+                                ));
                             }
-                            window.set_view_mode(0);
-                            run_diff(&window, &mut s);
+                            ipc_last_clone.set(Some(std::time::Instant::now()));
                         }
-                        app::sync_tab_list(&window, &s);
-                        // Save to recent
-                        if paths.len() >= 2 {
-                            let mut ss = settings.borrow_mut();
-                            ss.add_recent(&paths[0], &paths[1], false);
-                            sync_recent_entries(&window, &ss);
+
+                        // Phase 2: Flush if 500ms elapsed since last receive
+                        if let Some(last) = ipc_last_clone.get() {
+                            if last.elapsed() >= std::time::Duration::from_millis(500) {
+                                let entries: Vec<(String, String, String, String)> =
+                                    ipc_buffer_clone.borrow_mut().drain(..).collect();
+                                ipc_last_clone.set(None);
+
+                                if !entries.is_empty() {
+                                    let mut s = state.borrow_mut();
+
+                                    if entries.len() == 1 {
+                                        // Single pair: open as 2-way diff tab (existing behavior)
+                                        let (_, temp_left, _, temp_right) = &entries[0];
+                                        add_tab(&window, &mut s);
+                                        {
+                                            let tab = s.current_tab_mut();
+                                            tab.left_path =
+                                                Some(std::path::PathBuf::from(temp_left));
+                                            tab.right_path =
+                                                Some(std::path::PathBuf::from(temp_right));
+                                            tab.view_mode = 0;
+                                        }
+                                        window.set_view_mode(0);
+                                        run_diff(&window, &mut s);
+                                        app::sync_tab_list(&window, &s);
+                                    } else {
+                                        // Multiple pairs: build virtual folder comparison
+                                        use crate::diff::folder::compare_file_contents;
+                                        use crate::models::folder_item::FolderItem;
+
+                                        // Check for existing virtual folder tab
+                                        let existing_vf =
+                                            s.tabs.iter().position(|t| t.is_virtual_folder);
+
+                                        if existing_vf.is_none() {
+                                            add_tab(&window, &mut s);
+                                        } else {
+                                            let idx = existing_vf.unwrap();
+                                            app::switch_tab(&window, &mut s, idx as i32);
+                                        }
+
+                                        let items: Vec<FolderItem> = entries
+                                            .iter()
+                                            .map(
+                                                |(
+                                                    orig_left,
+                                                    temp_left,
+                                                    _orig_right,
+                                                    temp_right,
+                                                )| {
+                                                    let left_p = std::path::Path::new(temp_left);
+                                                    let right_p = std::path::Path::new(temp_right);
+                                                    let status =
+                                                        compare_file_contents(left_p, right_p);
+                                                    let name = std::path::Path::new(orig_left)
+                                                        .file_name()
+                                                        .map(|n| n.to_string_lossy().to_string())
+                                                        .unwrap_or_else(|| orig_left.clone());
+                                                    let left_meta =
+                                                        std::fs::metadata(temp_left).ok();
+                                                    let right_meta =
+                                                        std::fs::metadata(temp_right).ok();
+                                                    FolderItem {
+                                                        relative_path: name,
+                                                        is_directory: false,
+                                                        status,
+                                                        left_path: Some(left_p.to_path_buf()),
+                                                        right_path: Some(right_p.to_path_buf()),
+                                                        left_size: left_meta
+                                                            .as_ref()
+                                                            .map(|m| m.len()),
+                                                        right_size: right_meta
+                                                            .as_ref()
+                                                            .map(|m| m.len()),
+                                                        left_modified: None,
+                                                        right_modified: None,
+                                                    }
+                                                },
+                                            )
+                                            .collect();
+
+                                        if existing_vf.is_some() {
+                                            // Append to existing virtual folder
+                                            let tab = s.current_tab_mut();
+                                            tab.folder_items.extend(items.clone());
+                                        }
+
+                                        let all_items = if existing_vf.is_some() {
+                                            s.current_tab().folder_items.clone()
+                                        } else {
+                                            items
+                                        };
+
+                                        app::display_virtual_folder(&window, &mut s, all_items);
+                                    }
+
+                                    // Save first pair to recent
+                                    let (orig_left, _, orig_right, _) = &entries[0];
+                                    let mut ss = settings.borrow_mut();
+                                    ss.add_recent(orig_left, orig_right, false);
+                                    sync_recent_entries(&window, &ss);
+                                }
+                            }
                         }
                     }
                 }
