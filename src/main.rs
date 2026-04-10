@@ -40,17 +40,18 @@ use app::{
     copy_to_left, copy_to_right, delete_line, discard_and_proceed, edit_line, export_all_comments,
     export_csv_report, export_folder_html_report, export_html_report, export_patch,
     export_xlsx_report, first_diff, folder_copy_to_left, folder_copy_to_right, folder_delete_item,
-    force_close_tab, goto_line, insert_line_after, last_diff, navigate_bookmark, navigate_conflict,
-    navigate_diff, navigate_diff_by_status, navigate_search, new_blank_table, new_blank_table_3way,
-    new_blank_text, new_blank_text_3way, open_file_dialog, open_folder_dialog, open_folder_item,
-    open_in_editor, paste_clipboard_path_left, paste_clipboard_path_right, preview_folder_item,
-    print_diff, redo, reorder_tab, replace_all_text, replace_text, rescan, resolve_all_use_left,
-    resolve_all_use_right, resolve_conflict_use_left, resolve_conflict_use_right,
-    resolve_use_left_and_next, resolve_use_right_and_next, run_diff, run_folder_compare,
-    run_plugin, save_file, save_three_way_pane, search_text, select_diff, set_diff_comment,
-    set_diff_filter, set_row_selection, sort_folder, start_compare, start_three_way_compare,
-    switch_tab, three_way_delete_line, three_way_edit_line, three_way_insert_line_after,
-    toggle_bookmark, toggle_ignore_case, toggle_ignore_whitespace, undo,
+    force_close_tab, goto_line, has_native_file_dialog, insert_line_after, last_diff,
+    navigate_bookmark, navigate_conflict, navigate_diff, navigate_diff_by_status, navigate_search,
+    new_blank_table, new_blank_table_3way, new_blank_text, new_blank_text_3way, open_file_dialog,
+    open_folder_dialog, open_folder_item, open_in_editor, paste_clipboard_path_left,
+    paste_clipboard_path_right, preview_folder_item, print_diff, redo, reorder_tab,
+    replace_all_text, replace_text, rescan, resolve_all_use_left, resolve_all_use_right,
+    resolve_conflict_use_left, resolve_conflict_use_right, resolve_use_left_and_next,
+    resolve_use_right_and_next, run_diff, run_folder_compare, run_plugin, save_file,
+    save_three_way_pane, search_text, select_diff, set_diff_comment, set_diff_filter,
+    set_row_selection, sort_folder, start_compare, start_three_way_compare, switch_tab,
+    three_way_delete_line, three_way_edit_line, three_way_insert_line_after, toggle_bookmark,
+    toggle_ignore_case, toggle_ignore_whitespace, undo,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use slint::{Model, ModelRc, SharedString, VecModel};
@@ -501,7 +502,7 @@ fn main() {
                         path.to_string_lossy().to_string(),
                     ));
                     state.borrow_mut().current_tab_mut().left_folder = Some(path);
-                } else {
+                } else if !has_native_file_dialog() {
                     show_file_browser(
                         &window,
                         &browse_ctx,
@@ -523,7 +524,7 @@ fn main() {
                         window.set_view_mode(0);
                     }
                 }
-            } else {
+            } else if !has_native_file_dialog() {
                 show_file_browser(
                     &window,
                     &browse_ctx,
@@ -548,7 +549,7 @@ fn main() {
                         path.to_string_lossy().to_string(),
                     ));
                     state.borrow_mut().current_tab_mut().right_folder = Some(path);
-                } else {
+                } else if !has_native_file_dialog() {
                     show_file_browser(
                         &window,
                         &browse_ctx,
@@ -570,7 +571,7 @@ fn main() {
                         window.set_view_mode(0);
                     }
                 }
-            } else {
+            } else if !has_native_file_dialog() {
                 show_file_browser(
                     &window,
                     &browse_ctx,
@@ -593,7 +594,7 @@ fn main() {
                     path.to_string_lossy().to_string(),
                 ));
                 state.borrow_mut().current_tab_mut().left_folder = Some(path);
-            } else {
+            } else if !has_native_file_dialog() {
                 show_file_browser(
                     &window,
                     &browse_ctx,
@@ -616,7 +617,7 @@ fn main() {
                     path.to_string_lossy().to_string(),
                 ));
                 state.borrow_mut().current_tab_mut().right_folder = Some(path);
-            } else {
+            } else if !has_native_file_dialog() {
                 show_file_browser(
                     &window,
                     &browse_ctx,
@@ -1440,7 +1441,7 @@ fn main() {
                 window.set_open_base_path_input(SharedString::from(
                     path.to_string_lossy().to_string(),
                 ));
-            } else {
+            } else if !has_native_file_dialog() {
                 show_file_browser(
                     &window,
                     &browse_ctx,
@@ -1797,20 +1798,21 @@ fn main() {
                                         let items: Vec<FolderItem> = entries
                                             .iter()
                                             .map(
-                                                |(
-                                                    orig_left,
-                                                    temp_left,
-                                                    _orig_right,
-                                                    temp_right,
-                                                )| {
+                                                |(orig_left, temp_left, orig_right, temp_right)| {
                                                     let left_p = std::path::Path::new(temp_left);
                                                     let right_p = std::path::Path::new(temp_right);
                                                     let status =
                                                         compare_file_contents(left_p, right_p);
-                                                    let name = std::path::Path::new(orig_left)
+                                                    // Use orig_right as fallback when orig_left is /dev/null (new file)
+                                                    let display_path = if orig_left == "/dev/null" {
+                                                        orig_right
+                                                    } else {
+                                                        orig_left
+                                                    };
+                                                    let name = std::path::Path::new(display_path)
                                                         .file_name()
                                                         .map(|n| n.to_string_lossy().to_string())
-                                                        .unwrap_or_else(|| orig_left.clone());
+                                                        .unwrap_or_else(|| display_path.clone());
                                                     let left_meta =
                                                         std::fs::metadata(temp_left).ok();
                                                     let right_meta =

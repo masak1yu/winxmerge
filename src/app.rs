@@ -212,6 +212,13 @@ impl AppState {
     }
 }
 
+/// Returns true if the platform supports native file dialogs.
+/// On macOS and Windows, rfd always has a working backend.
+/// On Linux without a display server or GTK, it may fail silently.
+pub fn has_native_file_dialog() -> bool {
+    cfg!(target_os = "macos") || cfg!(target_os = "windows")
+}
+
 pub fn open_file_dialog(title: &str) -> Option<PathBuf> {
     rfd::FileDialog::new().set_title(title).pick_file()
 }
@@ -3353,7 +3360,7 @@ pub fn discard_and_proceed(
                 window.set_left_path(SharedString::from(&path_str));
                 window.set_view_mode(0);
                 run_diff(window, state);
-            } else {
+            } else if !has_native_file_dialog() {
                 show_picker(11, "Select left file");
             }
         }
@@ -3369,7 +3376,7 @@ pub fn discard_and_proceed(
                 window.set_right_path(SharedString::from(&path_str));
                 window.set_view_mode(0);
                 run_diff(window, state);
-            } else {
+            } else if !has_native_file_dialog() {
                 show_picker(12, "Select right file");
             }
         }
@@ -3380,7 +3387,7 @@ pub fn discard_and_proceed(
                     path.to_string_lossy().to_string(),
                 ));
                 run_folder_compare(window, state);
-            } else {
+            } else if !has_native_file_dialog() {
                 show_picker(13, "Select left folder");
             }
         }
@@ -3391,7 +3398,7 @@ pub fn discard_and_proceed(
                     path.to_string_lossy().to_string(),
                 ));
                 run_folder_compare(window, state);
-            } else {
+            } else if !has_native_file_dialog() {
                 show_picker(14, "Select right folder");
             }
         }
