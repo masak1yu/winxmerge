@@ -12,6 +12,7 @@ import { NewTableDialog } from "dialogs/new-table-dialog.slint";
 import { ThemeColors } from "theme.slint";
 import { ExcelView, ExcelCellData } from "widgets/excel-view.slint";
 import { CsvView } from "widgets/csv-view.slint";
+import { TableGridView, TableRowData, TableCellData, TableColumnInfo } from "widgets/table-grid-view.slint";
 import { ImageView } from "widgets/image-view.slint";
 
 export struct PluginEntryData {
@@ -25,7 +26,7 @@ export struct DetailLineData {
     status: int,  // 1=added, 2=removed, 3=modified, 4=moved
 }
 
-export { DiffLineData, WordSegment, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors, FileEntryData }
+export { DiffLineData, WordSegment, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors, FileEntryData, TableRowData, TableCellData, TableColumnInfo }
 
 // Toolbar icon button: fixed 32x32 with image icon + optional overlay text
 component ToolBtn inherits Rectangle {
@@ -471,6 +472,19 @@ export component MainWindow inherits Window {
     in property <[string]> excel-sheet-names;
     in-out property <string> excel-active-sheet: "";
 
+    // Table grid comparison (view_mode == 4 and 6)
+    in-out property <[TableRowData]> table-rows;
+    in-out property <[TableColumnInfo]> table-columns;
+    in-out property <int> table-content-width-px: 0;
+    in-out property <length> table-scroll-y: 0px;
+    callback table-sheet-changed(string);
+    callback table-copy-to-right(int);
+    callback table-copy-to-left(int);
+    callback table-copy-right-and-next();
+    callback table-copy-left-and-next();
+    callback table-copy-all-right();
+    callback table-copy-all-left();
+
     // Diff comments
     in-out property <string> current-diff-comment: "";
     callback diff-comment-changed(string);
@@ -530,6 +544,11 @@ export component MainWindow inherits Window {
     // Scroll diff view to a specific row (with 3 context lines above)
     public function scroll-diff-to-row(row: int) {
         root.diff-scroll-y = -((row > 3 ? row - 3 : 0) * (root.opt-font-size + 2) * 1px);
+    }
+
+    // Scroll table grid view to a specific row (22px per row, 3 rows context)
+    public function scroll-table-to-row(row: int) {
+        root.table-scroll-y = -((row > 3 ? row - 3 : 0) * 22px);
     }
 
     // Helper: check unsaved before action
@@ -901,19 +920,19 @@ export component MainWindow inherits Window {
 
                 ToolSep {}
 
-                tb-first := ToolBtn { icon: @image-url("icons/first.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { root.first-diff(); } }
-                tb-prev := ToolBtn { icon: @image-url("icons/prev.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.prev-conflict(); } else { root.prev-diff(); } } }
-                tb-next := ToolBtn { icon: @image-url("icons/next.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.next-conflict(); } else { root.next-diff(); } } }
-                tb-last := ToolBtn { icon: @image-url("icons/last.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { root.last-diff(); } }
+                tb-first := ToolBtn { icon: @image-url("icons/first.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { root.first-diff(); } }
+                tb-prev := ToolBtn { icon: @image-url("icons/prev.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.prev-conflict(); } else { root.prev-diff(); } } }
+                tb-next := ToolBtn { icon: @image-url("icons/next.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.next-conflict(); } else { root.next-diff(); } } }
+                tb-last := ToolBtn { icon: @image-url("icons/last.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { root.last-diff(); } }
 
-                sep-nav := ToolSep { visible: root.view-mode == 0 || root.view-mode == 3; }
+                sep-nav := ToolSep { visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; }
 
-                tb-copy-r := ToolBtn { icon: @image-url("icons/copy-right.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 3 { root.use-left(root.current-conflict-index); } else { root.copy-to-right(root.current-diff-index); } } }
-                tb-copy-l := ToolBtn { icon: @image-url("icons/copy-left.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 3 { root.use-right(root.current-conflict-index); } else { root.copy-to-left(root.current-diff-index); } } }
-                tb-copy-r-next := ToolBtn { icon: @image-url("icons/copy-right-next.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 3 { root.use-left-and-next(); } else { root.copy-right-and-next(); } } }
-                tb-copy-l-next := ToolBtn { icon: @image-url("icons/copy-left-next.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 3 { root.use-right-and-next(); } else { root.copy-left-and-next(); } } }
-                tb-all-r := ToolBtn { icon: @image-url("icons/copy-all-right.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.use-all-left(); } else { root.copy-all-diffs-right(); } } }
-                tb-all-l := ToolBtn { icon: @image-url("icons/copy-all-left.svg"); visible: root.view-mode == 0 || root.view-mode == 3; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.use-all-right(); } else { root.copy-all-diffs-left(); } } }
+                tb-copy-r := ToolBtn { icon: @image-url("icons/copy-right.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-to-right(root.current-diff-index); } else if root.view-mode == 3 { root.use-left(root.current-conflict-index); } else { root.copy-to-right(root.current-diff-index); } } }
+                tb-copy-l := ToolBtn { icon: @image-url("icons/copy-left.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-to-left(root.current-diff-index); } else if root.view-mode == 3 { root.use-right(root.current-conflict-index); } else { root.copy-to-left(root.current-diff-index); } } }
+                tb-copy-r-next := ToolBtn { icon: @image-url("icons/copy-right-next.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-right-and-next(); } else if root.view-mode == 3 { root.use-left-and-next(); } else { root.copy-right-and-next(); } } }
+                tb-copy-l-next := ToolBtn { icon: @image-url("icons/copy-left-next.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-left-and-next(); } else if root.view-mode == 3 { root.use-right-and-next(); } else { root.copy-left-and-next(); } } }
+                tb-all-r := ToolBtn { icon: @image-url("icons/copy-all-right.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-all-right(); } else if root.view-mode == 3 { root.use-all-left(); } else { root.copy-all-diffs-right(); } } }
+                tb-all-l := ToolBtn { icon: @image-url("icons/copy-all-left.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-all-left(); } else if root.view-mode == 3 { root.use-all-right(); } else { root.copy-all-diffs-left(); } } }
 
                 ToolSep {}
 
@@ -1211,17 +1230,30 @@ export component MainWindow inherits Window {
             move-focus-down(row, pane) => { root.three-way-move-focus-down(row, pane); }
         }
 
-        // Excel compare view
-        if root.view-mode == 4 : ExcelView {
-            cells: root.excel-cells;
+        // Excel compare view (side-by-side grid)
+        if root.view-mode == 4 : TableGridView {
+            left-title: root.left-path;
+            right-title: root.right-path;
+            rows: root.table-rows;
+            columns: root.table-columns;
+            content-width-px: root.table-content-width-px;
+            scroll-y <=> root.table-scroll-y;
+            has-sheets: true;
             sheet-names: root.excel-sheet-names;
             active-sheet <=> root.excel-active-sheet;
+            sheet-changed(name) => { root.table-sheet-changed(name); }
             vertical-stretch: 1;
         }
 
-        // CSV/TSV compare view
-        if root.view-mode == 6 : CsvView {
-            cells: root.excel-cells;
+        // CSV/TSV compare view (side-by-side grid)
+        if root.view-mode == 6 : TableGridView {
+            left-title: root.left-path;
+            right-title: root.right-path;
+            rows: root.table-rows;
+            columns: root.table-columns;
+            content-width-px: root.table-content-width-px;
+            scroll-y <=> root.table-scroll-y;
+            has-sheets: false;
             vertical-stretch: 1;
         }
 

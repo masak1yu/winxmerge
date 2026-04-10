@@ -1894,6 +1894,66 @@ fn main() {
         });
     }
 
+    // Table sheet switching (Excel grid view)
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_sheet_changed(move |sheet_name| {
+            let window = window_weak.unwrap();
+            crate::app::switch_excel_sheet(&window, &mut state.borrow_mut(), &sheet_name);
+        });
+    }
+
+    // Table copy callbacks (view-mode 4/6)
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_copy_to_right(move |diff_index| {
+            let window = window_weak.unwrap();
+            crate::app::table_copy_to_right(&window, &mut state.borrow_mut(), diff_index);
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_copy_to_left(move |diff_index| {
+            let window = window_weak.unwrap();
+            crate::app::table_copy_to_left(&window, &mut state.borrow_mut(), diff_index);
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_copy_right_and_next(move || {
+            let window = window_weak.unwrap();
+            crate::app::table_copy_right_and_next(&window, &mut state.borrow_mut());
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_copy_left_and_next(move || {
+            let window = window_weak.unwrap();
+            crate::app::table_copy_left_and_next(&window, &mut state.borrow_mut());
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_copy_all_right(move || {
+            let window = window_weak.unwrap();
+            crate::app::table_copy_all_right(&window, &mut state.borrow_mut());
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_copy_all_left(move || {
+            let window = window_weak.unwrap();
+            crate::app::table_copy_all_left(&window, &mut state.borrow_mut());
+        });
+    }
+
     // Diff status filter
     {
         let window_weak = window.as_weak();

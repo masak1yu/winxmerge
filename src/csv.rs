@@ -1,6 +1,7 @@
 /// CSV / TSV table comparison
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct CsvCellDiff {
     pub row: usize, // 1-based
     #[allow(dead_code)]
@@ -28,7 +29,7 @@ fn detect_delimiter(text: &str) -> u8 {
     if tabs > commas { b'\t' } else { b',' }
 }
 
-fn col_to_name(mut col: usize) -> String {
+pub fn col_to_name(mut col: usize) -> String {
     let mut name = String::new();
     loop {
         name.insert(0, (b'A' + (col % 26) as u8) as char);
@@ -42,7 +43,7 @@ fn col_to_name(mut col: usize) -> String {
 
 /// Parse CSV/TSV text into a 2-D table of cell strings.
 /// Handles quoted fields with embedded delimiters and newlines.
-fn parse_csv(text: &str, delimiter: u8) -> Vec<Vec<String>> {
+pub fn parse_csv(text: &str, delimiter: u8) -> Vec<Vec<String>> {
     let mut rows: Vec<Vec<String>> = Vec::new();
     let mut row: Vec<String> = Vec::new();
     let mut field = String::new();
@@ -89,7 +90,78 @@ fn parse_csv(text: &str, delimiter: u8) -> Vec<Vec<String>> {
     rows
 }
 
+/// Full comparison result including both grids and per-cell status.
+#[derive(Debug, Clone)]
+pub struct CsvTableResult {
+    pub left_grid: Vec<Vec<String>>,
+    pub right_grid: Vec<Vec<String>>,
+    pub max_rows: usize,
+    pub max_cols: usize,
+    /// cell_status[row][col] = 0(identical)/1(different)/2(left-only)/3(right-only)
+    pub cell_status: Vec<Vec<i32>>,
+    pub diff_count: usize,
+}
+
+/// Compare two CSV/TSV texts and return full grids with per-cell status.
+pub fn compare_csv_full(left_text: &str, right_text: &str) -> CsvTableResult {
+    let delim = detect_delimiter(left_text);
+    let left_grid = parse_csv(left_text, delim);
+    let right_grid = parse_csv(right_text, delim);
+
+    let max_rows = left_grid.len().max(right_grid.len());
+    let max_cols = left_grid
+        .iter()
+        .chain(right_grid.iter())
+        .map(|r| r.len())
+        .max()
+        .unwrap_or(0);
+
+    let mut cell_status = Vec::with_capacity(max_rows);
+    let mut diff_count = 0;
+
+    for r in 0..max_rows {
+        let left_row = left_grid.get(r);
+        let right_row = right_grid.get(r);
+        let mut row_status = Vec::with_capacity(max_cols);
+
+        for c in 0..max_cols {
+            let lv = left_row
+                .and_then(|row| row.get(c))
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            let rv = right_row
+                .and_then(|row| row.get(c))
+                .map(|s| s.as_str())
+                .unwrap_or("");
+
+            let status = match (left_row.is_some(), right_row.is_some()) {
+                (true, false) => 2,
+                (false, true) => 3,
+                _ if lv == rv => 0,
+                _ => 1,
+            };
+
+            if status != 0 {
+                diff_count += 1;
+            }
+            row_status.push(status);
+        }
+
+        cell_status.push(row_status);
+    }
+
+    CsvTableResult {
+        left_grid,
+        right_grid,
+        max_rows,
+        max_cols,
+        cell_status,
+        diff_count,
+    }
+}
+
 /// Compare two CSV/TSV texts and return cell-level differences.
+#[allow(dead_code)]
 pub fn compare_csv(left_text: &str, right_text: &str) -> Vec<CsvCellDiff> {
     let delim = detect_delimiter(left_text);
     let left_rows = parse_csv(left_text, delim);

@@ -1,0 +1,8 @@
+Name,Age,City,Score,Department,Email,Phone,StartDate,Salary,Rating,Project,Level,Status,Notes
+Alice,31,Tokyo,95,Engineering,alice@example.com,090-1111-2222,2020-04-01,820000,A,Alpha,Senior,Active,Team lead
+Bob,25,Yokohama,90,Marketing,bob@example.com,090-3333-4444,2021-06-15,600000,A,Beta,Junior,Active,Promoted
+Charlie,35,Nagoya,92,Engineering,charlie@example.com,090-5555-6666,2018-01-10,900000,A,Alpha,Lead,Active,Architect
+Eve,22,Fukuoka,91,Research,eve@example.com,070-1111-2222,2023-01-05,580000,A,Zeta,Junior,Active,New member
+Frank,40,Sapporo,80,Sales,frank@example.com,090-9999-0000,2015-08-01,770000,B,Delta,Senior,Active,Regional manager
+Grace,33,Kobe,91,Engineering,grace@example.com,080-1234-5678,2019-11-01,850000,A,Alpha,Senior,Inactive,On leave
+Hank,29,Sendai,84,Support,hank@example.com,080-2345-6789,2021-09-10,570000,B,Epsilon,Mid,Active,Promoted to Tier 3
