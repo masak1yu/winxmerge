@@ -4,6 +4,8 @@
 
 A cross-platform file diff comparison and merge tool inspired by WinMerge, built with Rust + Slint UI.
 
+<img width="1200" height="827" alt="winxmerge" src="https://github.com/user-attachments/assets/f3d2b2d7-d1d6-4838-9539-a62b45fe7780" />
+
 ## Features
 
 ### File Comparison (2-way)
