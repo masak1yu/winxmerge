@@ -717,8 +717,8 @@ export component MainWindow inherits Window {
     }
 
     VerticalLayout {
-        // Tab bar (hidden when blank start screen)
-        if root.view-mode != 7 : TabBar {
+        // Tab bar (hidden only on initial blank screen with single tab)
+        if root.view-mode != 7 || root.tab-list.length > 1 : TabBar {
             tabs: root.tab-list;
             active-index: root.active-tab-index;
             tab-clicked(idx) => { root.switch-tab(idx); }
