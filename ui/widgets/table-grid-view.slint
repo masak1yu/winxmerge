@@ -84,6 +84,9 @@ export component TableGridView inherits Rectangle {
     in property <[string]> sheet-names;
     in-out property <string> active-sheet: "";
     callback sheet-changed(string);
+    callback column-resized(/* col_idx */ int, /* new_width_px */ int);
+    in property <bool> inline-edit-enabled: false;
+    callback cell-edited(/* row */ int, /* col */ int, /* pane: 0=left,1=base,2=right */ int, /* text */ string);
 
     // Scroll sync
     in-out property <length> scroll-y <=> left-list.viewport-y;
@@ -265,6 +268,25 @@ export component TableGridView inherits Rectangle {
                             vertical-alignment: center;
                         }
                     }
+
+                    // Column drag handles
+                    for col[idx] in root.columns: Rectangle {
+                        x: root.row-num-width + col.x-px * 1px + col.width-px * 1px - 3px - root.h-scroll-offset;
+                        y: 0;
+                        width: 6px;
+                        height: 100%;
+
+                        left-drag := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: col-resize;
+                            moved => {
+                                if left-drag.pressed {
+                                    root.column-resized(idx, Math.max(30, col.width-px + (left-drag.mouse-x - left-drag.pressed-x) / 1px));
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Data rows
@@ -314,14 +336,17 @@ export component TableGridView inherits Rectangle {
                                       : cell.status == 5 ? ThemeColors.conflict-bg
                                       : Palette.background;
 
-                            Text {
+                            TextInput {
                                 text: cell.text;
                                 font-size: 11px;
                                 font-family: "monospace";
                                 vertical-alignment: center;
-                                overflow: elide;
                                 x: 4px;
                                 width: parent.width - 8px;
+                                read-only: !root.inline-edit-enabled;
+                                edited => {
+                                    root.cell-edited(row-idx, idx, 0, self.text);
+                                }
                             }
                         }
                     }
@@ -376,6 +401,25 @@ export component TableGridView inherits Rectangle {
                             vertical-alignment: center;
                         }
                     }
+
+                    // Column drag handles
+                    for col[idx] in root.columns: Rectangle {
+                        x: root.row-num-width + col.x-px * 1px + col.width-px * 1px - 3px - root.h-scroll-offset;
+                        y: 0;
+                        width: 6px;
+                        height: 100%;
+
+                        base-drag := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: col-resize;
+                            moved => {
+                                if base-drag.pressed {
+                                    root.column-resized(idx, Math.max(30, col.width-px + (base-drag.mouse-x - base-drag.pressed-x) / 1px));
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Data rows
@@ -426,14 +470,17 @@ export component TableGridView inherits Rectangle {
                                       : cell.status == 5 ? ThemeColors.conflict-bg
                                       : Palette.background;
 
-                            Text {
+                            TextInput {
                                 text: cell.text;
                                 font-size: 11px;
                                 font-family: "monospace";
                                 vertical-alignment: center;
-                                overflow: elide;
                                 x: 4px;
                                 width: parent.width - 8px;
+                                read-only: !root.inline-edit-enabled;
+                                edited => {
+                                    root.cell-edited(row-idx, idx, 1, self.text);
+                                }
                             }
                         }
                     }
@@ -488,6 +535,25 @@ export component TableGridView inherits Rectangle {
                             vertical-alignment: center;
                         }
                     }
+
+                    // Column drag handles
+                    for col[idx] in root.columns: Rectangle {
+                        x: root.row-num-width + col.x-px * 1px + col.width-px * 1px - 3px - root.h-scroll-offset;
+                        y: 0;
+                        width: 6px;
+                        height: 100%;
+
+                        right-drag := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            mouse-cursor: col-resize;
+                            moved => {
+                                if right-drag.pressed {
+                                    root.column-resized(idx, Math.max(30, col.width-px + (right-drag.mouse-x - right-drag.pressed-x) / 1px));
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Data rows
@@ -537,14 +603,17 @@ export component TableGridView inherits Rectangle {
                                       : cell.status == 5 ? ThemeColors.conflict-bg
                                       : Palette.background;
 
-                            Text {
+                            TextInput {
                                 text: cell.text;
                                 font-size: 11px;
                                 font-family: "monospace";
                                 vertical-alignment: center;
-                                overflow: elide;
                                 x: 4px;
                                 width: parent.width - 8px;
+                                read-only: !root.inline-edit-enabled;
+                                edited => {
+                                    root.cell-edited(row-idx, idx, 2, self.text);
+                                }
                             }
                         }
                     }

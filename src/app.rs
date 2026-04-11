@@ -50,6 +50,14 @@ struct TextSnapshot {
     right_text: String,
 }
 
+/// Snapshot for table undo/redo (stores cell texts as grids)
+#[derive(Clone)]
+pub(crate) struct TableSnapshot {
+    left_grid: Vec<Vec<String>>,
+    right_grid: Vec<Vec<String>>,
+    base_grid: Vec<Vec<String>>,
+}
+
 /// Cached table data for a single Excel sheet (for fast sheet switching)
 pub struct SheetTableCache {
     pub rows: Vec<TableRowData>,
@@ -137,6 +145,11 @@ pub struct TabState {
     pub table_content_width_px: i32,
     /// Cached per-sheet table data for Excel sheet switching
     pub excel_sheet_data: std::collections::BTreeMap<String, SheetTableCache>,
+    /// CSV delimiter for saving (default comma)
+    pub csv_delimiter: u8,
+    /// Table undo/redo stacks
+    pub table_undo_stack: Vec<TableSnapshot>,
+    pub table_redo_stack: Vec<TableSnapshot>,
 }
 
 impl TabState {
@@ -200,6 +213,9 @@ impl TabState {
             table_columns: Vec::new(),
             table_content_width_px: 0,
             excel_sheet_data: std::collections::BTreeMap::new(),
+            csv_delimiter: b',',
+            table_undo_stack: Vec::new(),
+            table_redo_stack: Vec::new(),
         }
     }
 }
@@ -1255,6 +1271,12 @@ fn push_undo_snapshot(state: &mut AppState, vec_model: &VecModel<DiffLineData>) 
 }
 
 pub fn undo(window: &MainWindow, state: &mut AppState) {
+    let vm = state.current_tab().view_mode;
+    if vm == 4 || vm == 6 || vm == 8 {
+        table_undo(window, state);
+        return;
+    }
+
     let tab = state.current_tab_mut();
     if tab.undo_stack.is_empty() {
         return;
@@ -1278,6 +1300,12 @@ pub fn undo(window: &MainWindow, state: &mut AppState) {
 }
 
 pub fn redo(window: &MainWindow, state: &mut AppState) {
+    let vm = state.current_tab().view_mode;
+    if vm == 4 || vm == 6 || vm == 8 {
+        table_redo(window, state);
+        return;
+    }
+
     let tab = state.current_tab_mut();
     if tab.redo_stack.is_empty() {
         return;
@@ -1297,6 +1325,79 @@ pub fn redo(window: &MainWindow, state: &mut AppState) {
     let tab = state.current_tab();
     window.set_can_undo(!tab.undo_stack.is_empty());
     window.set_can_redo(!tab.redo_stack.is_empty());
+    window.set_status_text(SharedString::from("Redo"));
+}
+
+/// Restore table cell texts from a grid snapshot.
+fn restore_table_grid(rows: &[TableRowData], grid: &[Vec<String>], pane: i32) {
+    for (r, row) in rows.iter().enumerate() {
+        let cells = match pane {
+            0 => &row.left_cells,
+            1 => &row.base_cells,
+            _ => &row.right_cells,
+        };
+        if let Some(grid_row) = grid.get(r) {
+            for (c, text) in grid_row.iter().enumerate() {
+                if let Some(mut cell) = cells.row_data(c) {
+                    cell.text = SharedString::from(text.as_str());
+                    cells.set_row_data(c, cell);
+                }
+            }
+        }
+    }
+}
+
+fn table_undo(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab_mut();
+    if tab.table_undo_stack.is_empty() {
+        return;
+    }
+
+    // Save current to redo
+    let current = TableSnapshot {
+        left_grid: extract_table_grid(&tab.table_rows, 0),
+        right_grid: extract_table_grid(&tab.table_rows, 2),
+        base_grid: extract_table_grid(&tab.table_rows, 1),
+    };
+    tab.table_redo_stack.push(current);
+
+    let snapshot = tab.table_undo_stack.pop().unwrap();
+    restore_table_grid(&tab.table_rows, &snapshot.left_grid, 0);
+    restore_table_grid(&tab.table_rows, &snapshot.right_grid, 2);
+    restore_table_grid(&tab.table_rows, &snapshot.base_grid, 1);
+
+    apply_table_rows_to_window(window, state);
+
+    let tab = state.current_tab();
+    window.set_can_undo(!tab.table_undo_stack.is_empty());
+    window.set_can_redo(!tab.table_redo_stack.is_empty());
+    window.set_status_text(SharedString::from("Undo"));
+}
+
+fn table_redo(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab_mut();
+    if tab.table_redo_stack.is_empty() {
+        return;
+    }
+
+    // Save current to undo
+    let current = TableSnapshot {
+        left_grid: extract_table_grid(&tab.table_rows, 0),
+        right_grid: extract_table_grid(&tab.table_rows, 2),
+        base_grid: extract_table_grid(&tab.table_rows, 1),
+    };
+    tab.table_undo_stack.push(current);
+
+    let snapshot = tab.table_redo_stack.pop().unwrap();
+    restore_table_grid(&tab.table_rows, &snapshot.left_grid, 0);
+    restore_table_grid(&tab.table_rows, &snapshot.right_grid, 2);
+    restore_table_grid(&tab.table_rows, &snapshot.base_grid, 1);
+
+    apply_table_rows_to_window(window, state);
+
+    let tab = state.current_tab();
+    window.set_can_undo(!tab.table_undo_stack.is_empty());
+    window.set_can_redo(!tab.table_redo_stack.is_empty());
     window.set_status_text(SharedString::from("Redo"));
 }
 
@@ -1725,7 +1826,152 @@ fn update_table_detail_pane(window: &MainWindow, state: &AppState, row_idx: usiz
     window.set_table_detail_cells(ModelRc::new(VecModel::from(detail_cells)));
 }
 
+// --- Table cell editing ---
+
+/// Extract cell texts from table_rows into a Vec<Vec<String>> grid.
+fn extract_table_grid(rows: &[TableRowData], pane: i32) -> Vec<Vec<String>> {
+    rows.iter()
+        .map(|row| {
+            let cells = match pane {
+                0 => &row.left_cells,
+                1 => &row.base_cells,
+                _ => &row.right_cells,
+            };
+            let count = cells.row_count();
+            (0..count)
+                .map(|i| {
+                    cells
+                        .row_data(i)
+                        .map(|c| c.text.to_string())
+                        .unwrap_or_default()
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// Push a snapshot of the current table state onto the undo stack.
+fn push_table_undo_snapshot(state: &mut AppState) {
+    let tab = state.current_tab();
+    let snapshot = TableSnapshot {
+        left_grid: extract_table_grid(&tab.table_rows, 0),
+        right_grid: extract_table_grid(&tab.table_rows, 2),
+        base_grid: extract_table_grid(&tab.table_rows, 1),
+    };
+    let tab = state.current_tab_mut();
+    tab.table_undo_stack.push(snapshot);
+    tab.table_redo_stack.clear();
+}
+
+/// Edit a single cell in the table grid view.
+pub fn table_cell_edit(
+    window: &MainWindow,
+    state: &mut AppState,
+    row_idx: i32,
+    col_idx: i32,
+    pane: i32,
+    new_text: &str,
+) {
+    let tab = state.current_tab();
+    let row_idx = row_idx as usize;
+    let col_idx = col_idx as usize;
+    if row_idx >= tab.table_rows.len() {
+        return;
+    }
+
+    push_table_undo_snapshot(state);
+
+    let tab = state.current_tab_mut();
+    let row = &tab.table_rows[row_idx];
+    let cells = match pane {
+        0 => &row.left_cells,
+        1 => &row.base_cells,
+        _ => &row.right_cells,
+    };
+    if col_idx >= cells.row_count() {
+        return;
+    }
+    if let Some(mut cell) = cells.row_data(col_idx) {
+        cell.text = SharedString::from(new_text);
+        cells.set_row_data(col_idx, cell);
+    }
+
+    let tab = state.current_tab_mut();
+    tab.has_unsaved_changes = true;
+    tab.editing_dirty = true;
+    window.set_has_unsaved_changes(true);
+    window.set_can_undo(true);
+    window.set_status_text(SharedString::from("Editing \u{2014} press F5 to compare"));
+}
+
 // --- Table copy functions (row-level copy for view-mode 4/6) ---
+
+/// Resize a table column: update column width, recalculate all cell positions, push to Slint.
+pub fn resize_table_column(
+    window: &MainWindow,
+    state: &mut AppState,
+    col_idx: i32,
+    new_width: i32,
+) {
+    let tab = state.current_tab_mut();
+    let col_idx = col_idx as usize;
+    if col_idx >= tab.table_columns.len() {
+        return;
+    }
+
+    let new_width = new_width.max(30);
+    let old_width = tab.table_columns[col_idx].width_px;
+    let width_delta = new_width - old_width;
+    if width_delta == 0 {
+        return;
+    }
+
+    // Update column model
+    tab.table_columns[col_idx].width_px = new_width;
+    for i in (col_idx + 1)..tab.table_columns.len() {
+        tab.table_columns[i].x_px += width_delta;
+    }
+    tab.table_content_width_px += width_delta;
+
+    // Update all cells' positions
+    for row in &mut tab.table_rows {
+        update_cell_col_positions_model(&row.left_cells, col_idx, new_width, width_delta);
+        update_cell_col_positions_model(&row.right_cells, col_idx, new_width, width_delta);
+        update_cell_col_positions_model(&row.base_cells, col_idx, new_width, width_delta);
+    }
+
+    // Push to Slint
+    window.set_table_columns(ModelRc::new(VecModel::from(tab.table_columns.clone())));
+    window.set_table_rows(ModelRc::new(VecModel::from(tab.table_rows.clone())));
+    window.set_table_content_width_px(tab.table_content_width_px);
+
+    // Refresh detail pane if a row is highlighted
+    let highlight_row = window.get_table_current_highlight_row();
+    if highlight_row >= 0 {
+        update_table_detail_pane(window, state, highlight_row as usize);
+    }
+}
+
+fn update_cell_col_positions_model(
+    cells: &ModelRc<TableCellData>,
+    col_idx: usize,
+    new_width: i32,
+    width_delta: i32,
+) {
+    let count = cells.row_count();
+    if col_idx < count {
+        if let Some(mut cell) = cells.row_data(col_idx) {
+            cell.col_width_px = new_width;
+            cells.set_row_data(col_idx, cell);
+        }
+    }
+    for i in (col_idx + 1)..count {
+        if let Some(mut cell) = cells.row_data(i) {
+            cell.col_x_px += width_delta;
+            cells.set_row_data(i, cell);
+        }
+    }
+}
 
 /// Helper: rebuild diff_positions from table_rows and update window state.
 fn rebuild_table_diff_positions(window: &MainWindow, state: &mut AppState) {
@@ -3222,6 +3468,211 @@ pub fn save_three_way_pane(window: &MainWindow, state: &mut AppState, pane: i32)
     )));
 }
 
+/// Rebuild CSV text from table rows for a given pane (0=left, 2=right, 1=base).
+fn rebuild_table_csv(rows: &[TableRowData], pane: i32, delimiter: u8) -> String {
+    let delim = delimiter as char;
+    let mut output = String::new();
+    for row in rows {
+        let cells = match pane {
+            0 => &row.left_cells,
+            1 => &row.base_cells,
+            _ => &row.right_cells,
+        };
+        let count = cells.row_count();
+        for i in 0..count {
+            if i > 0 {
+                output.push(delim);
+            }
+            if let Some(cell) = cells.row_data(i) {
+                let text = cell.text.to_string();
+                // Quote if the field contains delimiter, quote, or newline
+                if text.contains(delim)
+                    || text.contains('"')
+                    || text.contains('\n')
+                    || text.contains('\r')
+                {
+                    output.push('"');
+                    output.push_str(&text.replace('"', "\"\""));
+                    output.push('"');
+                } else {
+                    output.push_str(&text);
+                }
+            }
+        }
+        output.push('\n');
+    }
+    output
+}
+
+/// Save table (CSV) file for a given pane. pane: 0=left, 2=right, 1=base.
+pub fn save_table_file(window: &MainWindow, state: &mut AppState, pane: i32) {
+    let tab = state.current_tab();
+    let delimiter = tab.csv_delimiter;
+    let text = rebuild_table_csv(&tab.table_rows, pane, delimiter);
+
+    let (path, encoding) = match pane {
+        0 => (tab.left_path.clone(), tab.left_encoding.clone()),
+        1 => (tab.base_path.clone(), tab.base_encoding.clone()),
+        _ => (tab.right_path.clone(), tab.right_encoding.clone()),
+    };
+
+    let path = if let Some(p) = path {
+        p
+    } else {
+        match rfd::FileDialog::new()
+            .set_title("Save As")
+            .add_filter("CSV", &["csv"])
+            .add_filter("TSV", &["tsv"])
+            .add_filter("All Files", &["*"])
+            .save_file()
+        {
+            Some(p) => {
+                match pane {
+                    0 => {
+                        state.current_tab_mut().left_path = Some(p.clone());
+                        window.set_left_path(SharedString::from(p.to_string_lossy().to_string()));
+                    }
+                    1 => {
+                        state.current_tab_mut().base_path = Some(p.clone());
+                    }
+                    _ => {
+                        state.current_tab_mut().right_path = Some(p.clone());
+                        window.set_right_path(SharedString::from(p.to_string_lossy().to_string()));
+                    }
+                }
+                sync_tab_list(window, state);
+                p
+            }
+            None => return,
+        }
+    };
+
+    let bytes = encode_text(&text, &encoding);
+    if let Err(e) = fs::write(&path, &bytes) {
+        window.set_status_text(SharedString::from(format!("Error saving: {}", e)));
+        return;
+    }
+    state.current_tab_mut().has_unsaved_changes = false;
+    window.set_has_unsaved_changes(false);
+    let side = match pane {
+        0 => "Left",
+        1 => "Middle",
+        _ => "Right",
+    };
+    window.set_status_text(SharedString::from(format!(
+        "{} file saved: {} ({})",
+        side,
+        path.to_string_lossy(),
+        encoding
+    )));
+}
+
+/// Recompute 2-way table diff from CSV text (used by rescan when editing is in progress).
+fn recompute_table_from_csv(
+    window: &MainWindow,
+    state: &mut AppState,
+    left_csv: &str,
+    right_csv: &str,
+) {
+    let result = compare_csv_full(left_csv, right_csv);
+    let tab = state.current_tab();
+    let old_cols = tab.table_columns.len();
+    let need_rebuild_cols = result.max_cols != old_cols;
+
+    let columns = if need_rebuild_cols {
+        let (cols, width) = build_columns(result.max_cols, 100);
+        let tab = state.current_tab_mut();
+        tab.table_columns = cols.clone();
+        tab.table_content_width_px = width;
+        window.set_table_columns(ModelRc::new(VecModel::from(cols.clone())));
+        window.set_table_content_width_px(width);
+        cols
+    } else {
+        tab.table_columns.clone()
+    };
+
+    let table_rows = build_table_rows(
+        &result.left_grid,
+        &result.right_grid,
+        &result.cell_status,
+        result.max_rows,
+        result.max_cols,
+        &columns,
+    );
+
+    let diff_positions: Vec<usize> = table_rows
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.row_status != 0)
+        .map(|(i, _)| i)
+        .collect();
+    let diff_count = diff_positions.len();
+
+    let tab = state.current_tab_mut();
+    tab.table_rows = table_rows.clone();
+    tab.diff_positions = diff_positions;
+    tab.current_diff = if diff_count > 0 { 0 } else { -1 };
+    tab.editing_dirty = false;
+
+    window.set_table_rows(ModelRc::new(VecModel::from(table_rows)));
+    window.set_diff_count(diff_count as i32);
+    window.set_current_diff_index(tab.current_diff);
+}
+
+/// Recompute 3-way table diff from CSV text (used by rescan when editing is in progress).
+fn recompute_table_from_csv_3way(
+    window: &MainWindow,
+    state: &mut AppState,
+    base_csv: &str,
+    left_csv: &str,
+    right_csv: &str,
+) {
+    let result = compare_csv_full_3way(base_csv, left_csv, right_csv);
+    let tab = state.current_tab();
+    let old_cols = tab.table_columns.len();
+    let need_rebuild_cols = result.max_cols != old_cols;
+
+    let columns = if need_rebuild_cols {
+        let (cols, width) = build_columns(result.max_cols, 100);
+        let tab = state.current_tab_mut();
+        tab.table_columns = cols.clone();
+        tab.table_content_width_px = width;
+        window.set_table_columns(ModelRc::new(VecModel::from(cols.clone())));
+        window.set_table_content_width_px(width);
+        cols
+    } else {
+        tab.table_columns.clone()
+    };
+
+    let table_rows = build_table_rows_3way(
+        &result.base_grid,
+        &result.left_grid,
+        &result.right_grid,
+        &result.cell_status,
+        result.max_rows,
+        result.max_cols,
+        &columns,
+    );
+
+    let diff_positions: Vec<usize> = table_rows
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.row_status != 0)
+        .map(|(i, _)| i)
+        .collect();
+    let diff_count = diff_positions.len();
+
+    let tab = state.current_tab_mut();
+    tab.table_rows = table_rows.clone();
+    tab.diff_positions = diff_positions;
+    tab.current_diff = if diff_count > 0 { 0 } else { -1 };
+    tab.editing_dirty = false;
+
+    window.set_table_rows(ModelRc::new(VecModel::from(table_rows)));
+    window.set_diff_count(diff_count as i32);
+    window.set_current_diff_index(tab.current_diff);
+}
+
 pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut AppSettings) {
     // Read options from window
     settings.ignore_whitespace = window.get_ignore_whitespace();
@@ -3803,7 +4254,8 @@ pub fn new_blank_table(
     _quote_char: &str,
 ) {
     // "TAB" sentinel from Slint (can't pass \t directly)
-    let _delimiter = if delimiter == "TAB" { "\t" } else { delimiter };
+    let delim_str = if delimiter == "TAB" { "\t" } else { delimiter };
+    let delim_byte = delim_str.as_bytes().first().copied().unwrap_or(b',');
     let current_is_blank = {
         let tab = state.current_tab();
         tab.view_mode == 7 && tab.left_path.is_none() && tab.right_path.is_none()
@@ -3812,6 +4264,25 @@ pub fn new_blank_table(
         add_tab(window, state);
     }
 
+    // Create an initial 10×5 empty grid so the user can start editing immediately
+    let initial_rows = 10;
+    let initial_cols = 5;
+    let (columns, content_width_px) = build_columns(initial_cols, 100);
+    let empty_grid: Vec<Vec<String>> = (0..initial_rows)
+        .map(|_| vec![String::new(); initial_cols])
+        .collect();
+    let cell_status: Vec<Vec<i32>> = (0..initial_rows)
+        .map(|_| vec![0i32; initial_cols])
+        .collect();
+    let table_rows = build_table_rows(
+        &empty_grid,
+        &empty_grid,
+        &cell_status,
+        initial_rows,
+        initial_cols,
+        &columns,
+    );
+
     {
         let tab = state.current_tab_mut();
         tab.view_mode = 6; // CSV view
@@ -3819,9 +4290,10 @@ pub fn new_blank_table(
         tab.right_path = None;
         tab.title = "Untitled".to_string();
         tab.excel_cells = Vec::new();
-        tab.table_rows = Vec::new();
-        tab.table_columns = Vec::new();
-        tab.table_content_width_px = 0;
+        tab.table_rows = table_rows.clone();
+        tab.table_columns = columns.clone();
+        tab.table_content_width_px = content_width_px;
+        tab.csv_delimiter = delim_byte;
         tab.excel_sheet_data.clear();
         tab.diff_positions.clear();
         tab.diff_stats = String::new();
@@ -3831,9 +4303,9 @@ pub fn new_blank_table(
     }
 
     window.set_view_mode(6);
-    window.set_table_rows(ModelRc::new(VecModel::from(Vec::<TableRowData>::new())));
-    window.set_table_columns(ModelRc::new(VecModel::from(Vec::<TableColumnInfo>::new())));
-    window.set_table_content_width_px(0);
+    window.set_table_rows(ModelRc::new(VecModel::from(table_rows)));
+    window.set_table_columns(ModelRc::new(VecModel::from(columns)));
+    window.set_table_content_width_px(content_width_px);
     window.set_diff_count(0);
     window.set_left_path(SharedString::from(""));
     window.set_right_path(SharedString::from(""));
@@ -4962,38 +5434,52 @@ pub fn rescan(window: &MainWindow, state: &mut AppState) {
     } else if tab.view_mode == 1 {
         run_folder_compare(window, state);
         window.set_status_text(SharedString::from("Folders rescanned"));
-    } else if tab.view_mode == 6 && tab.left_path.is_some() && tab.right_path.is_some() {
+    } else if (tab.view_mode == 6 || tab.view_mode == 4)
+        && tab.left_path.is_some()
+        && tab.right_path.is_some()
+        && !tab.editing_dirty
+        && !tab.has_unsaved_changes
+    {
+        // No edits — reload from disk
         let left_path = tab.left_path.clone().unwrap();
         let right_path = tab.right_path.clone().unwrap();
         let left_bytes = fs::read(&left_path).unwrap_or_default();
         let right_bytes = fs::read(&right_path).unwrap_or_default();
-        run_csv_compare(
-            window,
-            state,
-            &left_bytes,
-            &right_bytes,
-            &left_path,
-            &right_path,
-        );
+        if tab.view_mode == 6 {
+            run_csv_compare(
+                window,
+                state,
+                &left_bytes,
+                &right_bytes,
+                &left_path,
+                &right_path,
+            );
+        } else {
+            run_excel_compare(
+                window,
+                state,
+                &left_bytes,
+                &right_bytes,
+                &left_path,
+                &right_path,
+            );
+        }
         window.set_status_text(SharedString::from("Files rescanned"));
-    } else if tab.view_mode == 4 && tab.left_path.is_some() && tab.right_path.is_some() {
-        let left_path = tab.left_path.clone().unwrap();
-        let right_path = tab.right_path.clone().unwrap();
-        let left_bytes = fs::read(&left_path).unwrap_or_default();
-        let right_bytes = fs::read(&right_path).unwrap_or_default();
-        run_excel_compare(
-            window,
-            state,
-            &left_bytes,
-            &right_bytes,
-            &left_path,
-            &right_path,
-        );
-        window.set_status_text(SharedString::from("Files rescanned"));
+    } else if (tab.view_mode == 6 || tab.view_mode == 4)
+        && (tab.editing_dirty || tab.has_unsaved_changes)
+    {
+        // Editing in progress: rebuild CSV from VecModel (authoritative source) and re-compare
+        let delimiter = tab.csv_delimiter;
+        let left_csv = rebuild_table_csv(&tab.table_rows, 0, delimiter);
+        let right_csv = rebuild_table_csv(&tab.table_rows, 2, delimiter);
+        recompute_table_from_csv(window, state, &left_csv, &right_csv);
+        window.set_status_text(SharedString::from("Compared"));
     } else if tab.view_mode == 8
         && tab.base_path.is_some()
         && tab.left_path.is_some()
         && tab.right_path.is_some()
+        && !tab.editing_dirty
+        && !tab.has_unsaved_changes
     {
         let base_path = tab.base_path.clone().unwrap();
         let left_path = tab.left_path.clone().unwrap();
@@ -5012,6 +5498,14 @@ pub fn rescan(window: &MainWindow, state: &mut AppState) {
             &right_path,
         );
         window.set_status_text(SharedString::from("Files rescanned"));
+    } else if tab.view_mode == 8 && (tab.editing_dirty || tab.has_unsaved_changes) {
+        // 3-way table editing: rebuild from VecModel and re-compare
+        let delimiter = tab.csv_delimiter;
+        let base_csv = rebuild_table_csv(&tab.table_rows, 1, delimiter);
+        let left_csv = rebuild_table_csv(&tab.table_rows, 0, delimiter);
+        let right_csv = rebuild_table_csv(&tab.table_rows, 2, delimiter);
+        recompute_table_from_csv_3way(window, state, &base_csv, &left_csv, &right_csv);
+        window.set_status_text(SharedString::from("Compared"));
     }
 }
 
@@ -5642,6 +6136,10 @@ fn run_csv_compare(
         .unwrap_or_default();
 
     let diff_count = result.diff_count;
+    let delimiter_mismatch = result.delimiter_mismatch;
+
+    // Detect delimiter from left file for save operations
+    let left_delim = crate::csv::detect_delimiter(&left_text);
 
     let tab = state.current_tab_mut();
     tab.view_mode = 6;
@@ -5649,6 +6147,7 @@ fn run_csv_compare(
     tab.table_rows = table_rows.clone();
     tab.table_columns = columns.clone();
     tab.table_content_width_px = content_width_px;
+    tab.csv_delimiter = left_delim;
     tab.excel_cells = Vec::new();
     tab.excel_sheet_names = Vec::new();
     tab.excel_sheet_data.clear();
@@ -5674,10 +6173,24 @@ fn run_csv_compare(
     window.set_view_mode(6);
     window.set_left_path(SharedString::from(left_path.to_string_lossy().to_string()));
     window.set_right_path(SharedString::from(right_path.to_string_lossy().to_string()));
-    window.set_status_text(SharedString::from(format!(
-        "[CSV] {} ↔ {} — {} cells changed",
+
+    // Build status with warnings
+    let mut status = format!(
+        "[CSV] {} \u{2194} {} \u{2014} {} cells changed",
         left_name, right_name, diff_count
-    )));
+    );
+    let left_ext = left_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let right_ext = right_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    if !left_ext.eq_ignore_ascii_case(right_ext) {
+        status.push_str(&format!(" \u{26a0} .{} vs .{}", left_ext, right_ext));
+    }
+    if delimiter_mismatch {
+        status.push_str(" \u{26a0} different delimiters detected");
+    }
+    window.set_status_text(SharedString::from(status));
     sync_tab_list(window, state);
 }
 
@@ -5721,6 +6234,9 @@ fn run_csv_compare_3way(
 
     let diff_count = result.diff_count;
     let conflict_count = result.conflict_count;
+    let delimiter_mismatch = result.delimiter_mismatch;
+
+    let base_delim = crate::csv::detect_delimiter(&base_text);
 
     let tab = state.current_tab_mut();
     tab.view_mode = 8;
@@ -5728,6 +6244,7 @@ fn run_csv_compare_3way(
     tab.table_rows = table_rows.clone();
     tab.table_columns = columns.clone();
     tab.table_content_width_px = content_width_px;
+    tab.csv_delimiter = base_delim;
     tab.excel_cells = Vec::new();
     tab.excel_sheet_names = Vec::new();
     tab.excel_sheet_data.clear();
@@ -5754,10 +6271,24 @@ fn run_csv_compare_3way(
     window.set_left_path(SharedString::from(left_path.to_string_lossy().to_string()));
     window.set_right_path(SharedString::from(right_path.to_string_lossy().to_string()));
     window.set_base_path(SharedString::from(base_path.to_string_lossy().to_string()));
-    window.set_status_text(SharedString::from(format!(
-        "[CSV 3-way] {} ↔ {} — {} diffs, {} conflicts",
+
+    // Build status with warnings
+    let mut status = format!(
+        "[CSV 3-way] {} \u{2194} {} \u{2014} {} diffs, {} conflicts",
         left_name, right_name, diff_count, conflict_count
-    )));
+    );
+    // Extension mismatch check across all 3 files
+    let exts: Vec<&str> = [base_path, left_path, right_path]
+        .iter()
+        .map(|p| p.extension().and_then(|e| e.to_str()).unwrap_or(""))
+        .collect();
+    if !exts[0].eq_ignore_ascii_case(exts[1]) || !exts[0].eq_ignore_ascii_case(exts[2]) {
+        status.push_str(" \u{26a0} mixed file extensions");
+    }
+    if delimiter_mismatch {
+        status.push_str(" \u{26a0} different delimiters detected");
+    }
+    window.set_status_text(SharedString::from(status));
     sync_tab_list(window, state);
 }
 
