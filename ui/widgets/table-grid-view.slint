@@ -1,0 +1,582 @@
+import { ListView, ComboBox, Palette, Slider } from "std-widgets.slint";
+import { ThemeColors } from "../theme.slint";
+
+export struct TableColumnInfo {
+    name: string,
+    width-px: int,   // column width in pixels
+    x-px: int,       // cumulative x offset (0 for first column)
+}
+
+export struct TableCellData {
+    text: string,
+    // 0=identical, 1=different, 2=left-only, 3=right-only, 4=empty-padding, 5=conflict
+    status: int,
+    col-x-px: int,     // same as column's x-px
+    col-width-px: int,  // same as column's width-px
+}
+
+export struct TableRowData {
+    row-number: int,
+    left-cells: [TableCellData],
+    right-cells: [TableCellData],
+    base-cells: [TableCellData],
+    // 0=identical, 1=has-diffs, 2=left-only, 3=right-only
+    // 3-way extra: 4=conflict, 5=base-only, 6=left-only-3way, 7=right-only-3way
+    row-status: int,
+}
+
+// Detail pane data: one entry per column in the selected diff row
+export struct TableDetailCellData {
+    col-name: string,
+    left-value: string,
+    base-value: string,
+    right-value: string,
+    // Combined status for column header indicator
+    // 0=identical, 1=different, 2=left-only, 3=right-only, 5=conflict
+    status: int,
+    // Per-pane status (same codes as TableCellData.status)
+    left-status: int,
+    right-status: int,
+    base-status: int,
+    col-x-px: int,
+    col-width-px: int,
+}
+
+// Minimap showing row-level diff positions
+component TableLocationPane inherits Rectangle {
+    in property <[TableRowData]> rows;
+
+    width: 12px;
+    background: Palette.background.darker(0.02);
+    border-color: Palette.border;
+    border-width: 1px;
+
+    for row[idx] in rows: Rectangle {
+        y: rows.length > 0 ? (idx * (parent.height - 2px) / rows.length) : 0;
+        height: rows.length > 0 ? Math.max(2px, (parent.height - 2px) / rows.length) : 0;
+        x: 1px;
+        width: parent.width - 2px;
+        background: row.row-status == 0 ? transparent
+                  : row.row-status == 1 ? ThemeColors.modified-fg
+                  : row.row-status == 2 ? ThemeColors.removed-fg
+                  : row.row-status == 3 ? ThemeColors.added-fg
+                  : row.row-status == 4 ? ThemeColors.removed-fg
+                  : row.row-status == 5 ? ThemeColors.removed-fg
+                  : row.row-status == 6 ? ThemeColors.added-fg
+                  : row.row-status == 7 ? ThemeColors.added-fg
+                  : transparent;
+    }
+}
+
+export component TableGridView inherits Rectangle {
+    in property <string> left-title: "Left";
+    in property <string> right-title: "Right";
+    in property <string> base-title: "Base";
+    in property <bool> has-base: false;
+    in property <[TableRowData]> rows;
+    in property <[TableColumnInfo]> columns;
+    in property <int> content-width-px: 0;
+    // Row index to highlight as current diff (-1 = none)
+    in property <int> current-highlight-row: -1;
+
+    // Sheet selector (for Excel)
+    in property <bool> has-sheets: false;
+    in property <[string]> sheet-names;
+    in-out property <string> active-sheet: "";
+    callback sheet-changed(string);
+
+    // Scroll sync
+    in-out property <length> scroll-y <=> left-list.viewport-y;
+    in-out property <length> right-scroll-y <=> right-list.viewport-y;
+    in-out property <length> base-scroll-y: 0px;
+
+    // Horizontal scroll offset (shared between left and right panes)
+    in-out property <length> h-scroll-offset: 0px;
+    property <length> row-num-width: 40px;
+    property <length> total-content-width: root.row-num-width + root.content-width-px * 1px;
+    property <length> col-header-h: 24px;
+
+    // Bidirectional vertical sync (left ↔ right)
+    changed scroll-y => {
+        if right-list.viewport-y != scroll-y {
+            right-list.viewport-y = scroll-y;
+        }
+        root.base-scroll-y = scroll-y;
+    }
+    changed right-scroll-y => {
+        if left-list.viewport-y != right-scroll-y {
+            left-list.viewport-y = right-scroll-y;
+        }
+        root.base-scroll-y = right-scroll-y;
+    }
+
+    border-color: Palette.border;
+    border-width: 1px;
+
+    VerticalLayout {
+        // Sheet selector bar (Excel only)
+        if root.has-sheets : Rectangle {
+            height: 36px;
+            background: Palette.background.darker(0.04);
+            border-color: Palette.border;
+            border-width: 1px;
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 8px;
+                alignment: start;
+
+                Text {
+                    text: "Sheet:";
+                    font-size: 12px;
+                    vertical-alignment: center;
+                }
+
+                ComboBox {
+                    width: 200px;
+                    model: root.sheet-names;
+                    current-value: root.active-sheet;
+                    selected(val) => {
+                        root.active-sheet = val;
+                        root.sheet-changed(val);
+                    }
+                }
+            }
+        }
+
+        // File path headers
+        HorizontalLayout {
+            height: 28px;
+
+            Rectangle {
+                horizontal-stretch: 1;
+                min-width: 80px;
+                background: Palette.background.darker(0.05);
+                border-color: Palette.border;
+                border-width: 1px;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    Text {
+                        text: root.left-title;
+                        font-size: 12px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            // Base header (3-way only, shown between left and right)
+            if root.has-base : Rectangle {
+                horizontal-stretch: 1;
+                min-width: 80px;
+                background: Palette.background.darker(0.05);
+                border-color: Palette.border;
+                border-width: 1px;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    Text {
+                        text: root.base-title;
+                        font-size: 12px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+                min-width: 80px;
+                background: Palette.background.darker(0.05);
+                border-color: Palette.border;
+                border-width: 1px;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    Text {
+                        text: root.right-title;
+                        font-size: 12px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            // Spacer for location pane
+            if root.rows.length > 0 : Rectangle {
+                width: 12px;
+                background: Palette.background.darker(0.05);
+                border-color: Palette.border;
+                border-width: 1px;
+            }
+        }
+
+        // Grid content (column headers + data rows inside each pane)
+        HorizontalLayout {
+            vertical-stretch: 1;
+
+            // Left grid pane
+            Rectangle {
+                horizontal-stretch: 1;
+                min-width: 80px;
+                clip: true;
+
+                // Column header
+                Rectangle {
+                    x: 0;
+                    y: 0;
+                    width: 100%;
+                    height: root.col-header-h;
+                    background: Palette.background.darker(0.08);
+
+                    // "#" header cell
+                    Rectangle {
+                        x: -root.h-scroll-offset;
+                        y: 0;
+                        width: root.row-num-width;
+                        height: 100%;
+                        border-color: Palette.border;
+                        border-width: 0.5px;
+                        Text {
+                            text: "#";
+                            font-size: 11px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            color: Palette.foreground.transparentize(0.3);
+                        }
+                    }
+
+                    // Column name cells
+                    for col[idx] in root.columns: Rectangle {
+                        x: root.row-num-width + col.x-px * 1px - root.h-scroll-offset;
+                        y: 0;
+                        width: col.width-px * 1px;
+                        height: 100%;
+                        border-color: Palette.border;
+                        border-width: 0.5px;
+                        Text {
+                            text: col.name;
+                            font-size: 11px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // Data rows
+                left-list := ListView {
+                    x: 0;
+                    y: root.col-header-h;
+                    width: 100%;
+                    height: parent.height - root.col-header-h;
+
+                    for row[row-idx] in root.rows: Rectangle {
+                        height: 22px;
+                        clip: true;
+                        border-color: row-idx == root.current-highlight-row ? ThemeColors.modified-fg : transparent;
+                        border-width: row-idx == root.current-highlight-row ? 2px : 0;
+
+                        // Row number cell
+                        Rectangle {
+                            x: -root.h-scroll-offset;
+                            y: 0;
+                            width: root.row-num-width;
+                            height: 100%;
+                            background: Palette.background.darker(0.03);
+                            border-color: Palette.border;
+                            border-width: 0.5px;
+                            Text {
+                                text: row.row-number > 0 ? "\{row.row-number}" : "";
+                                font-size: 11px;
+                                font-family: "monospace";
+                                horizontal-alignment: right;
+                                vertical-alignment: center;
+                                color: Palette.foreground.transparentize(0.4);
+                            }
+                        }
+
+                        // Data cells
+                        for cell[idx] in row.left-cells: Rectangle {
+                            x: root.row-num-width + cell.col-x-px * 1px - root.h-scroll-offset;
+                            y: 0;
+                            width: cell.col-width-px * 1px;
+                            height: 100%;
+                            border-color: Palette.border;
+                            border-width: 0.5px;
+                            background: cell.status == 0 ? Palette.background
+                                      : cell.status == 1 ? ThemeColors.modified-bg
+                                      : cell.status == 2 ? ThemeColors.removed-bg
+                                      : cell.status == 3 ? ThemeColors.added-bg
+                                      : cell.status == 5 ? ThemeColors.conflict-bg
+                                      : Palette.background;
+
+                            Text {
+                                text: cell.text;
+                                font-size: 11px;
+                                font-family: "monospace";
+                                vertical-alignment: center;
+                                overflow: elide;
+                                x: 4px;
+                                width: parent.width - 8px;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Base grid pane (3-way only)
+            if root.has-base : Rectangle {
+                horizontal-stretch: 1;
+                min-width: 80px;
+                clip: true;
+
+                // Column header
+                Rectangle {
+                    x: 0;
+                    y: 0;
+                    width: 100%;
+                    height: root.col-header-h;
+                    background: Palette.background.darker(0.08);
+
+                    // "#" header cell
+                    Rectangle {
+                        x: -root.h-scroll-offset;
+                        y: 0;
+                        width: root.row-num-width;
+                        height: 100%;
+                        border-color: Palette.border;
+                        border-width: 0.5px;
+                        Text {
+                            text: "#";
+                            font-size: 11px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            color: Palette.foreground.transparentize(0.3);
+                        }
+                    }
+
+                    // Column name cells
+                    for col[idx] in root.columns: Rectangle {
+                        x: root.row-num-width + col.x-px * 1px - root.h-scroll-offset;
+                        y: 0;
+                        width: col.width-px * 1px;
+                        height: 100%;
+                        border-color: Palette.border;
+                        border-width: 0.5px;
+                        Text {
+                            text: col.name;
+                            font-size: 11px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // Data rows
+                base-list := ListView {
+                    x: 0;
+                    y: root.col-header-h;
+                    width: 100%;
+                    height: parent.height - root.col-header-h;
+                    viewport-y: root.base-scroll-y;
+
+                    for row[row-idx] in root.rows: Rectangle {
+                        height: 22px;
+                        clip: true;
+                        border-color: row-idx == root.current-highlight-row ? ThemeColors.modified-fg : transparent;
+                        border-width: row-idx == root.current-highlight-row ? 2px : 0;
+
+                        // Row number cell
+                        Rectangle {
+                            x: -root.h-scroll-offset;
+                            y: 0;
+                            width: root.row-num-width;
+                            height: 100%;
+                            background: Palette.background.darker(0.03);
+                            border-color: Palette.border;
+                            border-width: 0.5px;
+                            Text {
+                                text: row.row-number > 0 ? "\{row.row-number}" : "";
+                                font-size: 11px;
+                                font-family: "monospace";
+                                horizontal-alignment: right;
+                                vertical-alignment: center;
+                                color: Palette.foreground.transparentize(0.4);
+                            }
+                        }
+
+                        // Data cells
+                        for cell[idx] in row.base-cells: Rectangle {
+                            x: root.row-num-width + cell.col-x-px * 1px - root.h-scroll-offset;
+                            y: 0;
+                            width: cell.col-width-px * 1px;
+                            height: 100%;
+                            border-color: Palette.border;
+                            border-width: 0.5px;
+                            background: cell.status == 0 ? Palette.background
+                                      : cell.status == 1 ? ThemeColors.modified-bg
+                                      : cell.status == 2 ? ThemeColors.removed-bg
+                                      : cell.status == 3 ? ThemeColors.added-bg
+                                      : cell.status == 5 ? ThemeColors.conflict-bg
+                                      : Palette.background;
+
+                            Text {
+                                text: cell.text;
+                                font-size: 11px;
+                                font-family: "monospace";
+                                vertical-alignment: center;
+                                overflow: elide;
+                                x: 4px;
+                                width: parent.width - 8px;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Right grid pane
+            Rectangle {
+                horizontal-stretch: 1;
+                min-width: 80px;
+                clip: true;
+
+                // Column header
+                Rectangle {
+                    x: 0;
+                    y: 0;
+                    width: 100%;
+                    height: root.col-header-h;
+                    background: Palette.background.darker(0.08);
+
+                    // "#" header cell
+                    Rectangle {
+                        x: -root.h-scroll-offset;
+                        y: 0;
+                        width: root.row-num-width;
+                        height: 100%;
+                        border-color: Palette.border;
+                        border-width: 0.5px;
+                        Text {
+                            text: "#";
+                            font-size: 11px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            color: Palette.foreground.transparentize(0.3);
+                        }
+                    }
+
+                    // Column name cells
+                    for col[idx] in root.columns: Rectangle {
+                        x: root.row-num-width + col.x-px * 1px - root.h-scroll-offset;
+                        y: 0;
+                        width: col.width-px * 1px;
+                        height: 100%;
+                        border-color: Palette.border;
+                        border-width: 0.5px;
+                        Text {
+                            text: col.name;
+                            font-size: 11px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // Data rows
+                right-list := ListView {
+                    x: 0;
+                    y: root.col-header-h;
+                    width: 100%;
+                    height: parent.height - root.col-header-h;
+
+                    for row[row-idx] in root.rows: Rectangle {
+                        height: 22px;
+                        clip: true;
+                        border-color: row-idx == root.current-highlight-row ? ThemeColors.modified-fg : transparent;
+                        border-width: row-idx == root.current-highlight-row ? 2px : 0;
+
+                        // Row number cell
+                        Rectangle {
+                            x: -root.h-scroll-offset;
+                            y: 0;
+                            width: root.row-num-width;
+                            height: 100%;
+                            background: Palette.background.darker(0.03);
+                            border-color: Palette.border;
+                            border-width: 0.5px;
+                            Text {
+                                text: row.row-number > 0 ? "\{row.row-number}" : "";
+                                font-size: 11px;
+                                font-family: "monospace";
+                                horizontal-alignment: right;
+                                vertical-alignment: center;
+                                color: Palette.foreground.transparentize(0.4);
+                            }
+                        }
+
+                        // Data cells
+                        for cell[idx] in row.right-cells: Rectangle {
+                            x: root.row-num-width + cell.col-x-px * 1px - root.h-scroll-offset;
+                            y: 0;
+                            width: cell.col-width-px * 1px;
+                            height: 100%;
+                            border-color: Palette.border;
+                            border-width: 0.5px;
+                            background: cell.status == 0 ? Palette.background
+                                      : cell.status == 1 ? ThemeColors.modified-bg
+                                      : cell.status == 2 ? ThemeColors.removed-bg
+                                      : cell.status == 3 ? ThemeColors.added-bg
+                                      : cell.status == 5 ? ThemeColors.conflict-bg
+                                      : Palette.background;
+
+                            Text {
+                                text: cell.text;
+                                font-size: 11px;
+                                font-family: "monospace";
+                                vertical-alignment: center;
+                                overflow: elide;
+                                x: 4px;
+                                width: parent.width - 8px;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Location pane
+            if root.rows.length > 0 : TableLocationPane {
+                rows: root.rows;
+            }
+        }
+
+        // Horizontal scrollbar
+        if root.columns.length > 0 : Rectangle {
+            height: 20px;
+            background: Palette.background.darker(0.03);
+            border-color: Palette.border;
+            border-width: 1px;
+
+            HorizontalLayout {
+                padding-left: 4px;
+                padding-right: 4px;
+
+                Slider {
+                    minimum: 0;
+                    maximum: Math.max(0, root.total-content-width / 1px);
+                    value: root.h-scroll-offset / 1px;
+                    changed(val) => {
+                        root.h-scroll-offset = val * 1px;
+                    }
+                }
+            }
+        }
+    }
+}

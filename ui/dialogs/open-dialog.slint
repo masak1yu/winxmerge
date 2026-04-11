@@ -48,6 +48,7 @@ export component OpenDialog inherits Rectangle {
     callback open-recent(int);
     callback paste-left();
     callback paste-right();
+    callback paste-base();
 
     if visible-flag : Rectangle {
         width: 100%;
@@ -143,6 +144,7 @@ export component OpenDialog inherits Rectangle {
                             edited(text) => { root.base-path-input = text; }
                         }
                         Button { text: @tr("Browse..."); clicked => { root.browse-base(); } }
+                        PasteButton { clicked => { root.paste-base(); } }
                     }
                 }
 

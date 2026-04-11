@@ -2,6 +2,7 @@ use calamine::{Reader, open_workbook_auto_from_rs};
 use std::io::Cursor;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ExcelCellDiff {
     pub sheet: String,
     pub row: usize, // 1-based
@@ -23,6 +24,7 @@ pub fn is_excel_path(path: &std::path::Path) -> bool {
 }
 
 /// Convert column index (0-based) to Excel column name (A, B, ... Z, AA, AB, ...)
+#[allow(dead_code)]
 pub fn col_to_name(mut col: usize) -> String {
     let mut name = String::new();
     loop {
@@ -35,7 +37,7 @@ pub fn col_to_name(mut col: usize) -> String {
     name
 }
 
-fn read_workbook(data: &[u8]) -> std::collections::BTreeMap<String, Vec<Vec<String>>> {
+pub fn read_workbook(data: &[u8]) -> std::collections::BTreeMap<String, Vec<Vec<String>>> {
     let cursor = Cursor::new(data.to_vec());
     let mut wb = match open_workbook_auto_from_rs(cursor) {
         Ok(w) => w,
@@ -56,7 +58,119 @@ fn read_workbook(data: &[u8]) -> std::collections::BTreeMap<String, Vec<Vec<Stri
     result
 }
 
+/// Per-sheet full grid comparison data.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct SheetTableData {
+    pub left_grid: Vec<Vec<String>>,
+    pub right_grid: Vec<Vec<String>>,
+    pub max_rows: usize,
+    pub max_cols: usize,
+    /// cell_status[row][col] = 0(identical)/1(different)/2(left-only)/3(right-only)
+    pub cell_status: Vec<Vec<i32>>,
+    pub diff_count: usize,
+}
+
+/// Full Excel comparison result with per-sheet grids and status.
+#[derive(Debug, Clone)]
+pub struct ExcelTableResult {
+    pub sheet_names: Vec<String>,
+    pub sheets: std::collections::BTreeMap<String, SheetTableData>,
+    pub total_diff_count: usize,
+}
+
+/// Compare two Excel files and return full grids with per-cell status for each sheet.
+pub fn compare_excel_full(left_data: &[u8], right_data: &[u8]) -> ExcelTableResult {
+    let left_wb = read_workbook(left_data);
+    let right_wb = read_workbook(right_data);
+
+    let mut all_sheets: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for k in left_wb.keys() {
+        all_sheets.insert(k.clone());
+    }
+    for k in right_wb.keys() {
+        all_sheets.insert(k.clone());
+    }
+
+    let sheet_names: Vec<String> = all_sheets.iter().cloned().collect();
+    let mut sheets = std::collections::BTreeMap::new();
+    let mut total_diff_count = 0;
+
+    for sheet in &all_sheets {
+        let left_rows = left_wb.get(sheet).cloned().unwrap_or_default();
+        let right_rows = right_wb.get(sheet).cloned().unwrap_or_default();
+
+        let max_rows = left_rows.len().max(right_rows.len());
+        let max_cols = left_rows
+            .iter()
+            .chain(right_rows.iter())
+            .map(|r| r.len())
+            .max()
+            .unwrap_or(0);
+
+        let mut cell_status = Vec::with_capacity(max_rows);
+        let mut diff_count = 0;
+
+        let left_exists = left_wb.contains_key(sheet);
+        let right_exists = right_wb.contains_key(sheet);
+
+        for row_idx in 0..max_rows {
+            let left_row = left_rows.get(row_idx);
+            let right_row = right_rows.get(row_idx);
+            let mut row_status = Vec::with_capacity(max_cols);
+
+            for col_idx in 0..max_cols {
+                let lv = left_row
+                    .and_then(|r| r.get(col_idx))
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+                let rv = right_row
+                    .and_then(|r| r.get(col_idx))
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+
+                let status = if left_exists && !right_exists {
+                    2
+                } else if !left_exists && right_exists {
+                    3
+                } else if lv == rv {
+                    0
+                } else {
+                    1
+                };
+
+                if status != 0 {
+                    diff_count += 1;
+                }
+                row_status.push(status);
+            }
+
+            cell_status.push(row_status);
+        }
+
+        total_diff_count += diff_count;
+        sheets.insert(
+            sheet.clone(),
+            SheetTableData {
+                left_grid: left_rows,
+                right_grid: right_rows,
+                max_rows,
+                max_cols,
+                cell_status,
+                diff_count,
+            },
+        );
+    }
+
+    ExcelTableResult {
+        sheet_names,
+        sheets,
+        total_diff_count,
+    }
+}
+
 /// Compare two Excel files and return a list of cell differences.
+#[allow(dead_code)]
 pub fn compare_excel(left_data: &[u8], right_data: &[u8]) -> Vec<ExcelCellDiff> {
     let left_wb = read_workbook(left_data);
     let right_wb = read_workbook(right_data);

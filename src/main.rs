@@ -43,15 +43,15 @@ use app::{
     force_close_tab, goto_line, has_native_file_dialog, insert_line_after, last_diff,
     navigate_bookmark, navigate_conflict, navigate_diff, navigate_diff_by_status, navigate_search,
     new_blank_table, new_blank_table_3way, new_blank_text, new_blank_text_3way, open_file_dialog,
-    open_folder_dialog, open_folder_item, open_in_editor, paste_clipboard_path_left,
-    paste_clipboard_path_right, preview_folder_item, print_diff, redo, reorder_tab,
-    replace_all_text, replace_text, rescan, resolve_all_use_left, resolve_all_use_right,
-    resolve_conflict_use_left, resolve_conflict_use_right, resolve_use_left_and_next,
-    resolve_use_right_and_next, run_diff, run_folder_compare, run_plugin, save_file,
-    save_three_way_pane, search_text, select_diff, set_diff_comment, set_diff_filter,
-    set_row_selection, sort_folder, start_compare, start_three_way_compare, switch_tab,
-    three_way_delete_line, three_way_edit_line, three_way_insert_line_after, toggle_bookmark,
-    toggle_ignore_case, toggle_ignore_whitespace, undo,
+    open_folder_dialog, open_folder_item, open_in_editor, paste_clipboard_path_base,
+    paste_clipboard_path_left, paste_clipboard_path_right, preview_folder_item, print_diff, redo,
+    reorder_tab, replace_all_text, replace_text, rescan, resolve_all_use_left,
+    resolve_all_use_right, resolve_conflict_use_left, resolve_conflict_use_right,
+    resolve_use_left_and_next, resolve_use_right_and_next, run_diff, run_folder_compare,
+    run_plugin, save_file, save_three_way_pane, search_text, select_diff, set_diff_comment,
+    set_diff_filter, set_row_selection, sort_folder, start_compare, start_three_way_compare,
+    switch_tab, three_way_delete_line, three_way_edit_line, three_way_insert_line_after,
+    toggle_bookmark, toggle_ignore_case, toggle_ignore_whitespace, undo,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use slint::{Model, ModelRc, SharedString, VecModel};
@@ -1741,17 +1741,29 @@ fn main() {
                     {
                         // Phase 1: Drain incoming IPC messages into buffer
                         while let Ok(pairs) = ipc_rx.try_recv() {
-                            let mut buf = ipc_buffer_clone.borrow_mut();
-                            // pairs is Vec<(orig, temp)>, expected in left/right order
-                            if pairs.len() >= 2 {
+                            if pairs.len() == 3 {
+                                // 3-way merge: handle immediately (base, left, right)
+                                let mut s = state.borrow_mut();
+                                add_tab(&window, &mut s);
+                                start_three_way_compare(
+                                    &window,
+                                    &mut s,
+                                    &pairs[0].1, // temp_base
+                                    &pairs[1].1, // temp_left
+                                    &pairs[2].1, // temp_right
+                                );
+                                app::sync_tab_list(&window, &s);
+                            } else if pairs.len() >= 2 {
+                                let mut buf = ipc_buffer_clone.borrow_mut();
+                                // pairs is Vec<(orig, temp)>, expected in left/right order
                                 buf.push((
                                     pairs[0].0.clone(),
                                     pairs[0].1.clone(),
                                     pairs[1].0.clone(),
                                     pairs[1].1.clone(),
                                 ));
+                                ipc_last_clone.set(Some(std::time::Instant::now()));
                             }
-                            ipc_last_clone.set(Some(std::time::Instant::now()));
                         }
 
                         // Phase 2: Flush if 500ms elapsed since last receive
@@ -1894,6 +1906,115 @@ fn main() {
         });
     }
 
+    // Table sheet switching (Excel grid view)
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_sheet_changed(move |sheet_name| {
+            let window = window_weak.unwrap();
+            crate::app::switch_excel_sheet(&window, &mut state.borrow_mut(), &sheet_name);
+        });
+    }
+
+    // Table copy callbacks (view-mode 4/6)
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_copy_to_right(move |diff_index| {
+            let window = window_weak.unwrap();
+            crate::app::table_copy_to_right(&window, &mut state.borrow_mut(), diff_index);
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_copy_to_left(move |diff_index| {
+            let window = window_weak.unwrap();
+            crate::app::table_copy_to_left(&window, &mut state.borrow_mut(), diff_index);
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_copy_right_and_next(move || {
+            let window = window_weak.unwrap();
+            crate::app::table_copy_right_and_next(&window, &mut state.borrow_mut());
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_copy_left_and_next(move || {
+            let window = window_weak.unwrap();
+            crate::app::table_copy_left_and_next(&window, &mut state.borrow_mut());
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_copy_all_right(move || {
+            let window = window_weak.unwrap();
+            crate::app::table_copy_all_right(&window, &mut state.borrow_mut());
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_copy_all_left(move || {
+            let window = window_weak.unwrap();
+            crate::app::table_copy_all_left(&window, &mut state.borrow_mut());
+        });
+    }
+    // 3-way table resolve callbacks
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_use_left(move |diff_index| {
+            let window = window_weak.unwrap();
+            crate::app::table_use_left(&window, &mut state.borrow_mut(), diff_index);
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_use_right(move |diff_index| {
+            let window = window_weak.unwrap();
+            crate::app::table_use_right(&window, &mut state.borrow_mut(), diff_index);
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_use_left_and_next(move || {
+            let window = window_weak.unwrap();
+            crate::app::table_use_left_and_next(&window, &mut state.borrow_mut());
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_use_right_and_next(move || {
+            let window = window_weak.unwrap();
+            crate::app::table_use_right_and_next(&window, &mut state.borrow_mut());
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_use_all_left(move || {
+            let window = window_weak.unwrap();
+            crate::app::table_use_all_left(&window, &mut state.borrow_mut());
+        });
+    }
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_use_all_right(move || {
+            let window = window_weak.unwrap();
+            crate::app::table_use_all_right(&window, &mut state.borrow_mut());
+        });
+    }
+
     // Diff status filter
     {
         let window_weak = window.as_weak();
@@ -1916,6 +2037,13 @@ fn main() {
         let window_weak = window.as_weak();
         window.on_paste_right_path(move || {
             paste_clipboard_path_right(&window_weak.unwrap());
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        window.on_paste_base_path(move || {
+            paste_clipboard_path_base(&window_weak.unwrap());
         });
     }
 
