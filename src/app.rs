@@ -7,7 +7,7 @@ use std::time::SystemTime;
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 
 use crate::archive::{compare_zip_archives, is_zip_bytes, is_zip_path};
-use crate::csv::{compare_csv_full, is_csv_path};
+use crate::csv::{compare_csv_full, compare_csv_full_3way, is_csv_path};
 use crate::diff::engine::{DiffOptions, compute_diff_with_options};
 use crate::diff::folder::{FolderCompareOptions, compare_folders_with_options};
 use crate::diff::three_way::{ThreeWayResult, ThreeWayStatus, compute_three_way_diff};
@@ -21,7 +21,8 @@ use crate::models::folder_item::FileCompareStatus;
 use crate::settings::AppSettings;
 use crate::{
     DetailLineData, DiffLineData, ExcelCellData, FolderItemData, MainWindow, PluginEntryData,
-    TabData, TableCellData, TableColumnInfo, TableRowData, ThreeWayLineData, WordSegment,
+    TabData, TableCellData, TableColumnInfo, TableDetailCellData, TableRowData, ThreeWayLineData,
+    WordSegment,
 };
 
 /// Line count threshold above which diff is computed on a background thread
@@ -419,12 +420,22 @@ fn restore_tab(window: &MainWindow, state: &AppState) {
         window.set_image_right_height(tab.image_right_h);
     }
 
-    if tab.view_mode == 4 || tab.view_mode == 6 {
+    if tab.view_mode == 4 || tab.view_mode == 6 || tab.view_mode == 8 {
         window.set_table_rows(ModelRc::new(VecModel::from(tab.table_rows.clone())));
         window.set_table_columns(ModelRc::new(VecModel::from(tab.table_columns.clone())));
         window.set_table_content_width_px(tab.table_content_width_px);
         window.set_diff_count(tab.diff_positions.len() as i32);
         window.set_current_diff_index(tab.current_diff);
+        // Restore highlight row
+        let highlight_row = if tab.current_diff >= 0 {
+            tab.diff_positions
+                .get(tab.current_diff as usize)
+                .map(|&p| p as i32)
+                .unwrap_or(-1)
+        } else {
+            -1
+        };
+        window.set_table_current_highlight_row(highlight_row);
 
         if tab.view_mode == 4 {
             let sheet_model: ModelRc<SharedString> = ModelRc::new(VecModel::from(
@@ -1096,9 +1107,12 @@ fn update_current_diff(window: &MainWindow, state: &mut AppState, new_index: i32
     // Update current diff index (Slint side handles highlighting reactively)
     window.set_current_diff_index(new_index);
 
-    if view_mode == 4 || view_mode == 6 {
-        // Table view: scroll table grid to row
+    if view_mode == 4 || view_mode == 6 || view_mode == 8 {
+        // Table view: scroll table grid to row and highlight
         window.invoke_scroll_table_to_row(current_pos as i32);
+        window.set_table_current_highlight_row(current_pos as i32);
+        // Update table detail pane
+        update_table_detail_pane(window, state, current_pos);
         window.set_status_text(SharedString::from(format!(
             "Difference {} of {}",
             new_index + 1,
@@ -1637,6 +1651,80 @@ pub fn copy_all_diffs_to_left(window: &MainWindow, state: &mut AppState) {
     sync_tab_list(window, state);
 }
 
+// --- Table detail pane ---
+
+/// Update the table detail pane with cell-by-cell comparison for the given row.
+fn update_table_detail_pane(window: &MainWindow, state: &AppState, row_idx: usize) {
+    let tab = state.current_tab();
+    if row_idx >= tab.table_rows.len() {
+        window.set_table_detail_cells(ModelRc::new(VecModel::from(
+            Vec::<TableDetailCellData>::new(),
+        )));
+        return;
+    }
+
+    let row = &tab.table_rows[row_idx];
+    let left_model = &row.left_cells;
+    let right_model = &row.right_cells;
+    let base_model = &row.base_cells;
+    let cell_count = left_model
+        .row_count()
+        .max(right_model.row_count())
+        .max(base_model.row_count());
+    let columns = &tab.table_columns;
+
+    let mut detail_cells = Vec::with_capacity(cell_count);
+    for i in 0..cell_count {
+        let col_name = columns
+            .get(i)
+            .map(|c| c.name.to_string())
+            .unwrap_or_else(|| crate::csv::col_to_name(i));
+        let left_cell = left_model.row_data(i);
+        let right_cell = right_model.row_data(i);
+        let base_cell = base_model.row_data(i);
+        let left_value = left_cell
+            .as_ref()
+            .map(|c| c.text.to_string())
+            .unwrap_or_default();
+        let right_value = right_cell
+            .as_ref()
+            .map(|c| c.text.to_string())
+            .unwrap_or_default();
+        let base_value = base_cell
+            .as_ref()
+            .map(|c| c.text.to_string())
+            .unwrap_or_default();
+        let left_status = left_cell.as_ref().map(|c| c.status).unwrap_or(0);
+        let right_status = right_cell.as_ref().map(|c| c.status).unwrap_or(0);
+        let base_status = base_cell.as_ref().map(|c| c.status).unwrap_or(0);
+        // Combined status for column header indicator
+        let status = if left_status != 0 {
+            left_status
+        } else if right_status != 0 {
+            right_status
+        } else {
+            base_status
+        };
+        let col_x_px = columns.get(i).map(|c| c.x_px).unwrap_or(0);
+        let col_width_px = columns.get(i).map(|c| c.width_px).unwrap_or(100);
+
+        detail_cells.push(TableDetailCellData {
+            col_name: SharedString::from(col_name),
+            left_value: SharedString::from(left_value),
+            base_value: SharedString::from(base_value),
+            right_value: SharedString::from(right_value),
+            status,
+            left_status,
+            right_status,
+            base_status,
+            col_x_px,
+            col_width_px,
+        });
+    }
+
+    window.set_table_detail_cells(ModelRc::new(VecModel::from(detail_cells)));
+}
+
 // --- Table copy functions (row-level copy for view-mode 4/6) ---
 
 /// Helper: rebuild diff_positions from table_rows and update window state.
@@ -1702,10 +1790,12 @@ pub fn table_copy_to_right(window: &MainWindow, state: &mut AppState, diff_index
         }
     }
 
+    let base_cells_clone = tab.table_rows[row_idx].base_cells.clone();
     tab.table_rows[row_idx] = TableRowData {
         row_number: tab.table_rows[row_idx].row_number,
         left_cells: ModelRc::new(VecModel::from(new_left_cells)),
         right_cells: ModelRc::new(VecModel::from(new_right_cells)),
+        base_cells: base_cells_clone,
         row_status: 0,
     };
 
@@ -1752,10 +1842,12 @@ pub fn table_copy_to_left(window: &MainWindow, state: &mut AppState, diff_index:
         }
     }
 
+    let base_cells_clone = tab.table_rows[row_idx].base_cells.clone();
     tab.table_rows[row_idx] = TableRowData {
         row_number: tab.table_rows[row_idx].row_number,
         left_cells: ModelRc::new(VecModel::from(new_left_cells)),
         right_cells: ModelRc::new(VecModel::from(new_right_cells)),
+        base_cells: base_cells_clone,
         row_status: 0,
     };
 
@@ -1779,6 +1871,180 @@ pub fn table_copy_left_and_next(window: &MainWindow, state: &mut AppState) {
     let diff_index = state.current_tab().current_diff;
     table_copy_to_left(window, state, diff_index);
     navigate_diff(window, state, true);
+}
+
+/// 3-way table: copy left cells to base cells for a single diff row (use-left).
+pub fn table_use_left(window: &MainWindow, state: &mut AppState, diff_index: i32) {
+    table_resolve_to_base(window, state, diff_index, true);
+}
+
+/// 3-way table: copy right cells to base cells for a single diff row (use-right).
+pub fn table_use_right(window: &MainWindow, state: &mut AppState, diff_index: i32) {
+    table_resolve_to_base(window, state, diff_index, false);
+}
+
+pub fn table_use_left_and_next(window: &MainWindow, state: &mut AppState) {
+    let diff_index = state.current_tab().current_diff;
+    table_use_left(window, state, diff_index);
+    navigate_diff(window, state, true);
+}
+
+pub fn table_use_right_and_next(window: &MainWindow, state: &mut AppState) {
+    let diff_index = state.current_tab().current_diff;
+    table_use_right(window, state, diff_index);
+    navigate_diff(window, state, true);
+}
+
+pub fn table_use_all_left(window: &MainWindow, state: &mut AppState) {
+    let positions: Vec<usize> = state.current_tab().diff_positions.clone();
+    for (i, _) in positions.iter().enumerate() {
+        table_resolve_to_base_inner(state, i);
+    }
+    apply_table_rows_to_window(window, state);
+    rebuild_table_diff_positions(window, state);
+}
+
+pub fn table_use_all_right(window: &MainWindow, state: &mut AppState) {
+    let positions: Vec<usize> = state.current_tab().diff_positions.clone();
+    for (i, _) in positions.iter().enumerate() {
+        table_resolve_to_base_inner_right(state, i);
+    }
+    apply_table_rows_to_window(window, state);
+    rebuild_table_diff_positions(window, state);
+}
+
+/// Internal: copy source (left or right) cells to base cells for a single diff row.
+fn table_resolve_to_base(
+    window: &MainWindow,
+    state: &mut AppState,
+    diff_index: i32,
+    use_left: bool,
+) {
+    {
+        let tab = state.current_tab();
+        if diff_index < 0 || diff_index as usize >= tab.diff_positions.len() {
+            return;
+        }
+    }
+    if use_left {
+        table_resolve_to_base_inner(state, diff_index as usize);
+    } else {
+        table_resolve_to_base_inner_right(state, diff_index as usize);
+    }
+
+    apply_table_rows_to_window(window, state);
+    rebuild_table_diff_positions(window, state);
+
+    let tab = state.current_tab();
+    if !tab.diff_positions.is_empty() {
+        let new_idx = (diff_index as usize).min(tab.diff_positions.len() - 1);
+        update_current_diff(window, state, new_idx as i32);
+    }
+    window.set_status_text(SharedString::from(if use_left {
+        "Left → Base copied"
+    } else {
+        "Right → Base copied"
+    }));
+}
+
+fn table_resolve_to_base_inner(state: &mut AppState, diff_index: usize) {
+    let tab = state.current_tab();
+    if diff_index >= tab.diff_positions.len() {
+        return;
+    }
+    let row_idx = tab.diff_positions[diff_index];
+    let row = &tab.table_rows[row_idx];
+    let src_model = &row.left_cells;
+    let cell_count = src_model.row_count();
+    let mut new_base = Vec::with_capacity(cell_count);
+    let mut new_left = Vec::with_capacity(cell_count);
+    let mut new_right = Vec::with_capacity(cell_count);
+    let right_model = &row.right_cells;
+    for i in 0..cell_count {
+        if let Some(lc) = src_model.row_data(i) {
+            new_base.push(TableCellData {
+                text: lc.text.clone(),
+                status: 0,
+                col_x_px: lc.col_x_px,
+                col_width_px: lc.col_width_px,
+            });
+            new_left.push(TableCellData {
+                text: lc.text.clone(),
+                status: 0,
+                col_x_px: lc.col_x_px,
+                col_width_px: lc.col_width_px,
+            });
+            // Right keeps its value; re-evaluate status vs new base (=left)
+            let rc = right_model.row_data(i);
+            let rv = rc.as_ref().map(|c| c.text.clone()).unwrap_or_default();
+            let st = if rv == lc.text { 0 } else { 1 };
+            new_right.push(TableCellData {
+                text: rv,
+                status: st,
+                col_x_px: lc.col_x_px,
+                col_width_px: lc.col_width_px,
+            });
+        }
+    }
+    let has_diff = new_right.iter().any(|c| c.status != 0);
+    let tab = state.current_tab_mut();
+    tab.table_rows[row_idx] = TableRowData {
+        row_number: tab.table_rows[row_idx].row_number,
+        left_cells: ModelRc::new(VecModel::from(new_left)),
+        right_cells: ModelRc::new(VecModel::from(new_right)),
+        base_cells: ModelRc::new(VecModel::from(new_base)),
+        row_status: if has_diff { 1 } else { 0 },
+    };
+}
+
+fn table_resolve_to_base_inner_right(state: &mut AppState, diff_index: usize) {
+    let tab = state.current_tab();
+    if diff_index >= tab.diff_positions.len() {
+        return;
+    }
+    let row_idx = tab.diff_positions[diff_index];
+    let row = &tab.table_rows[row_idx];
+    let src_model = &row.right_cells;
+    let cell_count = src_model.row_count();
+    let mut new_base = Vec::with_capacity(cell_count);
+    let mut new_right = Vec::with_capacity(cell_count);
+    let mut new_left = Vec::with_capacity(cell_count);
+    let left_model = &row.left_cells;
+    for i in 0..cell_count {
+        if let Some(rc) = src_model.row_data(i) {
+            new_base.push(TableCellData {
+                text: rc.text.clone(),
+                status: 0,
+                col_x_px: rc.col_x_px,
+                col_width_px: rc.col_width_px,
+            });
+            new_right.push(TableCellData {
+                text: rc.text.clone(),
+                status: 0,
+                col_x_px: rc.col_x_px,
+                col_width_px: rc.col_width_px,
+            });
+            // Left keeps its value; re-evaluate status vs new base (=right)
+            let lc = left_model.row_data(i);
+            let lv = lc.as_ref().map(|c| c.text.clone()).unwrap_or_default();
+            let st = if lv == rc.text { 0 } else { 1 };
+            new_left.push(TableCellData {
+                text: lv,
+                status: st,
+                col_x_px: rc.col_x_px,
+                col_width_px: rc.col_width_px,
+            });
+        }
+    }
+    let has_diff = new_left.iter().any(|c| c.status != 0);
+    let tab = state.current_tab_mut();
+    tab.table_rows[row_idx] = TableRowData {
+        row_number: tab.table_rows[row_idx].row_number,
+        left_cells: ModelRc::new(VecModel::from(new_left)),
+        right_cells: ModelRc::new(VecModel::from(new_right)),
+        base_cells: ModelRc::new(VecModel::from(new_base)),
+        row_status: if has_diff { 1 } else { 0 },
+    };
 }
 
 /// Copy all left cells to right for all diff rows (table view).
@@ -1812,10 +2078,12 @@ pub fn table_copy_all_right(window: &MainWindow, state: &mut AppState) {
                 });
             }
         }
+        let base_cells_clone = tab.table_rows[row_idx].base_cells.clone();
         tab.table_rows[row_idx] = TableRowData {
             row_number: tab.table_rows[row_idx].row_number,
             left_cells: ModelRc::new(VecModel::from(new_left_cells)),
             right_cells: ModelRc::new(VecModel::from(new_right_cells)),
+            base_cells: base_cells_clone,
             row_status: 0,
         };
     }
@@ -1855,10 +2123,12 @@ pub fn table_copy_all_left(window: &MainWindow, state: &mut AppState) {
                 });
             }
         }
+        let base_cells_clone = tab.table_rows[row_idx].base_cells.clone();
         tab.table_rows[row_idx] = TableRowData {
             row_number: tab.table_rows[row_idx].row_number,
             left_cells: ModelRc::new(VecModel::from(new_left_cells)),
             right_cells: ModelRc::new(VecModel::from(new_right_cells)),
+            base_cells: base_cells_clone,
             row_status: 0,
         };
     }
@@ -3959,6 +4229,21 @@ pub fn run_three_way_diff(window: &MainWindow, state: &mut AppState) {
     let left_bytes = fs::read(&left_path).unwrap_or_default();
     let right_bytes = fs::read(&right_path).unwrap_or_default();
 
+    // Route CSV files to 3-way table comparison
+    if is_csv_path(&left_path) && is_csv_path(&right_path) && is_csv_path(&base_path) {
+        run_csv_compare_3way(
+            window,
+            state,
+            &base_bytes,
+            &left_bytes,
+            &right_bytes,
+            &base_path,
+            &left_path,
+            &right_path,
+        );
+        return;
+    }
+
     let (base_text, base_enc) = decode_file(&base_bytes);
     let (left_text, left_enc) = decode_file(&left_bytes);
     let (right_text, right_enc) = decode_file(&right_bytes);
@@ -4705,6 +4990,28 @@ pub fn rescan(window: &MainWindow, state: &mut AppState) {
             &right_path,
         );
         window.set_status_text(SharedString::from("Files rescanned"));
+    } else if tab.view_mode == 8
+        && tab.base_path.is_some()
+        && tab.left_path.is_some()
+        && tab.right_path.is_some()
+    {
+        let base_path = tab.base_path.clone().unwrap();
+        let left_path = tab.left_path.clone().unwrap();
+        let right_path = tab.right_path.clone().unwrap();
+        let base_bytes = fs::read(&base_path).unwrap_or_default();
+        let left_bytes = fs::read(&left_path).unwrap_or_default();
+        let right_bytes = fs::read(&right_path).unwrap_or_default();
+        run_csv_compare_3way(
+            window,
+            state,
+            &base_bytes,
+            &left_bytes,
+            &right_bytes,
+            &base_path,
+            &left_path,
+            &right_path,
+        );
+        window.set_status_text(SharedString::from("Files rescanned"));
     }
 }
 
@@ -4979,6 +5286,7 @@ fn build_table_rows(
             row_number: (r + 1) as i32,
             left_cells: ModelRc::new(VecModel::from(left_cells)),
             right_cells: ModelRc::new(VecModel::from(right_cells)),
+            base_cells: ModelRc::new(VecModel::from(Vec::<TableCellData>::new())),
             row_status,
         });
     }
@@ -4999,6 +5307,131 @@ fn build_columns(max_cols: usize, col_width: i32) -> (Vec<TableColumnInfo>, i32)
         x += col_width;
     }
     (columns, x) // x is total content width
+}
+
+/// Build table rows for 3-way comparison.
+/// Maps csv.rs 3-way cell_status (0-7) to per-pane TableCellData statuses.
+fn build_table_rows_3way(
+    base_grid: &[Vec<String>],
+    left_grid: &[Vec<String>],
+    right_grid: &[Vec<String>],
+    cell_status: &[Vec<i32>],
+    max_rows: usize,
+    max_cols: usize,
+    columns: &[TableColumnInfo],
+) -> Vec<TableRowData> {
+    let mut rows = Vec::with_capacity(max_rows);
+
+    for r in 0..max_rows {
+        let base_row = base_grid.get(r);
+        let left_row = left_grid.get(r);
+        let right_row = right_grid.get(r);
+        let status_row = cell_status.get(r);
+
+        let mut base_cells = Vec::with_capacity(max_cols);
+        let mut left_cells = Vec::with_capacity(max_cols);
+        let mut right_cells = Vec::with_capacity(max_cols);
+        let mut has_diff = false;
+        let mut has_conflict = false;
+        let mut all_base_only = true;
+        let mut all_left_only = true;
+        let mut all_right_only = true;
+
+        for c in 0..max_cols {
+            let bv = base_row
+                .and_then(|row| row.get(c))
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            let lv = left_row
+                .and_then(|row| row.get(c))
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            let rv = right_row
+                .and_then(|row| row.get(c))
+                .map(|s| s.as_str())
+                .unwrap_or("");
+            let three_way_status = status_row.and_then(|sr| sr.get(c)).copied().unwrap_or(0);
+
+            // Map 3-way cell status to per-pane display statuses
+            // base_st: 0=normal, 2=removed(base-only)
+            // left_st: 0=normal, 1=modified, 3=added(left-only), 5=conflict
+            // right_st: 0=normal, 1=modified, 3=added(right-only), 5=conflict
+            let (base_st, left_st, right_st) = match three_way_status {
+                0 => (0, 0, 0), // identical
+                1 => (0, 1, 0), // left-changed
+                2 => (0, 0, 1), // right-changed
+                3 => (0, 1, 1), // both-changed-same
+                4 => (0, 5, 5), // conflict
+                5 => (2, 4, 4), // base-only (deleted in both)
+                6 => (4, 3, 4), // left-only
+                7 => (4, 4, 3), // right-only
+                _ => (0, 0, 0),
+            };
+
+            if three_way_status != 0 {
+                has_diff = true;
+            }
+            if three_way_status == 4 {
+                has_conflict = true;
+            }
+            if three_way_status != 5 {
+                all_base_only = false;
+            }
+            if three_way_status != 6 {
+                all_left_only = false;
+            }
+            if three_way_status != 7 {
+                all_right_only = false;
+            }
+
+            let col_x_px = columns.get(c).map(|col| col.x_px).unwrap_or(0);
+            let col_width_px = columns.get(c).map(|col| col.width_px).unwrap_or(100);
+
+            base_cells.push(TableCellData {
+                text: SharedString::from(bv),
+                status: base_st,
+                col_x_px,
+                col_width_px,
+            });
+            left_cells.push(TableCellData {
+                text: SharedString::from(lv),
+                status: left_st,
+                col_x_px,
+                col_width_px,
+            });
+            right_cells.push(TableCellData {
+                text: SharedString::from(rv),
+                status: right_st,
+                col_x_px,
+                col_width_px,
+            });
+        }
+
+        // Row-level status for location pane
+        let row_status = if !has_diff {
+            0
+        } else if has_conflict {
+            4 // conflict
+        } else if all_base_only {
+            5 // base-only
+        } else if all_left_only {
+            6 // left-only
+        } else if all_right_only {
+            7 // right-only
+        } else {
+            1 // has changes
+        };
+
+        rows.push(TableRowData {
+            row_number: (r + 1) as i32,
+            left_cells: ModelRc::new(VecModel::from(left_cells)),
+            right_cells: ModelRc::new(VecModel::from(right_cells)),
+            base_cells: ModelRc::new(VecModel::from(base_cells)),
+            row_status,
+        });
+    }
+
+    rows
 }
 
 fn run_excel_compare(
@@ -5248,6 +5681,86 @@ fn run_csv_compare(
     sync_tab_list(window, state);
 }
 
+fn run_csv_compare_3way(
+    window: &MainWindow,
+    state: &mut AppState,
+    base_bytes: &[u8],
+    left_bytes: &[u8],
+    right_bytes: &[u8],
+    base_path: &std::path::Path,
+    left_path: &std::path::Path,
+    right_path: &std::path::Path,
+) {
+    use crate::encoding::decode_file;
+
+    let (base_text, _) = decode_file(base_bytes);
+    let (left_text, _) = decode_file(left_bytes);
+    let (right_text, _) = decode_file(right_bytes);
+
+    let result = compare_csv_full_3way(&base_text, &left_text, &right_text);
+
+    let (columns, content_width_px) = build_columns(result.max_cols, 100);
+    let table_rows = build_table_rows_3way(
+        &result.base_grid,
+        &result.left_grid,
+        &result.right_grid,
+        &result.cell_status,
+        result.max_rows,
+        result.max_cols,
+        &columns,
+    );
+
+    let left_name = left_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let right_name = right_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let diff_count = result.diff_count;
+    let conflict_count = result.conflict_count;
+
+    let tab = state.current_tab_mut();
+    tab.view_mode = 8;
+    tab.title = format!("{} ↔ {} (3-way)", left_name, right_name);
+    tab.table_rows = table_rows.clone();
+    tab.table_columns = columns.clone();
+    tab.table_content_width_px = content_width_px;
+    tab.excel_cells = Vec::new();
+    tab.excel_sheet_names = Vec::new();
+    tab.excel_sheet_data.clear();
+
+    window.set_table_rows(ModelRc::new(VecModel::from(table_rows)));
+    window.set_table_columns(ModelRc::new(VecModel::from(columns)));
+    window.set_table_content_width_px(content_width_px);
+
+    // Build diff positions from row statuses
+    let diff_positions: Vec<usize> = tab
+        .table_rows
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.row_status != 0)
+        .map(|(i, _)| i)
+        .collect();
+    let diff_pos_count = diff_positions.len();
+    tab.diff_positions = diff_positions;
+    tab.current_diff = if diff_pos_count > 0 { 0 } else { -1 };
+    window.set_diff_count(diff_pos_count as i32);
+    window.set_current_diff_index(tab.current_diff);
+
+    window.set_view_mode(8);
+    window.set_left_path(SharedString::from(left_path.to_string_lossy().to_string()));
+    window.set_right_path(SharedString::from(right_path.to_string_lossy().to_string()));
+    window.set_base_path(SharedString::from(base_path.to_string_lossy().to_string()));
+    window.set_status_text(SharedString::from(format!(
+        "[CSV 3-way] {} ↔ {} — {} diffs, {} conflicts",
+        left_name, right_name, diff_count, conflict_count
+    )));
+    sync_tab_list(window, state);
+}
+
 fn rgba_to_slint_image(rgba: &[u8], width: u32, height: u32) -> slint::Image {
     let mut pixel_buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(width, height);
     pixel_buffer.make_mut_bytes().copy_from_slice(rgba);
@@ -5492,6 +6005,15 @@ pub fn paste_clipboard_path_right(window: &MainWindow) {
         if let Ok(text) = cb.get_text() {
             let path = text.trim().trim_start_matches("file://");
             window.set_open_right_path_input(SharedString::from(path));
+        }
+    }
+}
+
+pub fn paste_clipboard_path_base(window: &MainWindow) {
+    if let Ok(mut cb) = arboard::Clipboard::new() {
+        if let Ok(text) = cb.get_text() {
+            let path = text.trim().trim_start_matches("file://");
+            window.set_open_base_path_input(SharedString::from(path));
         }
     }
 }

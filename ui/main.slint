@@ -1,4 +1,4 @@
-import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit, ScrollView, ListView } from "std-widgets.slint";
+import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit, ScrollView, ListView, Slider } from "std-widgets.slint";
 import { DiffView, DiffLineData, WordSegment } from "widgets/diff-view.slint";
 import { DiffView3Way, ThreeWayLineData } from "widgets/diff-view-3way.slint";
 import { FolderView, FolderItemData } from "widgets/folder-view.slint";
@@ -12,7 +12,7 @@ import { NewTableDialog } from "dialogs/new-table-dialog.slint";
 import { ThemeColors } from "theme.slint";
 import { ExcelView, ExcelCellData } from "widgets/excel-view.slint";
 import { CsvView } from "widgets/csv-view.slint";
-import { TableGridView, TableRowData, TableCellData, TableColumnInfo } from "widgets/table-grid-view.slint";
+import { TableGridView, TableRowData, TableCellData, TableColumnInfo, TableDetailCellData } from "widgets/table-grid-view.slint";
 import { ImageView } from "widgets/image-view.slint";
 
 export struct PluginEntryData {
@@ -26,7 +26,7 @@ export struct DetailLineData {
     status: int,  // 1=added, 2=removed, 3=modified, 4=moved
 }
 
-export { DiffLineData, WordSegment, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors, FileEntryData, TableRowData, TableCellData, TableColumnInfo }
+export { DiffLineData, WordSegment, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors, FileEntryData, TableRowData, TableCellData, TableColumnInfo, TableDetailCellData }
 
 // Toolbar icon button: fixed 32x32 with image icon + optional overlay text
 component ToolBtn inherits Rectangle {
@@ -169,7 +169,7 @@ export component MainWindow inherits Window {
     // Folder comparison properties
     in-out property <[FolderItemData]> folder-items;
     in-out property <int> folder-selected-index: -1;
-    // 0=file diff, 1=folder compare, 3=3way, 4=excel, 5=image, 6=csv, 7=blank
+    // 0=file diff, 1=folder compare, 3=3way, 4=excel, 5=image, 6=csv, 7=blank, 8=csv-3way
     in-out property <int> view-mode: 7;
 
     // Open dialog modal
@@ -477,6 +477,10 @@ export component MainWindow inherits Window {
     in-out property <[TableColumnInfo]> table-columns;
     in-out property <int> table-content-width-px: 0;
     in-out property <length> table-scroll-y: 0px;
+    in-out property <length> table-scroll-x: 0px;
+    in-out property <int> table-current-highlight-row: -1;
+    // Table detail pane data (selected diff row's cells)
+    in property <[TableDetailCellData]> table-detail-cells: [];
     callback table-sheet-changed(string);
     callback table-copy-to-right(int);
     callback table-copy-to-left(int);
@@ -484,6 +488,13 @@ export component MainWindow inherits Window {
     callback table-copy-left-and-next();
     callback table-copy-all-right();
     callback table-copy-all-left();
+    // 3-way table resolve callbacks (copy to base)
+    callback table-use-left(int);
+    callback table-use-right(int);
+    callback table-use-left-and-next();
+    callback table-use-right-and-next();
+    callback table-use-all-left();
+    callback table-use-all-right();
 
     // Diff comments
     in-out property <string> current-diff-comment: "";
@@ -504,6 +515,7 @@ export component MainWindow inherits Window {
     // Clipboard paste path callbacks
     callback paste-left-path();
     callback paste-right-path();
+    callback paste-base-path();
 
     // Folder preview
     in-out property <string> folder-preview-name: "";
@@ -920,19 +932,19 @@ export component MainWindow inherits Window {
 
                 ToolSep {}
 
-                tb-first := ToolBtn { icon: @image-url("icons/first.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { root.first-diff(); } }
-                tb-prev := ToolBtn { icon: @image-url("icons/prev.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.prev-conflict(); } else { root.prev-diff(); } } }
-                tb-next := ToolBtn { icon: @image-url("icons/next.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.next-conflict(); } else { root.next-diff(); } } }
-                tb-last := ToolBtn { icon: @image-url("icons/last.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { root.last-diff(); } }
+                tb-first := ToolBtn { icon: @image-url("icons/first.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { root.first-diff(); } }
+                tb-prev := ToolBtn { icon: @image-url("icons/prev.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.prev-conflict(); } else { root.prev-diff(); } } }
+                tb-next := ToolBtn { icon: @image-url("icons/next.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.next-conflict(); } else { root.next-diff(); } } }
+                tb-last := ToolBtn { icon: @image-url("icons/last.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { root.last-diff(); } }
 
-                sep-nav := ToolSep { visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; }
+                sep-nav := ToolSep { visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; }
 
-                tb-copy-r := ToolBtn { icon: @image-url("icons/copy-right.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-to-right(root.current-diff-index); } else if root.view-mode == 3 { root.use-left(root.current-conflict-index); } else { root.copy-to-right(root.current-diff-index); } } }
-                tb-copy-l := ToolBtn { icon: @image-url("icons/copy-left.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-to-left(root.current-diff-index); } else if root.view-mode == 3 { root.use-right(root.current-conflict-index); } else { root.copy-to-left(root.current-diff-index); } } }
-                tb-copy-r-next := ToolBtn { icon: @image-url("icons/copy-right-next.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-right-and-next(); } else if root.view-mode == 3 { root.use-left-and-next(); } else { root.copy-right-and-next(); } } }
-                tb-copy-l-next := ToolBtn { icon: @image-url("icons/copy-left-next.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-left-and-next(); } else if root.view-mode == 3 { root.use-right-and-next(); } else { root.copy-left-and-next(); } } }
-                tb-all-r := ToolBtn { icon: @image-url("icons/copy-all-right.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-all-right(); } else if root.view-mode == 3 { root.use-all-left(); } else { root.copy-all-diffs-right(); } } }
-                tb-all-l := ToolBtn { icon: @image-url("icons/copy-all-left.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-all-left(); } else if root.view-mode == 3 { root.use-all-right(); } else { root.copy-all-diffs-left(); } } }
+                tb-copy-r := ToolBtn { icon: @image-url("icons/copy-right.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 8 { root.table-use-left(root.current-diff-index); } else if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-to-right(root.current-diff-index); } else if root.view-mode == 3 { root.use-left(root.current-conflict-index); } else { root.copy-to-right(root.current-diff-index); } } }
+                tb-copy-l := ToolBtn { icon: @image-url("icons/copy-left.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 8 { root.table-use-right(root.current-diff-index); } else if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-to-left(root.current-diff-index); } else if root.view-mode == 3 { root.use-right(root.current-conflict-index); } else { root.copy-to-left(root.current-diff-index); } } }
+                tb-copy-r-next := ToolBtn { icon: @image-url("icons/copy-right-next.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 8 { root.table-use-left-and-next(); } else if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-right-and-next(); } else if root.view-mode == 3 { root.use-left-and-next(); } else { root.copy-right-and-next(); } } }
+                tb-copy-l-next := ToolBtn { icon: @image-url("icons/copy-left-next.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 8 { root.table-use-right-and-next(); } else if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-left-and-next(); } else if root.view-mode == 3 { root.use-right-and-next(); } else { root.copy-left-and-next(); } } }
+                tb-all-r := ToolBtn { icon: @image-url("icons/copy-all-right.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 8 { root.table-use-all-left(); } else if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-all-right(); } else if root.view-mode == 3 { root.use-all-left(); } else { root.copy-all-diffs-right(); } } }
+                tb-all-l := ToolBtn { icon: @image-url("icons/copy-all-left.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 8 { root.table-use-all-right(); } else if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-all-left(); } else if root.view-mode == 3 { root.use-all-right(); } else { root.copy-all-diffs-left(); } } }
 
                 ToolSep {}
 
@@ -1238,6 +1250,8 @@ export component MainWindow inherits Window {
             columns: root.table-columns;
             content-width-px: root.table-content-width-px;
             scroll-y <=> root.table-scroll-y;
+            h-scroll-offset <=> root.table-scroll-x;
+            current-highlight-row: root.table-current-highlight-row;
             has-sheets: true;
             sheet-names: root.excel-sheet-names;
             active-sheet <=> root.excel-active-sheet;
@@ -1253,6 +1267,24 @@ export component MainWindow inherits Window {
             columns: root.table-columns;
             content-width-px: root.table-content-width-px;
             scroll-y <=> root.table-scroll-y;
+            h-scroll-offset <=> root.table-scroll-x;
+            current-highlight-row: root.table-current-highlight-row;
+            has-sheets: false;
+            vertical-stretch: 1;
+        }
+
+        // 3-way CSV/TSV table comparison
+        if root.view-mode == 8 : TableGridView {
+            left-title: root.left-path;
+            right-title: root.right-path;
+            base-title: root.base-path;
+            has-base: true;
+            rows: root.table-rows;
+            columns: root.table-columns;
+            content-width-px: root.table-content-width-px;
+            scroll-y <=> root.table-scroll-y;
+            h-scroll-offset <=> root.table-scroll-x;
+            current-highlight-row: root.table-current-highlight-row;
             has-sheets: false;
             vertical-stretch: 1;
         }
@@ -1652,6 +1684,220 @@ export component MainWindow inherits Window {
             }
         }
 
+        // Table diff detail pane (view-mode 4/6)
+        if root.show-detail-pane && (root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8) && root.current-diff-index >= 0 : Rectangle {
+            height: 5px;
+            background: transparent;
+
+            Rectangle {
+                x: 0;
+                y: 2px;
+                width: 100%;
+                height: 1px;
+                background: Palette.border;
+            }
+
+            TouchArea {
+                mouse-cursor: row-resize;
+                moved => {
+                    root.detail-pane-height = Math.clamp(root.detail-pane-height - self.mouse-y, 60px, 400px);
+                }
+            }
+        }
+        if root.show-detail-pane && (root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8) && root.current-diff-index >= 0 : Rectangle {
+            height: root.detail-pane-height;
+            border-color: Palette.border;
+            border-width: 1px;
+
+            property <int> detail-row-count: root.view-mode == 8 ? 3 : 2;
+            property <length> detail-row-h: 22px;
+            property <length> detail-label-w: 48px;
+
+            HorizontalLayout {
+                // Fixed label column (row labels: column headers, Left, Base, Right)
+                VerticalLayout {
+                    width: detail-label-w;
+                    // Column header row label
+                    Rectangle {
+                        height: detail-row-h;
+                        background: Palette.background.darker(0.08);
+                        border-color: Palette.border;
+                        border-width: 1px;
+                    }
+                    // Left row label
+                    Rectangle {
+                        height: detail-row-h;
+                        background: Palette.background.darker(0.02);
+                        border-color: Palette.border;
+                        border-width: 1px;
+                        Text {
+                            x: 4px;
+                            text: "Left";
+                            font-size: 10px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            color: ThemeColors.removed-fg;
+                        }
+                    }
+                    // Base row label (3-way only)
+                    if root.view-mode == 8 : Rectangle {
+                        height: detail-row-h;
+                        background: Palette.background.darker(0.02);
+                        border-color: Palette.border;
+                        border-width: 1px;
+                        Text {
+                            x: 4px;
+                            text: "Base";
+                            font-size: 10px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            color: ThemeColors.modified-fg;
+                        }
+                    }
+                    // Right row label
+                    Rectangle {
+                        height: detail-row-h;
+                        background: Palette.background.darker(0.02);
+                        border-color: Palette.border;
+                        border-width: 1px;
+                        Text {
+                            x: 4px;
+                            text: "Right";
+                            font-size: 10px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            color: ThemeColors.added-fg;
+                        }
+                    }
+                }
+
+                // Scrollable data area (clipped, scroll offset synced with main grid)
+                VerticalLayout {
+                    horizontal-stretch: 1;
+
+                    Rectangle {
+                        vertical-stretch: 1;
+                        clip: true;
+
+                        property <length> detail-scroll-x: root.table-scroll-x;
+
+                        // Row 0: Column headers
+                        for cell in root.table-detail-cells: Rectangle {
+                            x: cell.col-x-px * 1px - detail-scroll-x;
+                            y: 0;
+                            width: cell.col-width-px * 1px;
+                            height: detail-row-h;
+                            background: Palette.background.darker(0.08);
+                            border-color: Palette.border;
+                            border-width: 1px;
+
+                            Rectangle {
+                                x: 0;
+                                y: 3px;
+                                width: 6px;
+                                height: parent.height - 6px;
+                                background: cell.status == 0 ? transparent
+                                          : cell.status == 1 ? ThemeColors.modified-fg
+                                          : cell.status == 2 ? ThemeColors.removed-fg
+                                          : cell.status == 3 ? ThemeColors.added-fg
+                                          : cell.status == 5 ? ThemeColors.conflict-bg
+                                          : transparent;
+                            }
+
+                            Text {
+                                x: 8px;
+                                text: cell.col-name;
+                                font-size: 10px;
+                                font-weight: 600;
+                                font-family: "monospace";
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+
+                        // Row 1: Left values (use left-status)
+                        for cell in root.table-detail-cells: Rectangle {
+                            x: cell.col-x-px * 1px - detail-scroll-x;
+                            y: detail-row-h;
+                            width: cell.col-width-px * 1px;
+                            height: detail-row-h;
+                            background: cell.left-status == 0 ? Palette.background
+                                      : cell.left-status == 1 ? ThemeColors.modified-bg
+                                      : cell.left-status == 2 ? ThemeColors.removed-bg
+                                      : cell.left-status == 3 ? ThemeColors.added-bg
+                                      : cell.left-status == 4 ? Palette.background.darker(0.04)
+                                      : cell.left-status == 5 ? ThemeColors.conflict-bg
+                                      : Palette.background;
+                            border-color: Palette.border;
+                            border-width: 1px;
+
+                            Text {
+                                x: 4px;
+                                text: cell.left-value;
+                                font-size: 11px;
+                                font-family: "monospace";
+                                vertical-alignment: center;
+                                overflow: elide;
+                                color: cell.left-status != 0 ? ThemeColors.modified-fg : Palette.foreground;
+                            }
+                        }
+
+                        // Row 2 (3-way): Base values (use base-status)
+                        for cell in root.table-detail-cells: Rectangle {
+                            x: cell.col-x-px * 1px - detail-scroll-x;
+                            y: root.view-mode == 8 ? 2 * detail-row-h : -1000px;
+                            width: cell.col-width-px * 1px;
+                            height: detail-row-h;
+                            visible: root.view-mode == 8;
+                            background: cell.base-status == 0 ? Palette.background
+                                      : cell.base-status == 2 ? ThemeColors.removed-bg
+                                      : cell.base-status == 4 ? Palette.background.darker(0.04)
+                                      : Palette.background;
+                            border-color: Palette.border;
+                            border-width: 1px;
+
+                            Text {
+                                x: 4px;
+                                text: cell.base-value;
+                                font-size: 11px;
+                                font-family: "monospace";
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+
+                        // Last Row: Right values (use right-status)
+                        for cell in root.table-detail-cells: Rectangle {
+                            x: cell.col-x-px * 1px - detail-scroll-x;
+                            y: detail-row-count * detail-row-h;
+                            width: cell.col-width-px * 1px;
+                            height: detail-row-h;
+                            background: cell.right-status == 0 ? Palette.background
+                                      : cell.right-status == 1 ? ThemeColors.modified-bg
+                                      : cell.right-status == 2 ? ThemeColors.removed-bg
+                                      : cell.right-status == 3 ? ThemeColors.added-bg
+                                      : cell.right-status == 4 ? Palette.background.darker(0.04)
+                                      : cell.right-status == 5 ? ThemeColors.conflict-bg
+                                      : Palette.background;
+                            border-color: Palette.border;
+                            border-width: 1px;
+
+                            Text {
+                                x: 4px;
+                                text: cell.right-value;
+                                font-size: 11px;
+                                font-family: "monospace";
+                                vertical-alignment: center;
+                                overflow: elide;
+                                color: cell.right-status != 0 ? ThemeColors.modified-fg : Palette.foreground;
+                            }
+                        }
+                    }
+
+                }
+            }
+        }
+
         // Status bar
         Rectangle {
             height: 24px;
@@ -1923,6 +2169,7 @@ export component MainWindow inherits Window {
         }
         paste-left => { root.paste-left-path(); }
         paste-right => { root.paste-right-path(); }
+        paste-base => { root.paste-base-path(); }
     }
 
     // Go to Line dialog
