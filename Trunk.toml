@@ -4,4 +4,4 @@ dist = "dist"
 
 
 [watch]
-ignore = ["dist", "target"]
+ignore = ["target"]
