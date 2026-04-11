@@ -48,10 +48,11 @@ use app::{
     reorder_tab, replace_all_text, replace_text, rescan, resolve_all_use_left,
     resolve_all_use_right, resolve_conflict_use_left, resolve_conflict_use_right,
     resolve_use_left_and_next, resolve_use_right_and_next, run_diff, run_folder_compare,
-    run_plugin, save_file, save_three_way_pane, search_text, select_diff, set_diff_comment,
-    set_diff_filter, set_row_selection, sort_folder, start_compare, start_three_way_compare,
-    switch_tab, three_way_delete_line, three_way_edit_line, three_way_insert_line_after,
-    toggle_bookmark, toggle_ignore_case, toggle_ignore_whitespace, undo,
+    run_plugin, save_file, save_table_file, save_three_way_pane, search_text, select_diff,
+    set_diff_comment, set_diff_filter, set_row_selection, sort_folder, start_compare,
+    start_three_way_compare, switch_tab, three_way_delete_line, three_way_edit_line,
+    three_way_insert_line_after, toggle_bookmark, toggle_ignore_case, toggle_ignore_whitespace,
+    undo,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use slint::{Model, ModelRc, SharedString, VecModel};
@@ -340,11 +341,20 @@ fn main() {
             let window = window_weak.unwrap();
             {
                 let mut s = state.borrow_mut();
+                let vm = s.current_tab().view_mode;
                 if left_choice == 0 {
-                    save_file(&window, &mut s, true);
+                    if vm == 4 || vm == 6 || vm == 8 {
+                        save_table_file(&window, &mut s, 0);
+                    } else {
+                        save_file(&window, &mut s, true);
+                    }
                 }
                 if right_choice == 0 {
-                    save_file(&window, &mut s, false);
+                    if vm == 4 || vm == 6 || vm == 8 {
+                        save_table_file(&window, &mut s, 2);
+                    } else {
+                        save_file(&window, &mut s, false);
+                    }
                 }
             }
             let ww = window.as_weak();
@@ -388,8 +398,14 @@ fn main() {
             // Switch to target tab so save_file operates on it
             let prev_active = s.active_tab;
             s.active_tab = idx as usize;
-            save_file(&window, &mut s, true);
-            save_file(&window, &mut s, false);
+            let vm = s.current_tab().view_mode;
+            if vm == 4 || vm == 6 || vm == 8 {
+                save_table_file(&window, &mut s, 0);
+                save_table_file(&window, &mut s, 2);
+            } else {
+                save_file(&window, &mut s, true);
+                save_file(&window, &mut s, false);
+            }
             if let Some(tab) = s.tabs.get_mut(idx as usize) {
                 tab.has_unsaved_changes = false;
             }
@@ -764,7 +780,10 @@ fn main() {
         window.on_save_left(move || {
             let window = window_weak.unwrap();
             let mut s = state.borrow_mut();
-            if s.current_tab().view_mode == 3 {
+            let vm = s.current_tab().view_mode;
+            if vm == 4 || vm == 6 || vm == 8 {
+                save_table_file(&window, &mut s, 0);
+            } else if vm == 3 {
                 save_three_way_pane(&window, &mut s, 0);
             } else {
                 save_file(&window, &mut s, true);
@@ -778,7 +797,10 @@ fn main() {
         window.on_save_right(move || {
             let window = window_weak.unwrap();
             let mut s = state.borrow_mut();
-            if s.current_tab().view_mode == 3 {
+            let vm = s.current_tab().view_mode;
+            if vm == 4 || vm == 6 || vm == 8 {
+                save_table_file(&window, &mut s, 2);
+            } else if vm == 3 {
                 save_three_way_pane(&window, &mut s, 2);
             } else {
                 save_file(&window, &mut s, false);
@@ -1913,6 +1935,25 @@ fn main() {
         window.on_table_sheet_changed(move |sheet_name| {
             let window = window_weak.unwrap();
             crate::app::switch_excel_sheet(&window, &mut state.borrow_mut(), &sheet_name);
+        });
+    }
+
+    // Table column resize
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_column_resized(move |col_idx, new_width| {
+            let window = window_weak.unwrap();
+            crate::app::resize_table_column(&window, &mut state.borrow_mut(), col_idx, new_width);
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_table_cell_edited(move |row, col, pane, text| {
+            let window = window_weak.unwrap();
+            crate::app::table_cell_edit(&window, &mut state.borrow_mut(), row, col, pane, &text);
         });
     }
 

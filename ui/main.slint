@@ -495,6 +495,8 @@ export component MainWindow inherits Window {
     callback table-use-right-and-next();
     callback table-use-all-left();
     callback table-use-all-right();
+    callback table-column-resized(int, int);
+    callback table-cell-edited(/* row */ int, /* col */ int, /* pane */ int, /* text */ string);
 
     // Diff comments
     in-out property <string> current-diff-comment: "";
@@ -1256,6 +1258,9 @@ export component MainWindow inherits Window {
             sheet-names: root.excel-sheet-names;
             active-sheet <=> root.excel-active-sheet;
             sheet-changed(name) => { root.table-sheet-changed(name); }
+            column-resized(col-idx, new-width) => { root.table-column-resized(col-idx, new-width); }
+            inline-edit-enabled: true;
+            cell-edited(row, col, pane, text) => { root.table-cell-edited(row, col, pane, text); }
             vertical-stretch: 1;
         }
 
@@ -1270,6 +1275,9 @@ export component MainWindow inherits Window {
             h-scroll-offset <=> root.table-scroll-x;
             current-highlight-row: root.table-current-highlight-row;
             has-sheets: false;
+            column-resized(col-idx, new-width) => { root.table-column-resized(col-idx, new-width); }
+            inline-edit-enabled: true;
+            cell-edited(row, col, pane, text) => { root.table-cell-edited(row, col, pane, text); }
             vertical-stretch: 1;
         }
 
@@ -1286,6 +1294,9 @@ export component MainWindow inherits Window {
             h-scroll-offset <=> root.table-scroll-x;
             current-highlight-row: root.table-current-highlight-row;
             has-sheets: false;
+            column-resized(col-idx, new-width) => { root.table-column-resized(col-idx, new-width); }
+            inline-edit-enabled: true;
+            cell-edited(row, col, pane, text) => { root.table-cell-edited(row, col, pane, text); }
             vertical-stretch: 1;
         }
 

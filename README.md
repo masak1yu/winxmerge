@@ -160,9 +160,13 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 
 ### CSV / TSV Comparison
 - Compare `.csv` and `.tsv` files with cell-level diff table display
-- Auto-detects delimiter (comma vs tab) from the first line
+- Auto-detects delimiter (comma vs tab) independently per file
 - Handles quoted fields with embedded delimiters and newlines
-- Columns shown: Row, Col, Status (Different / Left Only / Right Only), Left Value, Right Value
+- Drag column header borders to resize columns
+- Inline cell editing with undo/redo (Cmd+Z / Cmd+Shift+Z)
+- Save edited table as CSV (Cmd+S), with Save As dialog for new documents
+- F5 rescan recomputes diff from edited cells (VecModel as authoritative source)
+- Delimiter mismatch warning when comparing .csv vs .tsv files
 
 ### Excel / Spreadsheet Comparison
 - Compare `.xlsx`, `.xls`, `.xlsm`, `.ods` files with table-view cell diff display
@@ -217,7 +221,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 
 ### New Blank Document
 - File → New → Text: create empty 2-way comparison document
-- File → New → Table: create empty CSV/TSV comparison document
+- File → New → Table: create empty CSV/TSV comparison document (10x5 initial grid, editable immediately)
 - File → New (3-pane) → Text / Table: create empty 3-way comparison
 - Toolbar "New" button with dropdown for type selection
 

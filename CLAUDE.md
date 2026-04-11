@@ -21,7 +21,7 @@ cargo fmt                           # フォーマット
 ## Gotchas（既知の罠）
 1. **ghost行のbase_line_no**: コピー時にbase側ghost行（base_line_no空）にテキストを入れても、`rebuild_three_way_text`がスキップする。コピー時は必ず`base_line_no`に"+"等の非空値を設定すること。
 2. **最後の行を削除すると入力不能**: `three_way_delete_line`でreal_line_countが1のときは削除禁止。
-3. **F5(rescan)でテキスト復活**: rescanは必ずVecModelから`rebuild_three_way_text`で再構築。tab.*_linesを直接使わない。
+3. **F5(rescan)で編集内容消失**: rescanは`editing_dirty || has_unsaved_changes`のとき必ずVecModelから再構築すること。ファイル再読み込みは未編集時のみ。テキストdiff（view_mode 0/3）もテーブル（view_mode 4/6/8）も同じルール。新しいview_modeに編集機能を追加したら、`rescan()`にもガード分岐を必ず追加すること。
 4. **merge_hunksのファイル側レンジ計算**: hunkの`new_start/new_end`を直接使うとequal行を見落とす。`net = Σ(new_count - old_count)`で計算すること。
 5. **Slint TextInput**: 行ごとに独立widget。クロス行ドラッグ選択は不可（Slint仕様）。
 6. **cargo test単体ではテストが見つからない**: `--features desktop`が必要。
@@ -33,3 +33,13 @@ cargo fmt                           # フォーマット
 - **1機能1コミット**。小さく区切る。
 - 変更後は必ず`cargo test --features desktop`と`cargo build --features desktop`で確認。
 - UI変更はGotchasを確認してからコードに触る。
+
+## 編集機能追加チェックリスト（必須）
+view_modeに編集機能を追加する際、以下を**プラン設計段階で全てステップに含める**こと。実装漏れで同じバグを繰り返した実績あり。
+1. UI: Text→TextInput + read-only制御 + edited callback
+2. callback配線: slint → main.rs → app.rs
+3. app.rs: 編集関数 + VecModel更新 + dirty flag
+4. undo/redo: snapshot + push/pop + view_mode分岐
+5. save: 再構築関数 + save関数 + main.rsの全save系callbackにview_mode分岐
+6. **rescan(): editing_dirty/has_unsaved_changesガード + VecModelから再構築**（過去2回漏れた最重要項目）
+7. new_blank: 初期グリッド作成

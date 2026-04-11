@@ -21,7 +21,7 @@ pub fn is_csv_path(path: &std::path::Path) -> bool {
         .unwrap_or(false)
 }
 
-fn detect_delimiter(text: &str) -> u8 {
+pub fn detect_delimiter(text: &str) -> u8 {
     // Simple heuristic: count commas vs tabs in the first line
     let first_line = text.lines().next().unwrap_or("");
     let commas = first_line.bytes().filter(|&b| b == b',').count();
@@ -44,17 +44,18 @@ pub fn col_to_name(mut col: usize) -> String {
 /// Parse CSV/TSV text into a 2-D table of cell strings.
 /// Handles quoted fields with embedded delimiters and newlines.
 pub fn parse_csv(text: &str, delimiter: u8) -> Vec<Vec<String>> {
+    let delim_char = delimiter as char;
     let mut rows: Vec<Vec<String>> = Vec::new();
     let mut row: Vec<String> = Vec::new();
     let mut field = String::new();
     let mut in_quotes = false;
-    let mut chars = text.bytes().peekable();
+    let mut chars = text.chars().peekable();
 
-    while let Some(&b) = chars.peek() {
+    while let Some(&c) = chars.peek() {
         chars.next();
         if in_quotes {
-            if b == b'"' {
-                if chars.peek() == Some(&b'"') {
+            if c == '"' {
+                if chars.peek() == Some(&'"') {
                     // Escaped double-quote
                     chars.next();
                     field.push('"');
@@ -62,22 +63,22 @@ pub fn parse_csv(text: &str, delimiter: u8) -> Vec<Vec<String>> {
                     in_quotes = false;
                 }
             } else {
-                field.push(b as char);
+                field.push(c);
             }
-        } else if b == b'"' {
+        } else if c == '"' {
             in_quotes = true;
-        } else if b == delimiter {
+        } else if c == delim_char {
             row.push(field.clone());
             field.clear();
-        } else if b == b'\n' {
+        } else if c == '\n' {
             row.push(field.clone());
             field.clear();
             rows.push(row.clone());
             row.clear();
-        } else if b == b'\r' {
+        } else if c == '\r' {
             // skip CR in CRLF
         } else {
-            field.push(b as char);
+            field.push(c);
         }
     }
 
@@ -100,13 +101,16 @@ pub struct CsvTableResult {
     /// cell_status[row][col] = 0(identical)/1(different)/2(left-only)/3(right-only)
     pub cell_status: Vec<Vec<i32>>,
     pub diff_count: usize,
+    /// True if left and right files use different delimiters (e.g. comma vs tab)
+    pub delimiter_mismatch: bool,
 }
 
 /// Compare two CSV/TSV texts and return full grids with per-cell status.
 pub fn compare_csv_full(left_text: &str, right_text: &str) -> CsvTableResult {
-    let delim = detect_delimiter(left_text);
-    let left_grid = parse_csv(left_text, delim);
-    let right_grid = parse_csv(right_text, delim);
+    let left_delim = detect_delimiter(left_text);
+    let right_delim = detect_delimiter(right_text);
+    let left_grid = parse_csv(left_text, left_delim);
+    let right_grid = parse_csv(right_text, right_delim);
 
     let max_rows = left_grid.len().max(right_grid.len());
     let max_cols = left_grid
@@ -157,6 +161,7 @@ pub fn compare_csv_full(left_text: &str, right_text: &str) -> CsvTableResult {
         max_cols,
         cell_status,
         diff_count,
+        delimiter_mismatch: left_delim != right_delim,
     }
 }
 
@@ -180,6 +185,8 @@ pub struct CsvTableResult3Way {
     pub cell_status: Vec<Vec<i32>>,
     pub diff_count: usize,
     pub conflict_count: usize,
+    /// True if any of the three files use different delimiters
+    pub delimiter_mismatch: bool,
 }
 
 /// Compare three CSV/TSV texts and return full grids with per-cell 3-way status.
@@ -188,10 +195,12 @@ pub fn compare_csv_full_3way(
     left_text: &str,
     right_text: &str,
 ) -> CsvTableResult3Way {
-    let delim = detect_delimiter(base_text);
-    let base_grid = parse_csv(base_text, delim);
-    let left_grid = parse_csv(left_text, delim);
-    let right_grid = parse_csv(right_text, delim);
+    let base_delim = detect_delimiter(base_text);
+    let left_delim = detect_delimiter(left_text);
+    let right_delim = detect_delimiter(right_text);
+    let base_grid = parse_csv(base_text, base_delim);
+    let left_grid = parse_csv(left_text, left_delim);
+    let right_grid = parse_csv(right_text, right_delim);
 
     let max_rows = base_grid.len().max(left_grid.len()).max(right_grid.len());
     let max_cols = base_grid
@@ -282,6 +291,7 @@ pub fn compare_csv_full_3way(
         cell_status,
         diff_count,
         conflict_count,
+        delimiter_mismatch: !(base_delim == left_delim && left_delim == right_delim),
     }
 }
 
