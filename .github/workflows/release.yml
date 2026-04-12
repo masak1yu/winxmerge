@@ -117,6 +117,12 @@ jobs:
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_FILE"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_FILE"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_FILE"
+
+          # Import Apple intermediate certificates (required for chain validation)
+          curl -sL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$KEYCHAIN_FILE" -T /usr/bin/codesign
+
+          # Import developer certificate
           security import "$CERT_FILE" -k "$KEYCHAIN_FILE" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_FILE"
           security default-keychain -s "$KEYCHAIN_FILE"
