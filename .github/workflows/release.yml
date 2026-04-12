@@ -126,6 +126,7 @@ jobs:
           security find-identity -v -p codesigning "$KEYCHAIN_FILE"
 
           echo "KEYCHAIN_FILE=$KEYCHAIN_FILE" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
 
           rm -f "$CERT_FILE"
 
@@ -133,6 +134,14 @@ jobs:
         env:
           CODESIGN_IDENTITY: ${{ secrets.CODESIGN_IDENTITY }}
         run: |
+          # Debug: verify keychain state before build
+          echo "==> Keychain search list:"
+          security list-keychains -d user
+          echo "==> Available signing identities:"
+          security find-identity -v -p codesigning
+          echo "==> Unlocking keychain..."
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_FILE"
+
           chmod +x scripts/build-macos-bundle.sh
           scripts/build-macos-bundle.sh
 
