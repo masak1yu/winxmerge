@@ -43,7 +43,7 @@ tree-sitter-c-sharp = "0.23"
 tree-sitter-yaml = "0.7"
 tree-sitter-toml-ng = "0.7"
 tree-sitter-md = "0.5"
-zip = "2"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 calamine = "0.26"
 image = "0.25"
 rust_xlsxwriter = "0.80"
