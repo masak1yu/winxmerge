@@ -73,6 +73,48 @@ fn main() {
         return;
     }
 
+    // Parse CLI flags and positional arguments early (before creating any UI)
+    // so IPC client mode can exit without creating a MainWindow.
+    let mut positional: Vec<String> = Vec::new();
+    let mut cli_ignore_whitespace = false;
+    let mut cli_ignore_case = false;
+    let mut cli_ignore_blank_lines = false;
+    {
+        let mut i = 1;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--ignore-whitespace" | "-w" => cli_ignore_whitespace = true,
+                "--ignore-case" | "-i" => cli_ignore_case = true,
+                "--ignore-blank-lines" | "-B" => cli_ignore_blank_lines = true,
+                "--server" | "--clear-history" => {}
+                _ => positional.push(args[i].clone()),
+            }
+            i += 1;
+        }
+    }
+
+    // Check for pending Finder Sync request (shared App Group container file).
+    // If no CLI positional args, pick up paths from Finder extension.
+    #[cfg(unix)]
+    if positional.is_empty() {
+        if let Some(finder_paths) = ipc::check_finder_request() {
+            positional = finder_paths;
+        }
+    }
+
+    // IPC client mode (Unix only): if we have file args and are NOT the server,
+    // try to send to a running instance. If no server is running, fall through
+    // to become the server ourselves and open the files directly.
+    #[cfg(unix)]
+    if !is_server_mode && positional.len() >= 2 {
+        let copied = ipc::copy_to_temp(&positional);
+        if ipc::try_send(&copied).is_ok() {
+            return;
+        }
+        // No running instance — fall through to become the server with these files.
+        // The positional args will be opened directly below.
+    }
+
     let window = MainWindow::new().unwrap();
     let state = Rc::new(RefCell::new(AppState::new()));
     let settings = Rc::new(RefCell::new(settings::AppSettings::load()));
@@ -179,25 +221,6 @@ fn main() {
     // Initialize tab list
     app::sync_tab_list(&window, &state.borrow());
 
-    // Parse CLI flags and positional arguments
-    let mut positional: Vec<String> = Vec::new();
-    let mut cli_ignore_whitespace = false;
-    let mut cli_ignore_case = false;
-    let mut cli_ignore_blank_lines = false;
-    {
-        let mut i = 1;
-        while i < args.len() {
-            match args[i].as_str() {
-                "--ignore-whitespace" | "-w" => cli_ignore_whitespace = true,
-                "--ignore-case" | "-i" => cli_ignore_case = true,
-                "--ignore-blank-lines" | "-B" => cli_ignore_blank_lines = true,
-                "--server" | "--clear-history" => {}
-                _ => positional.push(args[i].clone()),
-            }
-            i += 1;
-        }
-    }
-
     // Apply CLI flags to initial tab's diff options
     if cli_ignore_whitespace || cli_ignore_case || cli_ignore_blank_lines {
         let mut s = state.borrow_mut();
@@ -219,23 +242,6 @@ fn main() {
         if cli_ignore_case {
             window.set_ignore_case(true);
         }
-    }
-
-    // IPC client mode (Unix only): if we have file args and are NOT the server,
-    // copy files, send to running instance (or spawn one), then exit immediately.
-    #[cfg(unix)]
-    if !is_server_mode && positional.len() >= 2 {
-        let copied = ipc::copy_to_temp(&positional);
-        if ipc::try_send(&copied).is_ok() {
-            return;
-        }
-        // No running instance — spawn a server and send via IPC
-        ipc::spawn_server();
-        if ipc::try_send_with_retry(&copied, 30).is_ok() {
-            return;
-        }
-        eprintln!("[winxmerge] failed to connect to server");
-        return;
     }
 
     // Server mode (--server) or no-args launch: start IPC listener (Unix only)
@@ -1761,6 +1767,33 @@ fn main() {
                     // IPC: accumulate file pairs, then flush as virtual folder or single diff
                     #[cfg(unix)]
                     {
+                        // Check for Finder Sync extension requests (shared file)
+                        if let Some(finder_paths) = ipc::check_finder_request() {
+                            let mut s = state.borrow_mut();
+                            add_tab(&window, &mut s);
+                            if finder_paths.len() >= 3 {
+                                start_three_way_compare(
+                                    &window,
+                                    &mut s,
+                                    &finder_paths[0],
+                                    &finder_paths[1],
+                                    &finder_paths[2],
+                                );
+                            } else if finder_paths.len() >= 2 {
+                                {
+                                    let tab = s.current_tab_mut();
+                                    tab.left_path =
+                                        Some(std::path::PathBuf::from(&finder_paths[0]));
+                                    tab.right_path =
+                                        Some(std::path::PathBuf::from(&finder_paths[1]));
+                                    tab.view_mode = 0;
+                                }
+                                window.set_view_mode(0);
+                                run_diff(&window, &mut s);
+                            }
+                            app::sync_tab_list(&window, &s);
+                        }
+
                         // Phase 1: Drain incoming IPC messages into buffer
                         while let Ok(pairs) = ipc_rx.try_recv() {
                             if pairs.len() == 3 {
