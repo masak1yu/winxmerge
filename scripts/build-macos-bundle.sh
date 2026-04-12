@@ -81,42 +81,45 @@ cp "$RUST_BINARY" "$APP_BUNDLE/Contents/MacOS/winxmerge"
 chmod +x "$APP_BUNDLE/Contents/MacOS/winxmerge"
 
 # Bundle Nix store dylibs into the app and rewrite references.
-# macOS 11+ removed many /usr/lib dylibs from disk (they live in the shared
-# cache), so pointing at /usr/lib is unreliable. Bundling is the standard
-# approach for app distribution.
+# This section is only relevant for Nix-based development environments.
+# On standard macOS toolchains (including GitHub Actions runners), the binary
+# will not reference /nix/store/ paths, so this block is a no-op.
 FRAMEWORKS_DIR="$APP_BUNDLE/Contents/Frameworks"
 
-# Phase 1: Copy Nix dylibs and rewrite references in the main binary
-nix_libs=$(otool -L "$APP_BUNDLE/Contents/MacOS/winxmerge" | grep '/nix/store/' | awk '{print $1}')
-for nix_lib in $nix_libs; do
-    lib_name=$(basename "$nix_lib")
-    echo "  Bundling $lib_name"
-    cp "$nix_lib" "$FRAMEWORKS_DIR/$lib_name"
-    chmod 644 "$FRAMEWORKS_DIR/$lib_name"
-    install_name_tool -change "$nix_lib" "@executable_path/../Frameworks/$lib_name" "$APP_BUNDLE/Contents/MacOS/winxmerge"
-done
+nix_libs=$(otool -L "$APP_BUNDLE/Contents/MacOS/winxmerge" | grep '/nix/store/' | awk '{print $1}' || true)
+if [[ -n "$nix_libs" ]]; then
+    echo "  Detected Nix store dylib references, bundling..."
 
-# Phase 2: Fix references inside the bundled dylibs themselves
-for dylib in "$FRAMEWORKS_DIR"/*.dylib; do
-    [ -f "$dylib" ] || continue
-    lib_name=$(basename "$dylib")
-    # Fix the dylib's own install name
-    install_name_tool -id "@executable_path/../Frameworks/$lib_name" "$dylib"
-    # Rewrite any Nix store references within this dylib
-    for dep in $(otool -L "$dylib" | grep '/nix/store/' | awk '{print $1}'); do
-        dep_name=$(basename "$dep")
-        if [ -f "$FRAMEWORKS_DIR/$dep_name" ]; then
-            install_name_tool -change "$dep" "@executable_path/../Frameworks/$dep_name" "$dylib"
-        else
-            # Dependency not yet bundled — copy it too
-            echo "  Bundling transitive dep $dep_name"
-            cp "$dep" "$FRAMEWORKS_DIR/$dep_name"
-            chmod 644 "$FRAMEWORKS_DIR/$dep_name"
-            install_name_tool -id "@executable_path/../Frameworks/$dep_name" "$FRAMEWORKS_DIR/$dep_name"
-            install_name_tool -change "$dep" "@executable_path/../Frameworks/$dep_name" "$dylib"
-        fi
+    # Phase 1: Copy Nix dylibs and rewrite references in the main binary
+    for nix_lib in $nix_libs; do
+        lib_name=$(basename "$nix_lib")
+        echo "  Bundling $lib_name"
+        cp "$nix_lib" "$FRAMEWORKS_DIR/$lib_name"
+        chmod 644 "$FRAMEWORKS_DIR/$lib_name"
+        install_name_tool -change "$nix_lib" "@executable_path/../Frameworks/$lib_name" "$APP_BUNDLE/Contents/MacOS/winxmerge"
     done
-done
+
+    # Phase 2: Fix references inside the bundled dylibs themselves
+    for dylib in "$FRAMEWORKS_DIR"/*.dylib; do
+        [ -f "$dylib" ] || continue
+        lib_name=$(basename "$dylib")
+        install_name_tool -id "@executable_path/../Frameworks/$lib_name" "$dylib"
+        for dep in $(otool -L "$dylib" | grep '/nix/store/' | awk '{print $1}'); do
+            dep_name=$(basename "$dep")
+            if [ -f "$FRAMEWORKS_DIR/$dep_name" ]; then
+                install_name_tool -change "$dep" "@executable_path/../Frameworks/$dep_name" "$dylib"
+            else
+                echo "  Bundling transitive dep $dep_name"
+                cp "$dep" "$FRAMEWORKS_DIR/$dep_name"
+                chmod 644 "$FRAMEWORKS_DIR/$dep_name"
+                install_name_tool -id "@executable_path/../Frameworks/$dep_name" "$FRAMEWORKS_DIR/$dep_name"
+                install_name_tool -change "$dep" "@executable_path/../Frameworks/$dep_name" "$dylib"
+            fi
+        done
+    done
+else
+    echo "  No Nix store dylib references found, skipping bundling."
+fi
 
 # Copy Info.plist
 cp "$PROJECT_ROOT/macos/Info.plist" "$APP_BUNDLE/Contents/Info.plist"

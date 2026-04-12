@@ -19,9 +19,6 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact: winxmerge-linux-x86_64
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact: winxmerge-macos-aarch64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact: winxmerge-windows-x86_64
@@ -83,8 +80,98 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}.*
 
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.94.0"
+          targets: aarch64-apple-darwin
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: macos-aarch64-apple-darwin-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            macos-aarch64-apple-darwin-cargo-release-
+
+      - name: Import code signing certificate
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          CERT_FILE=$(mktemp /tmp/cert.XXXXXX.p12)
+          KEYCHAIN_FILE=$(mktemp /tmp/keychain.XXXXXX.keychain-db)
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 16)
+
+          echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$CERT_FILE"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_FILE"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_FILE"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_FILE"
+          security import "$CERT_FILE" -k "$KEYCHAIN_FILE" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productsign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_FILE"
+          security list-keychains -d user -s "$KEYCHAIN_FILE" $(security list-keychains -d user | tr -d '"')
+
+          echo "KEYCHAIN_FILE=$KEYCHAIN_FILE" >> "$GITHUB_ENV"
+
+          rm -f "$CERT_FILE"
+
+      - name: Build .app bundle
+        env:
+          CODESIGN_IDENTITY: ${{ secrets.CODESIGN_IDENTITY }}
+        run: |
+          chmod +x scripts/build-macos-bundle.sh
+          scripts/build-macos-bundle.sh
+
+      - name: Notarize .app bundle
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          APP_BUNDLE="target/WinXMerge.app"
+
+          ditto -c -k --keepParent "$APP_BUNDLE" target/WinXMerge-notarize.zip
+
+          xcrun notarytool submit target/WinXMerge-notarize.zip \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_ID_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          xcrun stapler staple "$APP_BUNDLE"
+
+          rm -f target/WinXMerge-notarize.zip
+
+      - name: Package as .zip
+        run: |
+          cd target
+          ditto -c -k --keepParent WinXMerge.app ../winxmerge-macos-aarch64.zip
+
+      - name: Cleanup keychain
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN_FILE:-}" ]; then
+            security delete-keychain "$KEYCHAIN_FILE" || true
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: winxmerge-macos-aarch64
+          path: winxmerge-macos-aarch64.zip
+
   release:
-    needs: build
+    needs: [build, build-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -97,5 +184,5 @@ jobs:
           generate_release_notes: true
           files: |
             winxmerge-linux-x86_64.tar.gz
-            winxmerge-macos-aarch64.tar.gz
+            winxmerge-macos-aarch64.zip
             winxmerge-windows-x86_64.zip
