@@ -165,7 +165,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.37.0;
+				MARKETING_VERSION = 0.38.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.masak1yu.winxmerge.FinderSync;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -189,7 +189,7 @@
 					"@executable_path/../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 0.37.0;
+				MARKETING_VERSION = 0.38.0;
 				PRODUCT_BUNDLE_IDENTIFIER = io.github.masak1yu.winxmerge.FinderSync;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
