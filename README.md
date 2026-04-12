@@ -237,6 +237,14 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Multiple file pairs (2+) displayed as a virtual folder comparison view
 - Double-click a file in the folder view to open detailed diff in a new tab
 
+### macOS Finder Integration
+- Finder Sync Extension: right-click files in Finder to compare with WinXMerge
+- Select 2 files → "Compare with WinXMerge" (2-way diff)
+- Select 3 files → "Compare with WinXMerge" (3-way merge)
+- Select 1 file → "Mark for Compare" / "Compare with [marked file]" workflow
+- Works with existing running instance (adds new tab) or launches the app
+- Enabled via System Settings > General > Login Items & Extensions
+
 ### Other
 - WinMerge-style initial file selection dialog (with recent files list)
 - WinMerge-style options dialog (Edit → Options...)
@@ -413,6 +421,12 @@ winxmerge/
 │   └── models/
 │       ├── diff_line.rs        # Diff line data model
 │       └── folder_item.rs      # Folder comparison item model
+├── macos/
+│   ├── Info.plist              # macOS app bundle metadata
+│   ├── WinXMerge.entitlements  # App entitlements (App Group)
+│   └── FinderSync/             # Finder Sync Extension (right-click compare)
+├── scripts/
+│   └── build-macos-bundle.sh   # Build .app bundle with Finder extension
 ├── translations/               # Translation files (gettext .po)
 │   └── ja/LC_MESSAGES/         # Japanese translations
 └── testdata/                   # Test sample files
