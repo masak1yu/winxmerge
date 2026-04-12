@@ -91,29 +91,45 @@ class FinderSyncExtension: FIFinderSync {
     // MARK: - Launch Helper
 
     private func launchWinXMerge(with paths: [String]) {
-        // Navigate from .appex to the main app binary:
+        // Navigate from .appex to the main .app bundle:
         // .../WinXMerge.app/Contents/PlugIns/WinXMergeFinderSync.appex
-        //  -> .../WinXMerge.app/Contents/MacOS/winxmerge
+        //  -> .../WinXMerge.app/
         let appexURL = URL(fileURLWithPath: Bundle.main.bundlePath)
-        let contentsURL = appexURL
+        let appURL = appexURL
             .deletingLastPathComponent()  // PlugIns/
             .deletingLastPathComponent()  // Contents/
-        let binaryPath = contentsURL
-            .appendingPathComponent("MacOS/winxmerge").path
+            .deletingLastPathComponent()  // WinXMerge.app/
 
-        let binaryURL = URL(fileURLWithPath: binaryPath)
-
-        guard FileManager.default.fileExists(atPath: binaryPath) else {
-            NSLog("WinXMerge binary not found at: %@", binaryPath)
+        guard FileManager.default.fileExists(atPath: appURL.path) else {
+            NSLog("WinXMerge.app not found at: %@", appURL.path)
             return
         }
 
+        NSLog("WinXMergeFinderSync: launching %@ with args: %@",
+              appURL.path, paths.joined(separator: ", "))
+
+        // Write file paths to the shared App Group container.
+        // CLI args and `open --args` do NOT work from sandboxed Finder Sync extensions.
+        // The main app polls this file and picks up the request.
+        if let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: "group.io.github.masak1yu.winxmerge"
+        ) {
+            let pendingFile = containerURL.appendingPathComponent("pending-compare.txt")
+            let content = paths.joined(separator: "\n")
+            do {
+                try content.write(to: pendingFile, atomically: true, encoding: .utf8)
+            } catch {
+                NSLog("WinXMergeFinderSync: failed to write pending file: %@",
+                      error.localizedDescription)
+            }
+        }
+
+        // Launch/activate the app through Launch Services
         do {
-            let process = Process()
-            process.executableURL = binaryURL
-            process.arguments = paths
-            NSLog("WinXMergeFinderSync: launching %@ with args: %@", binaryPath, paths.joined(separator: ", "))
-            try process.run()
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            task.arguments = ["-a", appURL.path]
+            try task.run()
         } catch {
             NSLog("Failed to launch WinXMerge: %@", error.localizedDescription)
         }

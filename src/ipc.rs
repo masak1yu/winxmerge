@@ -29,17 +29,6 @@ pub fn try_send(pairs: &[(String, String)]) -> Result<(), ()> {
     }
 }
 
-/// Try to send with retries (waiting for server to start).
-pub fn try_send_with_retry(pairs: &[(String, String)], retries: u32) -> Result<(), ()> {
-    for _ in 0..retries {
-        if try_send(pairs).is_ok() {
-            return Ok(());
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-    Err(())
-}
-
 /// Copy files to a temp directory so git difftool can clean up originals.
 /// Returns pairs of (original_path, temp_path).
 pub fn copy_to_temp(paths: &[String]) -> Vec<(String, String)> {
@@ -65,17 +54,6 @@ pub fn copy_to_temp(paths: &[String]) -> Vec<(String, String)> {
             (p.clone(), dest.to_string_lossy().to_string())
         })
         .collect()
-}
-
-/// Spawn a new winxmerge server process in the background.
-pub fn spawn_server() {
-    let exe = std::env::current_exe().unwrap_or_else(|_| "winxmerge".into());
-    let _ = std::process::Command::new(exe)
-        .arg("--server")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn();
 }
 
 /// Start listening for incoming file path pairs from other instances.
@@ -120,4 +98,31 @@ pub fn start_listener(tx: Sender<Vec<(String, String)>>) {
 /// Clean up the socket file (call on app exit).
 pub fn cleanup() {
     let _ = std::fs::remove_file(socket_path());
+}
+
+/// Path to the Finder Sync pending-compare request file in the shared App Group container.
+fn finder_request_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    Some(
+        std::path::PathBuf::from(home).join(
+            "Library/Group Containers/group.io.github.masak1yu.winxmerge/pending-compare.txt",
+        ),
+    )
+}
+
+/// Check for a pending compare request from the Finder Sync extension.
+/// Returns file paths if a request is found, and removes the request file.
+pub fn check_finder_request() -> Option<Vec<String>> {
+    let path = finder_request_path()?;
+    if !path.exists() {
+        return None;
+    }
+    let content = std::fs::read_to_string(&path).ok()?;
+    let _ = std::fs::remove_file(&path);
+    let paths: Vec<String> = content
+        .lines()
+        .map(|l| l.to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    if paths.is_empty() { None } else { Some(paths) }
 }
