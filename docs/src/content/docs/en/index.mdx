@@ -1,0 +1,52 @@
+---
+title: WinXMerge
+description: A cross-platform file diff and merge tool inspired by WinMerge, built with Rust + Slint.
+template: splash
+hero:
+  tagline: A cross-platform file diff comparison and merge tool inspired by WinMerge, built with Rust + Slint UI.
+  image:
+    html: <img src="https://github.com/user-attachments/assets/f3d2b2d7-d1d6-4838-9539-a62b45fe7780" alt="WinXMerge screenshot" width="720" />
+  actions:
+    - text: Get Started
+      link: /en/guides/introduction/
+      icon: right-arrow
+      variant: primary
+    - text: Try in Browser (WASM)
+      link: https://winxmerge.app
+      icon: external
+    - text: GitHub
+      link: https://github.com/masak1yu/winxmerge
+      icon: github
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Key Features
+
+<CardGrid stagger>
+  <Card title="2-Way File Comparison" icon="document">
+    Block-level and word-level diff with color coding. Merge operations with copy left/right, undo/redo, and inline editing.
+  </Card>
+  <Card title="3-Way Merge" icon="random">
+    Three-pane view with conflict detection/resolution. WinMerge-style overlap-grouping algorithm.
+  </Card>
+  <Card title="Folder Comparison" icon="open-book">
+    Recursive directory comparison with tree-style indentation, .gitignore support, and status filtering.
+  </Card>
+  <Card title="CSV / Excel / Image Diff" icon="puzzle">
+    Cell-level CSV/TSV diff, Excel/ODS spreadsheet comparison, and pixel-level image diff with blend slider.
+  </Card>
+  <Card title="Syntax Highlighting" icon="seti:json">
+    15+ languages supported via tree-sitter: Rust, JavaScript, Python, Go, TypeScript, C/C++, Java, and more.
+  </Card>
+  <Card title="Cross-Platform" icon="laptop">
+    Runs on macOS, Linux, and Windows. Also available as a WASM web app.
+  </Card>
+  <Card title="Git Integration" icon="github">
+    Use as `git difftool` / `git mergetool`. Single-instance tab mode for multiple file diffs.
+  </Card>
+  <Card title="i18n & Themes" icon="translate">
+    Japanese / English UI. Light and Dark theme switching.
+  </Card>
+</CardGrid>

@@ -1,0 +1,52 @@
+---
+title: WinXMerge
+description: WinMergeにインスパイアされたクロスプラットフォーム差分比較・マージツール。Rust + Slint UI で構築。
+template: splash
+hero:
+  tagline: WinMergeにインスパイアされたクロスプラットフォームファイル差分比較・マージツール。Rust + Slint UI で構築。
+  image:
+    html: <img src="https://github.com/user-attachments/assets/f3d2b2d7-d1d6-4838-9539-a62b45fe7780" alt="WinXMerge スクリーンショット" width="720" />
+  actions:
+    - text: はじめる
+      link: /ja/guides/introduction/
+      icon: right-arrow
+      variant: primary
+    - text: ブラウザで試す (WASM)
+      link: https://winxmerge.app
+      icon: external
+    - text: GitHub
+      link: https://github.com/masak1yu/winxmerge
+      icon: github
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## 主な機能
+
+<CardGrid stagger>
+  <Card title="2-Way ファイル比較" icon="document">
+    ブロックレベル・ワードレベルの差分表示。マージ操作（左→右 / 右→左コピー）、Undo/Redo、インライン編集に対応。
+  </Card>
+  <Card title="3-Way マージ" icon="random">
+    3ペイン表示でコンフリクトの検出・解決。WinMergeスタイルのオーバーラップグルーピングアルゴリズム。
+  </Card>
+  <Card title="フォルダ比較" icon="open-book">
+    再帰的なディレクトリ比較。ツリー表示、.gitignoreサポート、ステータスフィルタリング。
+  </Card>
+  <Card title="CSV / Excel / 画像の差分" icon="puzzle">
+    セルレベルのCSV/TSV差分、Excel/ODSスプレッドシート比較、ピクセルレベルの画像差分（ブレンドスライダー付き）。
+  </Card>
+  <Card title="シンタックスハイライト" icon="seti:json">
+    tree-sitterによる15以上の言語サポート: Rust、JavaScript、Python、Go、TypeScript、C/C++、Java など。
+  </Card>
+  <Card title="クロスプラットフォーム" icon="laptop">
+    macOS、Linux、Windowsでネイティブ動作。WASM Webアプリ版もあり。
+  </Card>
+  <Card title="Git連携" icon="github">
+    git difftool / git mergetool として使用可能。シングルインスタンスタブモードで複数ファイルの差分を管理。
+  </Card>
+  <Card title="多言語 & テーマ" icon="translate">
+    日本語 / 英語 UI切替。ライト・ダークテーマ対応。
+  </Card>
+</CardGrid>
