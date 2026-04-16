@@ -1,50 +1,19 @@
+use std::rc::Rc;
+
 use super::*;
 
-/// Renumber left/right line numbers in the diff model starting from `from_row`.
-/// Counts existing line numbers in rows before `from_row`, then sequentially
-/// renumbers all rows from `from_row` onward.
-fn renumber_diff_lines(vec_model: &VecModel<DiffLineData>, from_row: usize) {
-    let mut left_counter = 0usize;
-    let mut right_counter = 0usize;
-    for i in 0..from_row {
-        if let Some(r) = vec_model.row_data(i) {
-            if !r.left_line_no.is_empty() {
-                left_counter += 1;
-            }
-            if !r.right_line_no.is_empty() {
-                right_counter += 1;
-            }
-        }
-    }
-    for i in from_row..vec_model.row_count() {
-        if let Some(mut r) = vec_model.row_data(i) {
-            let mut changed = false;
-            if !r.left_line_no.is_empty() {
-                left_counter += 1;
-                let new_no = SharedString::from(left_counter.to_string());
-                if r.left_line_no != new_no {
-                    r.left_line_no = new_no;
-                    changed = true;
-                }
-            }
-            if !r.right_line_no.is_empty() {
-                right_counter += 1;
-                let new_no = SharedString::from(right_counter.to_string());
-                if r.right_line_no != new_no {
-                    r.right_line_no = new_no;
-                    changed = true;
-                }
-            }
-            if changed {
-                vec_model.set_row_data(i, r);
-            }
-        }
-    }
-}
-
-pub(super) fn push_undo_snapshot(state: &mut AppState, vec_model: &VecModel<DiffLineData>) {
-    let left_text = rebuild_left(vec_model);
-    let right_text = rebuild_right(vec_model);
+pub(super) fn push_undo_snapshot(state: &mut AppState) {
+    let tab = state.current_tab();
+    let left_text = tab
+        .left_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
+    let right_text = tab
+        .right_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
     let tab = state.current_tab_mut();
     tab.undo_stack.push(TextSnapshot {
         left_text,
@@ -65,9 +34,17 @@ pub fn undo(window: &MainWindow, state: &mut AppState) {
         return;
     }
 
-    // Save current state to redo stack
-    let current_left = tab.left_lines.join("\n") + "\n";
-    let current_right = tab.right_lines.join("\n") + "\n";
+    // Save current state to redo stack (derive from PaneBuffers)
+    let current_left = tab
+        .left_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
+    let current_right = tab
+        .right_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
     tab.redo_stack.push(TextSnapshot {
         left_text: current_left,
         right_text: current_right,
@@ -96,9 +73,17 @@ pub fn redo(window: &MainWindow, state: &mut AppState) {
         return;
     }
 
-    // Save current state to undo stack
-    let current_left = tab.left_lines.join("\n") + "\n";
-    let current_right = tab.right_lines.join("\n") + "\n";
+    // Save current state to undo stack (derive from PaneBuffers)
+    let current_left = tab
+        .left_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
+    let current_right = tab
+        .right_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
     tab.undo_stack.push(TextSnapshot {
         left_text: current_left,
         right_text: current_right,
@@ -121,12 +106,15 @@ pub fn copy_to_right(window: &MainWindow, state: &mut AppState, diff_index: i32)
         return;
     }
 
-    let_diff_vec_model!(model, vec_model, window);
+    push_undo_snapshot(state);
 
-    push_undo_snapshot(state, vec_model);
-
-    let right_text = rebuild_right_after_copy_from_left(vec_model, diff_index);
-    let left_text = rebuild_left(vec_model);
+    let tab = state.current_tab();
+    let left_text = tab
+        .left_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
+    let right_text = rebuild_right_after_copy_from_left_buffers(tab, diff_index);
 
     mark_dirty(window, state);
 
@@ -178,12 +166,15 @@ pub fn copy_to_left(window: &MainWindow, state: &mut AppState, diff_index: i32) 
         return;
     }
 
-    let_diff_vec_model!(model, vec_model, window);
+    push_undo_snapshot(state);
 
-    push_undo_snapshot(state, vec_model);
-
-    let left_text = rebuild_left_after_copy_from_right(vec_model, diff_index);
-    let right_text = rebuild_right(vec_model);
+    let tab = state.current_tab();
+    let right_text = tab
+        .right_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
+    let left_text = rebuild_left_after_copy_from_right_buffers(tab, diff_index);
 
     mark_dirty(window, state);
 
@@ -213,12 +204,15 @@ pub fn copy_all_diffs_to_right(window: &MainWindow, state: &mut AppState) {
         return;
     }
 
-    let_diff_vec_model!(model, vec_model, window);
-
-    push_undo_snapshot(state, vec_model);
+    push_undo_snapshot(state);
 
     // Copy all left to right: right becomes identical to left
-    let left_text = rebuild_left(vec_model);
+    let left_text = state
+        .current_tab()
+        .left_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
 
     mark_dirty(window, state);
 
@@ -235,12 +229,15 @@ pub fn copy_all_diffs_to_left(window: &MainWindow, state: &mut AppState) {
         return;
     }
 
-    let_diff_vec_model!(model, vec_model, window);
-
-    push_undo_snapshot(state, vec_model);
+    push_undo_snapshot(state);
 
     // Left becomes right for all diffs
-    let right_text = rebuild_right(vec_model);
+    let right_text = state
+        .current_tab()
+        .right_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
 
     mark_dirty(window, state);
 
@@ -253,11 +250,17 @@ pub fn copy_all_diffs_to_left(window: &MainWindow, state: &mut AppState) {
 
 pub fn copy_all_text(window: &MainWindow, state: &AppState, is_left: bool) {
     let tab = state.current_tab();
-    let text = if is_left {
-        tab.left_lines.join("\n")
+    let buf = if is_left {
+        &tab.left_buffer
     } else {
-        tab.right_lines.join("\n")
+        &tab.right_buffer
     };
+    let text = buf
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_default();
+    // extract_real_lines adds trailing newline; trim for clipboard
+    let text = text.trim_end_matches('\n').to_string();
 
     if let Ok(mut clipboard) = arboard::Clipboard::new() {
         let _ = clipboard.set_text(&text);
@@ -275,72 +278,89 @@ pub fn insert_line_after(
     line_index: i32,
     is_left: bool,
 ) {
-    let_diff_vec_model!(model, vec_model, window);
-    if line_index < 0 || line_index as usize >= vec_model.row_count() {
-        return;
-    }
-
-    push_undo_snapshot(state, vec_model);
-
-    let insert_at = (line_index + 1) as usize;
-
-    // Determine line_no for the new row from the current row
-    let current_row = match vec_model.row_data(line_index as usize) {
-        Some(r) => r,
-        None => return,
-    };
-    let line_no_str = if is_left {
-        &current_row.left_line_no
-    } else {
-        &current_row.right_line_no
-    };
-    let line_no = line_no_str.parse::<usize>().unwrap_or(1);
-
-    // Insert empty line into left_lines or right_lines
     {
-        let tab = state.current_tab_mut();
-        if is_left {
-            let pos = line_no.min(tab.left_lines.len());
-            tab.left_lines.insert(pos, String::new());
+        let tab = state.current_tab();
+        let buf = if is_left {
+            &tab.left_buffer
         } else {
-            let pos = line_no.min(tab.right_lines.len());
-            tab.right_lines.insert(pos, String::new());
+            &tab.right_buffer
+        };
+        let Some(b) = buf else { return };
+        if line_index < 0 || line_index as usize >= b.model.row_count() {
+            return;
         }
     }
 
-    // Insert a ghost row into the diff model
-    // Left insert: status=2 (Removed) → left has content, right is ghost
-    // Right insert: status=1 (Added) → right has content, left is ghost
-    let new_row = DiffLineData {
-        left_line_no: if is_left {
-            SharedString::from("?")
-        } else {
-            SharedString::from("")
-        },
-        right_line_no: if is_left {
-            SharedString::from("")
-        } else {
-            SharedString::from("?")
-        },
-        left_text: SharedString::from(""),
-        right_text: SharedString::from(""),
-        status: if is_left {
-            STATUS_REMOVED
-        } else {
-            STATUS_ADDED
-        },
-        is_current_diff: false,
+    push_undo_snapshot(state);
+
+    let insert_at = (line_index + 1) as usize;
+
+    // Insert real row in target pane, ghost row in other pane
+    let status = if is_left {
+        STATUS_REMOVED
+    } else {
+        STATUS_ADDED
+    };
+    let real_row = PaneLineData {
+        line_no: SharedString::from("?"),
+        text: SharedString::from(""),
+        is_ghost: false,
+        status,
         diff_index: -1,
-        left_highlight: 0,
-        right_highlight: 0,
-        left_word_diff: SharedString::from(""),
-        right_word_diff: SharedString::from(""),
+        word_diff: SharedString::from(""),
+        is_current_diff: false,
         is_search_match: false,
         is_selected: false,
+        highlight: -1,
     };
-    vec_model.insert(insert_at, new_row);
+    let ghost_row = PaneLineData {
+        line_no: SharedString::from(""),
+        text: SharedString::from(""),
+        is_ghost: true,
+        status: STATUS_EQUAL,
+        diff_index: -1,
+        word_diff: SharedString::from(""),
+        is_current_diff: false,
+        is_search_match: false,
+        is_selected: false,
+        highlight: -1,
+    };
 
-    renumber_diff_lines(vec_model, insert_at);
+    {
+        let tab = state.current_tab();
+        if is_left {
+            tab.left_buffer
+                .as_ref()
+                .unwrap()
+                .model
+                .insert(insert_at, real_row);
+            tab.right_buffer
+                .as_ref()
+                .unwrap()
+                .model
+                .insert(insert_at, ghost_row);
+        } else {
+            tab.left_buffer
+                .as_ref()
+                .unwrap()
+                .model
+                .insert(insert_at, ghost_row);
+            tab.right_buffer
+                .as_ref()
+                .unwrap()
+                .model
+                .insert(insert_at, real_row);
+        }
+    }
+
+    // Renumber line numbers in both PaneBuffers
+    let tab = state.current_tab_mut();
+    if let Some(lb) = &mut tab.left_buffer {
+        renumber_pane_buffer(lb);
+    }
+    if let Some(rb) = &mut tab.right_buffer {
+        renumber_pane_buffer(rb);
+    }
 
     mark_dirty_editing(window, state);
     window.set_can_undo(true);
@@ -353,70 +373,76 @@ pub fn insert_line_after(
     }
 }
 
-/// Delete a row (Backspace at start of line). Removes from the shared diff model
-/// and syncs left_lines / right_lines.
+/// Delete a row (Backspace at start of line). Removes from both PaneBuffers.
 pub fn delete_line(window: &MainWindow, state: &mut AppState, line_index: i32, is_left: bool) {
     if line_index < 0 {
         return;
     }
-
-    let_diff_vec_model!(model, vec_model, window);
     let idx = line_index as usize;
-    if idx >= vec_model.row_count() {
-        return;
-    }
-    let row = match vec_model.row_data(idx) {
-        Some(r) => r,
-        None => return,
-    };
-    let can_delete = if is_left {
-        row.left_text.is_empty()
-    } else {
-        row.right_text.is_empty()
-    };
-    if can_delete {
-        push_undo_snapshot(state, vec_model);
 
-        // Sync left_lines / right_lines: remove the corresponding real line
-        let line_no_str = if is_left {
-            &row.left_line_no
+    let can_delete = {
+        let tab = state.current_tab();
+        let buf = if is_left {
+            &tab.left_buffer
         } else {
-            &row.right_line_no
+            &tab.right_buffer
         };
-        if let Ok(line_no) = line_no_str.parse::<usize>() {
-            let tab = state.current_tab_mut();
-            if is_left {
-                if line_no > 0 && line_no <= tab.left_lines.len() {
-                    tab.left_lines.remove(line_no - 1);
-                }
-            } else {
-                if line_no > 0 && line_no <= tab.right_lines.len() {
-                    tab.right_lines.remove(line_no - 1);
-                }
+        let Some(b) = buf else { return };
+        if idx >= b.model.row_count() {
+            return;
+        }
+        let Some(row) = b.model.row_data(idx) else {
+            return;
+        };
+        row.text.is_empty()
+    };
+
+    if can_delete {
+        push_undo_snapshot(state);
+
+        // Remove row from both PaneBuffers (aligned)
+        {
+            let tab = state.current_tab();
+            if let Some(lb) = &tab.left_buffer {
+                lb.model.remove(idx);
+            }
+            if let Some(rb) = &tab.right_buffer {
+                rb.model.remove(idx);
             }
         }
 
-        vec_model.remove(idx);
-
-        renumber_diff_lines(vec_model, idx);
+        // Renumber line numbers in both PaneBuffers
+        let tab = state.current_tab_mut();
+        if let Some(lb) = &mut tab.left_buffer {
+            renumber_pane_buffer(lb);
+        }
+        if let Some(rb) = &mut tab.right_buffer {
+            renumber_pane_buffer(rb);
+        }
 
         mark_dirty_editing(window, state);
         window.set_can_undo(true);
     }
+
     // Find the nearest previous editable (non-ghost) row
     let mut prev = if line_index > 0 { line_index - 1 } else { 0 };
-    while prev > 0 {
-        if let Some(r) = vec_model.row_data(prev as usize) {
-            let has_line_no = if is_left {
-                !r.left_line_no.is_empty()
-            } else {
-                !r.right_line_no.is_empty()
-            };
-            if has_line_no {
-                break;
+    {
+        let tab = state.current_tab();
+        let buf = if is_left {
+            &tab.left_buffer
+        } else {
+            &tab.right_buffer
+        };
+        if let Some(b) = buf {
+            while prev > 0 {
+                if let Some(r) = b.model.row_data(prev as usize) {
+                    if !r.is_ghost {
+                        break;
+                    }
+                }
+                prev -= 1;
             }
         }
-        prev -= 1;
     }
     if is_left {
         window.set_diff_edit_focus_row(prev);
@@ -432,42 +458,30 @@ pub fn edit_line(
     new_text: &str,
     is_left: bool,
 ) {
-    // Always operate on the shared diff model
-    let_diff_vec_model!(model, vec_model, window);
-
-    if line_index < 0 || line_index as usize >= vec_model.row_count() {
-        return;
+    {
+        let tab = state.current_tab();
+        let buf = if is_left {
+            &tab.left_buffer
+        } else {
+            &tab.right_buffer
+        };
+        let Some(b) = buf else { return };
+        if line_index < 0 || line_index as usize >= b.model.row_count() {
+            return;
+        }
     }
 
-    push_undo_snapshot(state, vec_model);
+    push_undo_snapshot(state);
 
-    let mut row = match vec_model.row_data(line_index as usize) {
-        Some(r) => r,
-        None => return,
-    };
-    if is_left {
-        row.left_text = SharedString::from(new_text);
-    } else {
-        row.right_text = SharedString::from(new_text);
-    }
-    vec_model.set_row_data(line_index as usize, row);
-
-    let tab = state.current_tab_mut();
-    let Some(data) = vec_model.row_data(line_index as usize) else {
-        return;
-    };
-    if is_left {
-        if let Ok(line_no) = data.left_line_no.parse::<usize>() {
-            if line_no > 0 && line_no <= tab.left_lines.len() {
-                tab.left_lines[line_no - 1] = new_text.to_string();
-            }
-        }
-    } else {
-        if let Ok(line_no) = data.right_line_no.parse::<usize>() {
-            if line_no > 0 && line_no <= tab.right_lines.len() {
-                tab.right_lines[line_no - 1] = new_text.to_string();
-            }
-        }
+    // Update PaneBuffer row text (authoritative source)
+    {
+        let tab = state.current_tab();
+        let buf = if is_left {
+            &tab.left_buffer
+        } else {
+            &tab.right_buffer
+        };
+        sync_pane_row_text(buf, line_index as usize, new_text);
     }
 
     mark_dirty_editing(window, state);
@@ -481,15 +495,14 @@ pub fn copy_current_line_text(window: &MainWindow, state: &AppState, is_left: bo
     }
 
     let pos = tab.diff_positions[tab.current_diff as usize];
-    let model = window.get_diff_lines();
-    if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        if let Some(row) = vec_model.row_data(pos) {
-            let text = if is_left {
-                row.left_text.to_string()
-            } else {
-                row.right_text.to_string()
-            };
-
+    let buf = if is_left {
+        &tab.left_buffer
+    } else {
+        &tab.right_buffer
+    };
+    if let Some(b) = buf {
+        if let Some(row) = b.model.row_data(pos) {
+            let text = row.text.to_string();
             if let Ok(mut clipboard) = arboard::Clipboard::new() {
                 let _ = clipboard.set_text(&text);
                 let side = if is_left { "Left" } else { "Right" };
@@ -502,9 +515,7 @@ pub fn copy_current_line_text(window: &MainWindow, state: &AppState, is_left: bo
     }
 }
 
-pub fn set_row_selection(window: &MainWindow, state: &mut AppState, row_idx: i32, extend: bool) {
-    let_diff_vec_model!(model, vec_model, window);
-
+pub fn set_row_selection(_window: &MainWindow, state: &mut AppState, row_idx: i32, extend: bool) {
     let tab = state.current_tab_mut();
     if !extend || tab.selection_start < 0 {
         tab.selection_start = row_idx;
@@ -514,12 +525,18 @@ pub fn set_row_selection(window: &MainWindow, state: &mut AppState, row_idx: i32
     let sel_min = tab.selection_start.min(tab.selection_end) as usize;
     let sel_max = tab.selection_start.max(tab.selection_end) as usize;
 
-    for i in 0..vec_model.row_count() {
-        if let Some(mut row) = vec_model.row_data(i) {
-            let selected = i >= sel_min && i <= sel_max;
-            if row.is_selected != selected {
-                row.is_selected = selected;
-                vec_model.set_row_data(i, row);
+    // Set is_selected on PaneBuffers directly
+    let tab = state.current_tab();
+    for buf_opt in [&tab.left_buffer, &tab.right_buffer] {
+        if let Some(buf) = buf_opt {
+            for i in 0..buf.model.row_count() {
+                if let Some(mut row) = buf.model.row_data(i) {
+                    let selected = i >= sel_min && i <= sel_max;
+                    if row.is_selected != selected {
+                        row.is_selected = selected;
+                        buf.model.set_row_data(i, row);
+                    }
+                }
             }
         }
     }
@@ -533,15 +550,23 @@ pub fn copy_selection_to_right(window: &MainWindow, state: &mut AppState) {
     let sel_min = tab.selection_start.min(tab.selection_end) as usize;
     let sel_max = tab.selection_start.max(tab.selection_end) as usize;
 
-    let_diff_vec_model!(model, vec_model, window);
+    let (Some(lb), Some(rb)) = (&tab.left_buffer, &tab.right_buffer) else {
+        return;
+    };
+    let row_count = lb.model.row_count();
+    let end = sel_max.min(row_count.saturating_sub(1));
+    let count = end + 1 - sel_min;
 
-    let count = sel_max.min(vec_model.row_count().saturating_sub(1)) + 1 - sel_min;
-    for i in sel_min..=sel_max.min(vec_model.row_count().saturating_sub(1)) {
-        if let Some(mut row) = vec_model.row_data(i) {
-            if row.status != STATUS_EQUAL {
-                row.right_text = row.left_text.clone();
-                row.status = STATUS_EQUAL;
-                vec_model.set_row_data(i, row);
+    for i in sel_min..=end {
+        if let (Some(lr), Some(mut rr)) = (lb.model.row_data(i), rb.model.row_data(i)) {
+            if !lr.is_ghost && !rr.is_ghost && lr.status != STATUS_EQUAL {
+                rr.text = lr.text.clone();
+                rr.status = STATUS_EQUAL;
+                rb.model.set_row_data(i, rr);
+                // Also update left status
+                let mut lr2 = lb.model.row_data(i).unwrap();
+                lr2.status = STATUS_EQUAL;
+                lb.model.set_row_data(i, lr2);
             }
         }
     }
@@ -560,15 +585,23 @@ pub fn copy_selection_to_left(window: &MainWindow, state: &mut AppState) {
     let sel_min = tab.selection_start.min(tab.selection_end) as usize;
     let sel_max = tab.selection_start.max(tab.selection_end) as usize;
 
-    let_diff_vec_model!(model, vec_model, window);
+    let (Some(lb), Some(rb)) = (&tab.left_buffer, &tab.right_buffer) else {
+        return;
+    };
+    let row_count = lb.model.row_count();
+    let end = sel_max.min(row_count.saturating_sub(1));
+    let count = end + 1 - sel_min;
 
-    let count = sel_max.min(vec_model.row_count().saturating_sub(1)) + 1 - sel_min;
-    for i in sel_min..=sel_max.min(vec_model.row_count().saturating_sub(1)) {
-        if let Some(mut row) = vec_model.row_data(i) {
-            if row.status != STATUS_EQUAL {
-                row.left_text = row.right_text.clone();
-                row.status = STATUS_EQUAL;
-                vec_model.set_row_data(i, row);
+    for i in sel_min..=end {
+        if let (Some(mut lr), Some(rr)) = (lb.model.row_data(i), rb.model.row_data(i)) {
+            if !lr.is_ghost && !rr.is_ghost && rr.status != STATUS_EQUAL {
+                lr.text = rr.text.clone();
+                lr.status = STATUS_EQUAL;
+                lb.model.set_row_data(i, lr);
+                // Also update right status
+                let mut rr2 = rb.model.row_data(i).unwrap();
+                rr2.status = STATUS_EQUAL;
+                rb.model.set_row_data(i, rr2);
             }
         }
     }
@@ -595,23 +628,6 @@ pub fn new_blank_text(window: &MainWindow, state: &mut AppState) {
         tab.left_path = None;
         tab.right_path = None;
         tab.title = "Untitled".to_string();
-        tab.diff_line_data = vec![DiffLineData {
-            left_line_no: SharedString::from("1"),
-            right_line_no: SharedString::from("1"),
-            left_text: SharedString::from(""),
-            right_text: SharedString::from(""),
-            status: STATUS_EQUAL,
-            is_current_diff: false,
-            diff_index: -1,
-            left_highlight: -1,
-            right_highlight: -1,
-            left_word_diff: SharedString::from(""),
-            right_word_diff: SharedString::from(""),
-            is_search_match: false,
-            is_selected: false,
-        }];
-        tab.left_lines = vec![String::new()];
-        tab.right_lines = vec![String::new()];
         tab.diff_positions.clear();
         tab.diff_stats = String::new();
         tab.has_unsaved_changes = false;
@@ -622,9 +638,41 @@ pub fn new_blank_text(window: &MainWindow, state: &mut AppState) {
         tab.right_eol_type = "LF".to_string();
     }
 
+    // Build per-pane buffers for blank document
+    {
+        let blank_line = PaneLineData {
+            line_no: SharedString::from("1"),
+            text: SharedString::from(""),
+            is_ghost: false,
+            status: STATUS_EQUAL,
+            diff_index: -1,
+            word_diff: SharedString::from(""),
+            is_current_diff: false,
+            is_search_match: false,
+            is_selected: false,
+            highlight: -1,
+        };
+        let left_model = Rc::new(VecModel::from(vec![blank_line.clone()]));
+        let right_model = Rc::new(VecModel::from(vec![blank_line]));
+        window.set_left_lines(ModelRc::from(left_model.clone()));
+        window.set_right_lines(ModelRc::from(right_model.clone()));
+        let tab = state.current_tab_mut();
+        tab.left_buffer = Some(PaneBuffer {
+            model: left_model,
+            row_to_line: vec![Some(0)],
+            line_to_row: vec![0],
+            ghost_rows: vec![],
+        });
+        tab.right_buffer = Some(PaneBuffer {
+            model: right_model,
+            row_to_line: vec![Some(0)],
+            line_to_row: vec![0],
+            ghost_rows: vec![],
+        });
+        tab.middle_buffer = None;
+    }
+
     window.set_view_mode(ViewMode::FileDiff.as_i32());
-    let model = ModelRc::new(VecModel::from(state.current_tab().diff_line_data.clone()));
-    window.set_diff_lines(model);
     window.set_diff_count(0);
     window.set_current_diff_index(-1);
     window.set_left_path(SharedString::from(""));
@@ -709,5 +757,67 @@ pub fn discard_and_proceed(
             window.set_show_open_dialog(true);
         }
         _ => {}
+    }
+}
+
+/// Rebuild what right text would be after copying left→right for one diff block.
+/// Reads from PaneBuffers.
+fn rebuild_right_after_copy_from_left_buffers(tab: &TabState, target_diff_index: i32) -> String {
+    let (Some(lb), Some(rb)) = (&tab.left_buffer, &tab.right_buffer) else {
+        return "\n".to_string();
+    };
+    let mut lines = Vec::new();
+    for i in 0..lb.model.row_count() {
+        let (Some(lr), Some(rr)) = (lb.model.row_data(i), rb.model.row_data(i)) else {
+            continue;
+        };
+        let in_target = lr.diff_index == target_diff_index || rr.diff_index == target_diff_index;
+        if in_target {
+            // Copy left→right: take non-ghost left text, skip Added rows (left=ghost)
+            if !lr.is_ghost {
+                lines.push(lr.text.to_string());
+            }
+        } else {
+            // Keep right side
+            if !rr.is_ghost {
+                lines.push(rr.text.to_string());
+            }
+        }
+    }
+    if lines.is_empty() {
+        "\n".to_string()
+    } else {
+        lines.join("\n") + "\n"
+    }
+}
+
+/// Rebuild what left text would be after copying right→left for one diff block.
+/// Reads from PaneBuffers.
+fn rebuild_left_after_copy_from_right_buffers(tab: &TabState, target_diff_index: i32) -> String {
+    let (Some(lb), Some(rb)) = (&tab.left_buffer, &tab.right_buffer) else {
+        return "\n".to_string();
+    };
+    let mut lines = Vec::new();
+    for i in 0..lb.model.row_count() {
+        let (Some(lr), Some(rr)) = (lb.model.row_data(i), rb.model.row_data(i)) else {
+            continue;
+        };
+        let in_target = lr.diff_index == target_diff_index || rr.diff_index == target_diff_index;
+        if in_target {
+            // Copy right→left: take non-ghost right text, skip Removed rows (right=ghost)
+            if !rr.is_ghost {
+                lines.push(rr.text.to_string());
+            }
+        } else {
+            // Keep left side
+            if !lr.is_ghost {
+                lines.push(lr.text.to_string());
+            }
+        }
+    }
+    if lines.is_empty() {
+        "\n".to_string()
+    } else {
+        lines.join("\n") + "\n"
     }
 }

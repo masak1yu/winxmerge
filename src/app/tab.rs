@@ -50,16 +50,7 @@ pub fn switch_tab(window: &MainWindow, state: &mut AppState, index: i32) {
 
 pub(super) fn save_current_tab_from_window(window: &MainWindow, state: &mut AppState) {
     let tab = state.current_tab_mut();
-    // Save diff line data from the model
-    let model = window.get_diff_lines();
-    if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        tab.diff_line_data.clear();
-        for i in 0..vec_model.row_count() {
-            if let Some(row) = vec_model.row_data(i) {
-                tab.diff_line_data.push(row);
-            }
-        }
-    }
+    // PaneBuffers are Rc<VecModel> owned by TabState — no snapshot needed.
     // Save per-tab diff options from window state
     tab.diff_options.ignore_whitespace = window.get_ignore_whitespace();
     tab.diff_options.ignore_case = window.get_ignore_case();
@@ -94,8 +85,7 @@ pub(super) fn restore_tab(window: &MainWindow, state: &AppState) {
     restore_tab_diff_options(window, tab);
 
     // Update detail pane
-    let model = window.get_diff_lines();
-    update_detail_pane(window, &model, tab.current_diff, tab);
+    update_detail_pane(window, tab.current_diff, tab);
 
     // Restore folder data
     let folder_model = ModelRc::new(VecModel::from(tab.folder_item_data.clone()));
@@ -129,8 +119,22 @@ pub(super) fn restore_tab(window: &MainWindow, state: &AppState) {
 }
 
 fn restore_tab_common(window: &MainWindow, tab: &TabState) {
-    let model = ModelRc::new(VecModel::from(tab.diff_line_data.clone()));
-    window.set_diff_lines(model);
+    // Restore per-pane models (authoritative source)
+    if let Some(ref buf) = tab.left_buffer {
+        window.set_left_lines(ModelRc::from(buf.model.clone()));
+    } else {
+        window.set_left_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
+    }
+    if let Some(ref buf) = tab.middle_buffer {
+        window.set_middle_lines(ModelRc::from(buf.model.clone()));
+    } else {
+        window.set_middle_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
+    }
+    if let Some(ref buf) = tab.right_buffer {
+        window.set_right_lines(ModelRc::from(buf.model.clone()));
+    } else {
+        window.set_right_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
+    }
     window.set_diff_count(tab.diff_positions.len() as i32);
     window.set_current_diff_index(tab.current_diff);
     window.set_has_unsaved_changes(tab.has_unsaved_changes);

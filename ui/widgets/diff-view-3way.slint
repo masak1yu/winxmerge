@@ -1,19 +1,6 @@
 import { VerticalBox, HorizontalBox, ListView, Palette } from "std-widgets.slint";
 import { ThemeColors } from "../theme.slint";
-
-export struct ThreeWayLineData {
-    base-line-no: string,
-    left-line-no: string,
-    right-line-no: string,
-    base-text: string,
-    left-text: string,
-    right-text: string,
-    // 0=Equal, 1=LeftChanged, 2=RightChanged, 3=BothChanged, 4=Conflict
-    status: int,
-    is-current: bool,
-    conflict-index: int,
-    is-search-match: bool,
-}
+import { PaneLineData } from "diff-view.slint";
 
 component ThreeWayLineRow inherits Rectangle {
     in property <string> line-no;
@@ -140,8 +127,9 @@ component ThreeWayLineRow inherits Rectangle {
 // WinMerge-style 3-bar location pane with connector regions
 // Bar layout: [left-bar][connector-LM][middle-bar][connector-MR][right-bar]
 // Status: 0=Equal, 1=LeftChanged, 2=RightChanged, 3=BothChanged, 4=Conflict
+// Uses left-lines (PaneLineData) as the representative model for status/diff-index.
 component ThreeWayLocationPane inherits Rectangle {
-    in property <[ThreeWayLineData]> lines;
+    in property <[PaneLineData]> lines;
     in property <int> current-conflict-index: -1;
 
     width: 36px;
@@ -161,7 +149,7 @@ component ThreeWayLocationPane inherits Rectangle {
         x: root.start-x;
         width: root.bar-width;
         background: line.status == 0 ? transparent :
-                    (line.conflict-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
+                    (line.diff-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
                     line.status == 1 ? ThemeColors.added-fg :
                     line.status == 3 ? ThemeColors.modified-fg :
                     line.status == 4 ? ThemeColors.removed-fg : transparent;
@@ -186,7 +174,7 @@ component ThreeWayLocationPane inherits Rectangle {
         x: root.start-x + root.bar-width + root.gap-width;
         width: root.bar-width;
         background: line.status == 0 ? transparent :
-                    (line.conflict-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
+                    (line.diff-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
                     line.status == 3 ? ThemeColors.modified-fg :
                     line.status == 4 ? ThemeColors.removed-fg : transparent;
     }
@@ -210,7 +198,7 @@ component ThreeWayLocationPane inherits Rectangle {
         x: root.start-x + root.bar-width * 2 + root.gap-width * 2;
         width: root.bar-width;
         background: line.status == 0 ? transparent :
-                    (line.conflict-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
+                    (line.diff-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
                     line.status == 2 ? ThemeColors.added-fg :
                     line.status == 3 ? ThemeColors.modified-fg :
                     line.status == 4 ? ThemeColors.removed-fg : transparent;
@@ -221,7 +209,9 @@ export component DiffView3Way inherits Rectangle {
     in property <string> base-title: "Base";
     in property <string> left-title: "Left";
     in property <string> right-title: "Right";
-    in property <[ThreeWayLineData]> lines;
+    in property <[PaneLineData]> left-lines;
+    in property <[PaneLineData]> middle-lines;
+    in property <[PaneLineData]> right-lines;
     in property <int> current-conflict-index: -1;
     in property <bool> show-line-numbers: true;
     in property <int> editor-font-size: 13;
@@ -311,7 +301,7 @@ export component DiffView3Way inherits Rectangle {
             }
 
             // Spacer matching LocationPane width
-            if root.lines.length > 0 && root.show-location-pane : Rectangle {
+            if root.left-lines.length > 0 && root.show-location-pane : Rectangle {
                 width: 36px;
                 background: Palette.background.darker(0.05);
                 border-color: Palette.border;
@@ -328,16 +318,16 @@ export component DiffView3Way inherits Rectangle {
                 border-color: Palette.border;
                 border-width: 1px;
                 left-list := ListView {
-                    for line[idx] in lines: ThreeWayLineRow {
+                    for line[idx] in left-lines: ThreeWayLineRow {
                         height: (root.editor-font-size + 2) * 1px;
-                        line-no: line.left-line-no;
-                        text: line.left-text;
+                        line-no: line.line-no;
+                        text: line.text;
                         status: line.status;
-                        is-current: line.is-current;
+                        is-current: line.is-current-diff;
                         is-search-match: line.is-search-match;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
-                        editable: root.inline-edit-enabled && line.left-line-no != "";
+                        editable: root.inline-edit-enabled && !line.is-ghost;
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-left-row;
                         focus-at-end: root.focus-left-at-end;
                         text-edited(t) => { root.edit-text-changed(idx, t, 0); }
@@ -359,16 +349,16 @@ export component DiffView3Way inherits Rectangle {
                 border-width: 1px;
                 ListView {
                     viewport-y: left-list.viewport-y;
-                    for line[idx] in lines: ThreeWayLineRow {
+                    for line[idx] in middle-lines: ThreeWayLineRow {
                         height: (root.editor-font-size + 2) * 1px;
-                        line-no: line.base-line-no;
-                        text: line.base-text;
+                        line-no: line.line-no;
+                        text: line.text;
                         status: line.status;
-                        is-current: line.is-current;
+                        is-current: line.is-current-diff;
                         is-search-match: line.is-search-match;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
-                        editable: root.inline-edit-enabled && line.base-line-no != "";
+                        editable: root.inline-edit-enabled && !line.is-ghost;
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-base-row;
                         focus-at-end: root.focus-base-at-end;
                         text-edited(t) => { root.edit-text-changed(idx, t, 1); }
@@ -390,16 +380,16 @@ export component DiffView3Way inherits Rectangle {
                 border-width: 1px;
                 ListView {
                     viewport-y: left-list.viewport-y;
-                    for line[idx] in lines: ThreeWayLineRow {
+                    for line[idx] in right-lines: ThreeWayLineRow {
                         height: (root.editor-font-size + 2) * 1px;
-                        line-no: line.right-line-no;
-                        text: line.right-text;
+                        line-no: line.line-no;
+                        text: line.text;
                         status: line.status;
-                        is-current: line.is-current;
+                        is-current: line.is-current-diff;
                         is-search-match: line.is-search-match;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
-                        editable: root.inline-edit-enabled && line.right-line-no != "";
+                        editable: root.inline-edit-enabled && !line.is-ghost;
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-right-row;
                         focus-at-end: root.focus-right-at-end;
                         text-edited(t) => { root.edit-text-changed(idx, t, 2); }
@@ -414,8 +404,8 @@ export component DiffView3Way inherits Rectangle {
             }
 
             // Location pane (minimap)
-            if root.lines.length > 0 && root.show-location-pane : ThreeWayLocationPane {
-                lines: root.lines;
+            if root.left-lines.length > 0 && root.show-location-pane : ThreeWayLocationPane {
+                lines: root.left-lines;
                 current-conflict-index: root.current-conflict-index;
             }
         }

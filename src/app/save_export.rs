@@ -1,33 +1,5 @@
 use super::*;
 
-pub fn rebuild_left_from_data(data: &[DiffLineData]) -> String {
-    let mut lines = Vec::new();
-    for row in data {
-        if row.status == STATUS_ADDED {
-            continue;
-        }
-        lines.push(row.left_text.to_string());
-    }
-    if lines.is_empty() {
-        return String::new();
-    }
-    lines.join("\n") + "\n"
-}
-
-pub fn rebuild_right_from_data(data: &[DiffLineData]) -> String {
-    let mut lines = Vec::new();
-    for row in data {
-        if row.status == STATUS_REMOVED {
-            continue;
-        }
-        lines.push(row.right_text.to_string());
-    }
-    if lines.is_empty() {
-        return String::new();
-    }
-    lines.join("\n") + "\n"
-}
-
 /// Save all tabs with unsaved changes.
 /// Tabs with file paths are auto-saved. Tabs without paths prompt for a filename via dialog.
 /// Sync VecModel, auto-save tabs with paths, and return a queue of
@@ -36,43 +8,6 @@ pub fn collect_pending_saves(
     window: &MainWindow,
     state: &mut AppState,
 ) -> Vec<(usize, i32, String, String)> {
-    // Sync current tab's live model data into tab state first
-    let current_view_mode = state.current_tab().view_mode;
-    if current_view_mode == ViewMode::FileDiff {
-        let model = window.get_diff_lines();
-        if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-            let tab = state.current_tab_mut();
-            tab.diff_line_data.clear();
-            for i in 0..vec_model.row_count() {
-                if let Some(row) = vec_model.row_data(i) {
-                    tab.diff_line_data.push(row);
-                }
-            }
-        }
-    } else if current_view_mode == ViewMode::ThreeWayText {
-        // Rebuild internal arrays from VecModel (authoritative source) to avoid desync
-        let model = window.get_three_way_lines();
-        if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-            let tab = state.current_tab_mut();
-            tab.left_lines = Vec::new();
-            tab.base_lines = Vec::new();
-            tab.right_lines = Vec::new();
-            for i in 0..vec_model.row_count() {
-                if let Some(row) = vec_model.row_data(i) {
-                    if !row.left_line_no.is_empty() {
-                        tab.left_lines.push(row.left_text.to_string());
-                    }
-                    if !row.base_line_no.is_empty() {
-                        tab.base_lines.push(row.base_text.to_string());
-                    }
-                    if !row.right_line_no.is_empty() {
-                        tab.right_lines.push(row.right_text.to_string());
-                    }
-                }
-            }
-        }
-    }
-
     let mut queue = Vec::new();
     let n = state.tabs.len();
     for i in 0..n {
@@ -81,10 +16,22 @@ pub fn collect_pending_saves(
         }
 
         if state.tabs[i].view_mode == ViewMode::ThreeWayText {
-            // 3-way tab: save left, base, right
-            let left_text = state.tabs[i].left_lines.join("\n") + "\n";
-            let base_text = state.tabs[i].base_lines.join("\n") + "\n";
-            let right_text = state.tabs[i].right_lines.join("\n") + "\n";
+            // 3-way tab: save left, base, right — derive from PaneBuffers
+            let left_text = state.tabs[i]
+                .left_buffer
+                .as_ref()
+                .map(|b| extract_real_lines(b))
+                .unwrap_or_else(|| "\n".to_string());
+            let base_text = state.tabs[i]
+                .middle_buffer
+                .as_ref()
+                .map(|b| extract_real_lines(b))
+                .unwrap_or_else(|| "\n".to_string());
+            let right_text = state.tabs[i]
+                .right_buffer
+                .as_ref()
+                .map(|b| extract_real_lines(b))
+                .unwrap_or_else(|| "\n".to_string());
             let left_enc = state.tabs[i].left_encoding.clone();
             let right_enc = state.tabs[i].right_encoding.clone();
             let base_enc = "UTF-8".to_string();
@@ -124,9 +71,13 @@ pub fn collect_pending_saves(
                 state.tabs[i].has_unsaved_changes = false;
             }
         } else {
-            // 2-way tab
+            // 2-way tab: extract text from PaneBuffers (authoritative source)
             let left_enc = state.tabs[i].left_encoding.clone();
-            let left_text = rebuild_left_from_data(&state.tabs[i].diff_line_data);
+            let left_text = state.tabs[i]
+                .left_buffer
+                .as_ref()
+                .map(|b| extract_real_lines(b))
+                .unwrap_or_else(|| "\n".to_string());
             save_or_queue(
                 window,
                 &mut queue,
@@ -138,7 +89,11 @@ pub fn collect_pending_saves(
             );
 
             let right_enc = state.tabs[i].right_encoding.clone();
-            let right_text = rebuild_right_from_data(&state.tabs[i].diff_line_data);
+            let right_text = state.tabs[i]
+                .right_buffer
+                .as_ref()
+                .map(|b| extract_real_lines(b))
+                .unwrap_or_else(|| "\n".to_string());
             save_or_queue(
                 window,
                 &mut queue,
@@ -184,9 +139,17 @@ fn save_or_queue(
 pub fn export_html_report(window: &MainWindow, state: &AppState) {
     let tab = state.current_tab();
 
-    // Rebuild DiffResult from current state
-    let left_text = tab.left_lines.join("\n") + "\n";
-    let right_text = tab.right_lines.join("\n") + "\n";
+    // Rebuild DiffResult from PaneBuffers (authoritative source)
+    let left_text = tab
+        .left_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
+    let right_text = tab
+        .right_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
     let result = compute_diff_with_options(&left_text, &right_text, &tab.diff_options);
 
     let left_title = tab
@@ -226,8 +189,16 @@ pub fn export_html_report(window: &MainWindow, state: &AppState) {
 pub fn export_xlsx_report(window: &MainWindow, state: &AppState) {
     let tab = state.current_tab();
 
-    let left_text = tab.left_lines.join("\n") + "\n";
-    let right_text = tab.right_lines.join("\n") + "\n";
+    let left_text = tab
+        .left_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
+    let right_text = tab
+        .right_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
     let result = compute_diff_with_options(&left_text, &right_text, &tab.diff_options);
 
     let left_title = tab
@@ -354,8 +325,16 @@ pub fn export_all_comments(window: &MainWindow, state: &AppState, use_json: bool
 
 pub fn print_diff(window: &MainWindow, state: &AppState) {
     let tab = state.current_tab();
-    let left_text = tab.left_lines.join("\n") + "\n";
-    let right_text = tab.right_lines.join("\n") + "\n";
+    let left_text = tab
+        .left_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
+    let right_text = tab
+        .right_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
     let result = compute_diff_with_options(&left_text, &right_text, &tab.diff_options);
 
     let left_title = tab
@@ -395,8 +374,16 @@ pub fn print_diff(window: &MainWindow, state: &AppState) {
 pub fn export_patch(window: &MainWindow, state: &AppState) {
     let tab = state.current_tab();
 
-    let left_text = tab.left_lines.join("\n") + "\n";
-    let right_text = tab.right_lines.join("\n") + "\n";
+    let left_text = tab
+        .left_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
+    let right_text = tab
+        .right_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
     let result = compute_diff_with_options(&left_text, &right_text, &tab.diff_options);
 
     let left_title = tab
@@ -434,9 +421,16 @@ pub fn export_patch(window: &MainWindow, state: &AppState) {
 
 pub fn export_csv_report(window: &MainWindow, state: &AppState, use_tab: bool) {
     let tab = state.current_tab();
-    let left_text = tab.left_lines.join("\n") + if tab.left_lines.is_empty() { "" } else { "\n" };
-    let right_text =
-        tab.right_lines.join("\n") + if tab.right_lines.is_empty() { "" } else { "\n" };
+    let left_text = tab
+        .left_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
+    let right_text = tab
+        .right_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
     let result = compute_diff_with_options(&left_text, &right_text, &tab.diff_options);
     let sep = if use_tab { '\t' } else { ',' };
     let ext = if use_tab { "tsv" } else { "csv" };
@@ -500,21 +494,21 @@ pub fn export_folder_html_report(window: &MainWindow, state: &AppState) {
 }
 
 pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
-    let_diff_vec_model!(model, vec_model, window);
-
     let tab = state.current_tab();
     let (text, path, encoding) = if save_left {
-        (
-            rebuild_left(vec_model),
-            tab.left_path.clone(),
-            tab.left_encoding.clone(),
-        )
+        let text = tab
+            .left_buffer
+            .as_ref()
+            .map(|b| extract_real_lines(b))
+            .unwrap_or_else(|| "\n".to_string());
+        (text, tab.left_path.clone(), tab.left_encoding.clone())
     } else {
-        (
-            rebuild_right(vec_model),
-            tab.right_path.clone(),
-            tab.right_encoding.clone(),
-        )
+        let text = tab
+            .right_buffer
+            .as_ref()
+            .map(|b| extract_real_lines(b))
+            .unwrap_or_else(|| "\n".to_string());
+        (text, tab.right_path.clone(), tab.right_encoding.clone())
     };
 
     let path = if let Some(p) = path {
@@ -555,9 +549,16 @@ pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
 
 /// Save a pane of 3-way diff.  pane: 0=left, 1=base(middle), 2=right.
 pub fn save_three_way_pane(window: &MainWindow, state: &mut AppState, pane: i32) {
-    let_three_way_vec_model!(model, vec_model, window);
-
-    let text = rebuild_three_way_text(vec_model, pane);
+    let tab = state.current_tab();
+    let buf = match pane {
+        0 => &tab.left_buffer,
+        1 => &tab.middle_buffer,
+        _ => &tab.right_buffer,
+    };
+    let text = buf
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
     let tab = state.current_tab();
     let (path, encoding) = match pane {
         0 => (tab.left_path.clone(), tab.left_encoding.clone()),

@@ -82,7 +82,8 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
                 "different"
             }
         );
-        window.set_diff_lines(ModelRc::new(VecModel::from(Vec::<DiffLineData>::new())));
+        window.set_left_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
+        window.set_right_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
         window.set_diff_count(0);
         window.set_current_diff_index(-1);
         window.set_status_text(SharedString::from(msg));
@@ -198,8 +199,6 @@ pub fn recompute_diff_from_text_with_highlights(
             *slot = Some(PendingDiffResult {
                 tab_index,
                 diff_result,
-                left_text: left_text_owned,
-                right_text: right_text_owned,
                 left_highlights: left_highlights_owned,
                 right_highlights: right_highlights_owned,
                 tab_width,
@@ -214,7 +213,8 @@ pub fn recompute_diff_from_text_with_highlights(
             "Computing diff... ({} lines)",
             line_count
         )));
-        window.set_diff_lines(ModelRc::new(VecModel::from(Vec::<DiffLineData>::new())));
+        window.set_left_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
+        window.set_right_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
         window.set_diff_count(0);
         window.set_current_diff_index(-1);
         return;
@@ -226,8 +226,6 @@ pub fn recompute_diff_from_text_with_highlights(
         window,
         state,
         result,
-        left_text,
-        right_text,
         left_highlights,
         right_highlights,
         tab_width,
@@ -239,8 +237,6 @@ pub(super) fn apply_diff_result(
     window: &MainWindow,
     state: &mut AppState,
     result: DiffResult,
-    left_text: &str,
-    right_text: &str,
     left_highlights: &[i32],
     right_highlights: &[i32],
     tab_width: usize,
@@ -249,23 +245,25 @@ pub(super) fn apply_diff_result(
     tab.is_computing = false;
     tab.editing_dirty = false;
 
-    tab.left_lines = left_text.lines().map(String::from).collect();
-    tab.right_lines = right_text.lines().map(String::from).collect();
     let current_diff = if result.diff_positions.is_empty() {
         -1
     } else {
         0
     };
 
-    let diff_line_data =
-        build_diff_line_data(&result, left_highlights, right_highlights, tab_width);
     let stats = compute_diff_stats(&result);
+
+    // Build per-pane independent buffers (sole source of truth)
+    let (left_buf, right_buf) =
+        build_pane_buffers_2way(&result, left_highlights, right_highlights, tab_width);
+    window.set_left_lines(ModelRc::from(left_buf.model.clone()));
+    window.set_right_lines(ModelRc::from(right_buf.model.clone()));
+    tab.left_buffer = Some(left_buf);
+    tab.right_buffer = Some(right_buf);
+    tab.middle_buffer = None;
 
     tab.diff_positions = result.diff_positions;
     tab.current_diff = current_diff;
-    let model = ModelRc::new(VecModel::from(diff_line_data.clone()));
-    tab.diff_line_data = diff_line_data;
-    window.set_diff_lines(model);
     window.set_diff_count(result.diff_count as i32);
     window.set_current_diff_index(tab.current_diff);
     window.set_left_path(SharedString::from(
@@ -295,77 +293,8 @@ pub(super) fn apply_diff_result(
     window.set_status_text(SharedString::from(status));
 
     // Update detail pane
-    let model = window.get_diff_lines();
     let tab = state.current_tab();
-    update_detail_pane(window, &model, tab.current_diff, tab);
-}
-
-/// Build `DiffLineData` vec from a `DiffResult`, applying highlights and tab expansion.
-fn build_diff_line_data(
-    result: &DiffResult,
-    left_highlights: &[i32],
-    right_highlights: &[i32],
-    tab_width: usize,
-) -> Vec<DiffLineData> {
-    // Build per-line diff block index: all lines in the same contiguous block share one index
-    let mut line_block_idx: Vec<i32> = vec![-1; result.lines.len()];
-    let mut current_block = -1i32;
-    let mut was_in_diff = false;
-    for (i, line) in result.lines.iter().enumerate() {
-        if line.status != LineStatus::Equal {
-            if !was_in_diff {
-                current_block += 1;
-                was_in_diff = true;
-            }
-            line_block_idx[i] = current_block;
-        } else {
-            was_in_diff = false;
-        }
-    }
-
-    result
-        .lines
-        .iter()
-        .enumerate()
-        .map(|(i, line)| {
-            let status: i32 = line.status.as_i32();
-            let diff_index = line_block_idx[i];
-
-            let left_hl = line
-                .left_line_no
-                .and_then(|n| left_highlights.get((n - 1) as usize).copied())
-                .unwrap_or(-1);
-            let right_hl = line
-                .right_line_no
-                .and_then(|n| right_highlights.get((n - 1) as usize).copied())
-                .unwrap_or(-1);
-
-            let left_word_diff = build_word_diff_string(&line.left_word_segments);
-            let right_word_diff = build_word_diff_string(&line.right_word_segments);
-
-            DiffLineData {
-                left_line_no: line
-                    .left_line_no
-                    .map(|n| SharedString::from(n.to_string()))
-                    .unwrap_or_default(),
-                right_line_no: line
-                    .right_line_no
-                    .map(|n| SharedString::from(n.to_string()))
-                    .unwrap_or_default(),
-                left_text: SharedString::from(expand_tabs(&line.left_text, tab_width)),
-                right_text: SharedString::from(expand_tabs(&line.right_text, tab_width)),
-                status,
-                is_current_diff: false,
-                diff_index,
-                left_highlight: left_hl,
-                right_highlight: right_hl,
-                left_word_diff: SharedString::from(left_word_diff),
-                right_word_diff: SharedString::from(right_word_diff),
-                is_search_match: false,
-                is_selected: false,
-            }
-        })
-        .collect()
+    update_detail_pane(window, tab.current_diff, tab);
 }
 
 /// Compute diff statistics string (e.g. "+3 -1 ~2") from a DiffResult.
@@ -414,111 +343,10 @@ pub fn apply_pending_diff_if_ready(window: &MainWindow, state: &mut AppState) {
         window,
         state,
         p.diff_result,
-        &p.left_text,
-        &p.right_text,
         &p.left_highlights,
         &p.right_highlights,
         p.tab_width,
     );
-}
-
-pub(super) fn rebuild_left(vec_model: &VecModel<DiffLineData>) -> String {
-    let data: Vec<DiffLineData> = (0..vec_model.row_count())
-        .filter_map(|i| vec_model.row_data(i))
-        .collect();
-    let text = rebuild_left_from_data(&data);
-    if text.is_empty() {
-        "\n".to_string()
-    } else {
-        text
-    }
-}
-
-pub(super) fn rebuild_right(vec_model: &VecModel<DiffLineData>) -> String {
-    let data: Vec<DiffLineData> = (0..vec_model.row_count())
-        .filter_map(|i| vec_model.row_data(i))
-        .collect();
-    let text = rebuild_right_from_data(&data);
-    if text.is_empty() {
-        "\n".to_string()
-    } else {
-        text
-    }
-}
-
-/// Rebuild text for a specific pane (0=left, 1=base, 2=right) from the 3-way VecModel.
-/// Skips ghost lines (empty line_no) since they don't represent real content.
-pub(super) fn rebuild_three_way_text(vec_model: &VecModel<ThreeWayLineData>, pane: i32) -> String {
-    let mut lines = Vec::new();
-    for i in 0..vec_model.row_count() {
-        let Some(row) = vec_model.row_data(i) else {
-            continue;
-        };
-        let (line_no, text) = match pane {
-            0 => (&row.left_line_no, &row.left_text),
-            1 => (&row.base_line_no, &row.base_text),
-            _ => (&row.right_line_no, &row.right_text),
-        };
-        // Only include lines that have a real line number (skip ghost lines)
-        if !line_no.is_empty() {
-            lines.push(text.to_string());
-        }
-    }
-    if lines.is_empty() {
-        String::new()
-    } else {
-        lines.join("\n") + "\n"
-    }
-}
-
-pub(super) fn rebuild_right_after_copy_from_left(
-    vec_model: &VecModel<DiffLineData>,
-    target_diff_index: i32,
-) -> String {
-    let mut lines = Vec::new();
-    for i in 0..vec_model.row_count() {
-        let Some(row) = vec_model.row_data(i) else {
-            continue;
-        };
-        if row.diff_index == target_diff_index {
-            match row.status {
-                STATUS_REMOVED => lines.push(row.left_text.to_string()),
-                STATUS_ADDED => continue,
-                STATUS_MODIFIED => lines.push(row.left_text.to_string()),
-                _ => lines.push(row.right_text.to_string()),
-            }
-        } else if row.status == STATUS_REMOVED {
-            continue;
-        } else {
-            lines.push(row.right_text.to_string());
-        }
-    }
-    lines.join("\n") + "\n"
-}
-
-pub(super) fn rebuild_left_after_copy_from_right(
-    vec_model: &VecModel<DiffLineData>,
-    target_diff_index: i32,
-) -> String {
-    let mut lines = Vec::new();
-    for i in 0..vec_model.row_count() {
-        let Some(row) = vec_model.row_data(i) else {
-            continue;
-        };
-        if row.diff_index == target_diff_index {
-            match row.status {
-                STATUS_ADDED => lines.push(row.right_text.to_string()),
-                STATUS_REMOVED => continue,
-                STATUS_MODIFIED => lines.push(row.right_text.to_string()),
-                _ => lines.push(row.left_text.to_string()),
-            }
-        } else if row.status == STATUS_ADDED {
-            continue;
-        } else {
-            lines.push(row.left_text.to_string());
-        }
-    }
-    lines.join("\n") + "\n"
 }
 
 pub fn start_compare(
@@ -598,14 +426,19 @@ pub fn rescan(window: &MainWindow, state: &mut AppState) {
         run_diff(window, state);
         window.set_status_text(SharedString::from("Files rescanned"));
     } else if tab.view_mode == ViewMode::FileDiff {
-        // Editing in progress, unsaved changes, or blank document: rebuild from VecModel (authoritative source)
-        let model = window.get_diff_lines();
-        if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-            let left_text = rebuild_left(vec_model);
-            let right_text = rebuild_right(vec_model);
-            recompute_diff_from_text(window, state, &left_text, &right_text);
-            window.set_status_text(SharedString::from("Compared"));
-        }
+        // Editing in progress, unsaved changes, or blank document: rebuild from PaneBuffers (authoritative source)
+        let left_text = tab
+            .left_buffer
+            .as_ref()
+            .map(|b| extract_real_lines(b))
+            .unwrap_or_else(|| "\n".to_string());
+        let right_text = tab
+            .right_buffer
+            .as_ref()
+            .map(|b| extract_real_lines(b))
+            .unwrap_or_else(|| "\n".to_string());
+        recompute_diff_from_text(window, state, &left_text, &right_text);
+        window.set_status_text(SharedString::from("Compared"));
     } else if tab.view_mode == ViewMode::ThreeWayText
         && tab.base_path.is_some()
         && tab.left_path.is_some()
@@ -616,14 +449,23 @@ pub fn rescan(window: &MainWindow, state: &mut AppState) {
         run_three_way_diff(window, state);
         window.set_status_text(SharedString::from("Files rescanned"));
     } else if tab.view_mode == ViewMode::ThreeWayText {
-        // 3-way editing in progress or blank: rebuild from VecModel (authoritative source)
-        let model = window.get_three_way_lines();
-        if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-            let left_text = rebuild_three_way_text(vec_model, 0);
-            let base_text = rebuild_three_way_text(vec_model, 1);
-            let right_text = rebuild_three_way_text(vec_model, 2);
-            recompute_three_way_from_text(window, state, &base_text, &left_text, &right_text);
-        }
+        // 3-way editing in progress or blank: rebuild from PaneBuffers (authoritative source)
+        let left_text = tab
+            .left_buffer
+            .as_ref()
+            .map(|b| extract_real_lines(b))
+            .unwrap_or_else(|| "\n".to_string());
+        let base_text = tab
+            .middle_buffer
+            .as_ref()
+            .map(|b| extract_real_lines(b))
+            .unwrap_or_else(|| "\n".to_string());
+        let right_text = tab
+            .right_buffer
+            .as_ref()
+            .map(|b| extract_real_lines(b))
+            .unwrap_or_else(|| "\n".to_string());
+        recompute_three_way_from_text(window, state, &base_text, &left_text, &right_text);
         window.set_status_text(SharedString::from("Compared"));
     } else if tab.view_mode == ViewMode::FolderCompare {
         run_folder_compare(window, state);
@@ -749,8 +591,12 @@ pub fn compare_clipboard_as_left(window: &MainWindow, state: &mut AppState) {
     window.set_left_eol_type(SharedString::from(""));
 
     let tab = state.current_tab();
-    let right_text = tab.right_lines.join("\n");
-    let right_text = if right_text.is_empty() {
+    let right_text = tab
+        .right_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_default();
+    let right_text = if right_text.trim().is_empty() {
         if let Some(rp) = tab.right_path.clone() {
             match read_file_or_report(window, &rp) {
                 Some(bytes) => {
@@ -767,7 +613,6 @@ pub fn compare_clipboard_as_left(window: &MainWindow, state: &mut AppState) {
     };
 
     recompute_diff_from_text(window, state, &text, &right_text);
-    state.current_tab_mut().left_lines = text.lines().map(String::from).collect();
     state.current_tab_mut().title = "(Clipboard) ↔ right".to_string();
     sync_tab_list(window, state);
 }
@@ -791,8 +636,12 @@ pub fn compare_clipboard_as_right(window: &MainWindow, state: &mut AppState) {
     window.set_right_eol_type(SharedString::from(""));
 
     let tab = state.current_tab();
-    let left_text = tab.left_lines.join("\n");
-    let left_text = if left_text.is_empty() {
+    let left_text = tab
+        .left_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_default();
+    let left_text = if left_text.trim().is_empty() {
         if let Some(lp) = tab.left_path.clone() {
             match read_file_or_report(window, &lp) {
                 Some(bytes) => {
@@ -809,7 +658,6 @@ pub fn compare_clipboard_as_right(window: &MainWindow, state: &mut AppState) {
     };
 
     recompute_diff_from_text(window, state, &left_text, &text);
-    state.current_tab_mut().right_lines = text.lines().map(String::from).collect();
     state.current_tab_mut().title = "left ↔ (Clipboard)".to_string();
     sync_tab_list(window, state);
 }

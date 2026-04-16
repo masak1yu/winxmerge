@@ -1,6 +1,6 @@
 import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit, ScrollView, ListView, Slider } from "std-widgets.slint";
-import { DiffView, DiffLineData, WordSegment } from "widgets/diff-view.slint";
-import { DiffView3Way, ThreeWayLineData } from "widgets/diff-view-3way.slint";
+import { DiffView, DiffLineData, PaneLineData, WordSegment } from "widgets/diff-view.slint";
+import { DiffView3Way } from "widgets/diff-view-3way.slint";
 import { FolderView, FolderItemData } from "widgets/folder-view.slint";
 import { TabBar, TabData } from "widgets/tab-bar.slint";
 import { OpenDialog, RecentEntryData } from "dialogs/open-dialog.slint";
@@ -26,7 +26,7 @@ export struct DetailLineData {
     status: int,  // 1=added, 2=removed, 3=modified, 4=moved
 }
 
-export { DiffLineData, WordSegment, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors, FileEntryData, TableRowData, TableCellData, TableColumnInfo, TableDetailCellData }
+export { DiffLineData, PaneLineData, WordSegment, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThemeColors, FileEntryData, TableRowData, TableCellData, TableColumnInfo, TableDetailCellData }
 
 // Toolbar icon button: fixed 32x32 with image icon + optional overlay text
 component ToolBtn inherits Rectangle {
@@ -158,6 +158,10 @@ export component MainWindow inherits Window {
 
     // File diff properties
     in-out property <[DiffLineData]> diff-lines;
+    // Per-pane independent buffer properties (Phase 0+)
+    in-out property <[PaneLineData]> left-lines;
+    in-out property <[PaneLineData]> right-lines;
+    in-out property <[PaneLineData]> middle-lines;
     in-out property <int> diff-count: 0;
     in-out property <int> current-diff-index: -1;
     in-out property <string> left-path: "";
@@ -352,7 +356,6 @@ export component MainWindow inherits Window {
     in-out property <[RecentEntryData]> recent-entries;
 
     // 3-way merge
-    in-out property <[ThreeWayLineData]> three-way-lines;
     in-out property <int> conflict-count: 0;
     in-out property <int> current-conflict-index: -1;
     in-out property <string> base-path: "";
@@ -1108,6 +1111,8 @@ export component MainWindow inherits Window {
 
         if root.view-mode == 0 : DiffView {
             diff-lines: root.diff-lines;
+            left-lines: root.left-lines;
+            right-lines: root.right-lines;
             current-diff-index: root.current-diff-index;
             scroll-y <=> root.diff-scroll-y;
             edit-focus-row <=> root.diff-edit-focus-row;
@@ -1221,7 +1226,9 @@ export component MainWindow inherits Window {
         }
 
         if root.view-mode == 3 : DiffView3Way {
-            lines: root.three-way-lines;
+            left-lines: root.left-lines;
+            middle-lines: root.middle-lines;
+            right-lines: root.right-lines;
             current-conflict-index: root.current-conflict-index;
             left-title: root.left-path != "" ? root.left-path : "Left";
             base-title: root.base-path != "" ? root.base-path : "Middle";
