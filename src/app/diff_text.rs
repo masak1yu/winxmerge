@@ -107,14 +107,8 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
         .and_then(|m| m.modified().ok());
 
     // Generate title from filenames
-    let left_name = left_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let right_name = right_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let left_name = path_file_name(&left_path);
+    let right_name = path_file_name(&right_path);
     tab.title = format!("{} ↔ {}", left_name, right_name);
 
     // Compute syntax highlights (if enabled)
@@ -263,6 +257,56 @@ pub(super) fn apply_diff_result(
         0
     };
 
+    let diff_line_data =
+        build_diff_line_data(&result, left_highlights, right_highlights, tab_width);
+    let stats = compute_diff_stats(&result);
+
+    tab.diff_positions = result.diff_positions;
+    tab.current_diff = current_diff;
+    let model = ModelRc::new(VecModel::from(diff_line_data.clone()));
+    tab.diff_line_data = diff_line_data;
+    window.set_diff_lines(model);
+    window.set_diff_count(result.diff_count as i32);
+    window.set_current_diff_index(tab.current_diff);
+    window.set_left_path(SharedString::from(
+        tab.left_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default(),
+    ));
+    window.set_right_path(SharedString::from(
+        tab.right_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default(),
+    ));
+
+    let tab = state.current_tab_mut();
+    tab.diff_stats = stats.clone();
+    sync_diff_stats(window, &stats);
+
+    let status = if result.diff_count == 0 {
+        "Files are identical".to_string()
+    } else if tab.current_diff >= 0 {
+        format!("Difference 1 of {} [{}]", result.diff_count, stats)
+    } else {
+        format!("{} differences found [{}]", result.diff_count, stats)
+    };
+    window.set_status_text(SharedString::from(status));
+
+    // Update detail pane
+    let model = window.get_diff_lines();
+    let tab = state.current_tab();
+    update_detail_pane(window, &model, tab.current_diff, tab);
+}
+
+/// Build `DiffLineData` vec from a `DiffResult`, applying highlights and tab expansion.
+fn build_diff_line_data(
+    result: &DiffResult,
+    left_highlights: &[i32],
+    right_highlights: &[i32],
+    tab_width: usize,
+) -> Vec<DiffLineData> {
     // Build per-line diff block index: all lines in the same contiguous block share one index
     let mut line_block_idx: Vec<i32> = vec![-1; result.lines.len()];
     let mut current_block = -1i32;
@@ -279,21 +323,14 @@ pub(super) fn apply_diff_result(
         }
     }
 
-    let diff_line_data: Vec<DiffLineData> = result
+    result
         .lines
         .iter()
         .enumerate()
         .map(|(i, line)| {
-            let status: i32 = match line.status {
-                LineStatus::Equal => 0,
-                LineStatus::Added => 1,
-                LineStatus::Removed => 2,
-                LineStatus::Modified => 3,
-                LineStatus::Moved => 4,
-            };
+            let status: i32 = line.status.as_i32();
             let diff_index = line_block_idx[i];
 
-            // Map line numbers to highlight indices
             let left_hl = line
                 .left_line_no
                 .and_then(|n| left_highlights.get((n - 1) as usize).copied())
@@ -303,10 +340,6 @@ pub(super) fn apply_diff_result(
                 .and_then(|n| right_highlights.get((n - 1) as usize).copied())
                 .unwrap_or(-1);
 
-            // Build word-diff segment strings for the detail pane.
-            // Format: \x01-separated list of ALL segments (changed and unchanged),
-            // where even indices (0,2,4,...) = unchanged, odd indices (1,3,5,...) = changed.
-            // If the first segment is changed, an empty unchanged prefix is prepended.
             let left_word_diff = build_word_diff_string(&line.left_word_segments);
             let right_word_diff = build_word_diff_string(&line.right_word_segments);
 
@@ -332,29 +365,11 @@ pub(super) fn apply_diff_result(
                 is_selected: false,
             }
         })
-        .collect();
+        .collect()
+}
 
-    tab.diff_positions = result.diff_positions;
-    tab.current_diff = current_diff;
-    let model = ModelRc::new(VecModel::from(diff_line_data.clone()));
-    tab.diff_line_data = diff_line_data;
-    window.set_diff_lines(model);
-    window.set_diff_count(result.diff_count as i32);
-    window.set_current_diff_index(tab.current_diff);
-    window.set_left_path(SharedString::from(
-        tab.left_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default(),
-    ));
-    window.set_right_path(SharedString::from(
-        tab.right_path
-            .as_ref()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default(),
-    ));
-
-    // Compute diff statistics once and cache them
+/// Compute diff statistics string (e.g. "+3 -1 ~2") from a DiffResult.
+fn compute_diff_stats(result: &DiffResult) -> String {
     let mut added = 0u32;
     let mut removed = 0u32;
     let mut modified = 0u32;
@@ -366,24 +381,7 @@ pub(super) fn apply_diff_result(
             _ => {}
         }
     }
-    let tab = state.current_tab_mut();
-    tab.diff_stats = format!("+{} -{} ~{}", added, removed, modified);
-    let stats = tab.diff_stats.clone();
-    sync_diff_stats(window, &stats);
-
-    let status = if result.diff_count == 0 {
-        "Files are identical".to_string()
-    } else if tab.current_diff >= 0 {
-        format!("Difference 1 of {} [{}]", result.diff_count, stats)
-    } else {
-        format!("{} differences found [{}]", result.diff_count, stats)
-    };
-    window.set_status_text(SharedString::from(status));
-
-    // Update detail pane
-    let model = window.get_diff_lines();
-    let tab = state.current_tab();
-    update_detail_pane(window, &model, tab.current_diff, tab);
+    format!("+{} -{} ~{}", added, removed, modified)
 }
 
 /// Poll the shared result slot and apply if a background diff has finished.

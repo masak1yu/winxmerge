@@ -145,11 +145,7 @@ pub fn replace_text(window: &MainWindow, state: &mut AppState, search: &str, rep
     let search_lower = search.to_lowercase();
 
     if tab.view_mode == ViewMode::ThreeWayText {
-        let model = window.get_three_way_lines();
-        let vec_model = match model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-            Some(m) => m,
-            None => return,
-        };
+        let_three_way_vec_model!(model, vec_model, window);
         let match_idx = tab.search_matches[tab.current_search_match as usize];
         let Some(mut row) = vec_model.row_data(match_idx) else {
             return;
@@ -210,11 +206,7 @@ pub fn replace_all_text(
     let matches = tab.search_matches.clone();
 
     if tab.view_mode == ViewMode::ThreeWayText {
-        let model = window.get_three_way_lines();
-        let vec_model = match model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-            Some(m) => m,
-            None => return,
-        };
+        let_three_way_vec_model!(model, vec_model, window);
         for &match_idx in &matches {
             if let Some(mut row) = vec_model.row_data(match_idx) {
                 row.left_text = SharedString::from(case_insensitive_replace(

@@ -90,7 +90,45 @@ pub(super) fn restore_tab(window: &MainWindow, state: &AppState) {
     window.set_view_mode(tab.view_mode.as_i32());
     window.set_active_tab_index(state.active_tab as i32);
 
-    // Restore diff data
+    restore_tab_common(window, tab);
+    restore_tab_diff_options(window, tab);
+
+    // Update detail pane
+    let model = window.get_diff_lines();
+    update_detail_pane(window, &model, tab.current_diff, tab);
+
+    // Restore folder data
+    let folder_model = ModelRc::new(VecModel::from(tab.folder_item_data.clone()));
+    window.set_folder_items(folder_model);
+
+    match tab.view_mode {
+        ViewMode::FolderCompare => {
+            window.set_folder_summary_text(SharedString::from(&tab.folder_summary));
+        }
+        ViewMode::ImageCompare => restore_tab_image(window, tab),
+        ViewMode::Blank => {
+            window.set_status_text(SharedString::from(""));
+        }
+        _ => {}
+    }
+
+    if tab.view_mode.is_table_mode() {
+        restore_tab_table(window, tab);
+    }
+
+    // Restore diff comment for current diff block
+    let comment = tab
+        .diff_comments
+        .get(&(tab.current_diff.max(0) as usize))
+        .cloned()
+        .unwrap_or_default();
+    window.set_current_diff_comment(SharedString::from(comment));
+
+    // Restore status filter
+    window.set_diff_status_filter(tab.diff_status_filter);
+}
+
+fn restore_tab_common(window: &MainWindow, tab: &TabState) {
     let model = ModelRc::new(VecModel::from(tab.diff_line_data.clone()));
     window.set_diff_lines(model);
     window.set_diff_count(tab.diff_positions.len() as i32);
@@ -99,29 +137,6 @@ pub(super) fn restore_tab(window: &MainWindow, state: &AppState) {
     if tab.editing_dirty {
         window.set_status_text(SharedString::from("Editing — press F5 to compare"));
     }
-    window.set_ignore_whitespace(tab.diff_options.ignore_whitespace);
-    window.set_ignore_case(tab.diff_options.ignore_case);
-
-    // Restore per-tab diff options
-    window.set_opt_ignore_blank_lines(tab.diff_options.ignore_blank_lines);
-    window.set_opt_ignore_eol(tab.diff_options.ignore_eol);
-    window.set_opt_detect_moved_lines(tab.diff_options.detect_moved_lines);
-    let filters_str = tab.diff_options.line_filters.join("|");
-    window.set_opt_line_filters(SharedString::from(filters_str));
-    let sub_pats: Vec<&str> = tab
-        .diff_options
-        .substitution_filters
-        .iter()
-        .map(|(p, _)| p.as_str())
-        .collect();
-    let sub_reps: Vec<&str> = tab
-        .diff_options
-        .substitution_filters
-        .iter()
-        .map(|(_, r)| r.as_str())
-        .collect();
-    window.set_opt_substitution_patterns(SharedString::from(sub_pats.join("|")));
-    window.set_opt_substitution_replacements(SharedString::from(sub_reps.join("|")));
 
     sync_diff_stats(window, &tab.diff_stats.clone());
     window.set_left_encoding_display(SharedString::from(&tab.left_encoding));
@@ -141,81 +156,77 @@ pub(super) fn restore_tab(window: &MainWindow, state: &AppState) {
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default(),
     ));
+}
 
-    // Update detail pane
-    let model = window.get_diff_lines();
-    update_detail_pane(window, &model, tab.current_diff, tab);
+fn restore_tab_diff_options(window: &MainWindow, tab: &TabState) {
+    window.set_ignore_whitespace(tab.diff_options.ignore_whitespace);
+    window.set_ignore_case(tab.diff_options.ignore_case);
+    window.set_opt_ignore_blank_lines(tab.diff_options.ignore_blank_lines);
+    window.set_opt_ignore_eol(tab.diff_options.ignore_eol);
+    window.set_opt_detect_moved_lines(tab.diff_options.detect_moved_lines);
+    let filters_str = tab.diff_options.line_filters.join("|");
+    window.set_opt_line_filters(SharedString::from(filters_str));
+    let sub_pats: Vec<&str> = tab
+        .diff_options
+        .substitution_filters
+        .iter()
+        .map(|(p, _)| p.as_str())
+        .collect();
+    let sub_reps: Vec<&str> = tab
+        .diff_options
+        .substitution_filters
+        .iter()
+        .map(|(_, r)| r.as_str())
+        .collect();
+    window.set_opt_substitution_patterns(SharedString::from(sub_pats.join("|")));
+    window.set_opt_substitution_replacements(SharedString::from(sub_reps.join("|")));
+}
 
-    // Restore folder data
-    let folder_model = ModelRc::new(VecModel::from(tab.folder_item_data.clone()));
-    window.set_folder_items(folder_model);
-
-    if tab.view_mode == ViewMode::FolderCompare {
-        window.set_folder_summary_text(SharedString::from(&tab.folder_summary));
+fn restore_tab_image(window: &MainWindow, tab: &TabState) {
+    if let Some(img) = tab.left_image.clone() {
+        window.set_left_image(img);
     }
-
-    if tab.view_mode == ViewMode::ImageCompare {
-        if let Some(img) = tab.left_image.clone() {
-            window.set_left_image(img);
-        }
-        if let Some(img) = tab.right_image.clone() {
-            window.set_right_image(img);
-        }
-        if let Some(img) = tab.diff_image.clone() {
-            window.set_diff_image(img);
-        }
-        window.set_image_stats(SharedString::from(&tab.image_stats));
-        window.set_image_left_width(tab.image_left_w);
-        window.set_image_left_height(tab.image_left_h);
-        window.set_image_right_width(tab.image_right_w);
-        window.set_image_right_height(tab.image_right_h);
+    if let Some(img) = tab.right_image.clone() {
+        window.set_right_image(img);
     }
-
-    if tab.view_mode.is_table_mode() {
-        window.set_table_rows(ModelRc::new(VecModel::from(tab.table_rows.clone())));
-        window.set_table_columns(ModelRc::new(VecModel::from(tab.table_columns.clone())));
-        window.set_table_content_width_px(tab.table_content_width_px);
-        window.set_diff_count(tab.diff_positions.len() as i32);
-        window.set_current_diff_index(tab.current_diff);
-        // Restore highlight row
-        let highlight_row = if tab.current_diff >= 0 {
-            tab.diff_positions
-                .get(tab.current_diff as usize)
-                .map(|&p| p as i32)
-                .unwrap_or(-1)
-        } else {
-            -1
-        };
-        window.set_table_current_highlight_row(highlight_row);
-
-        if tab.view_mode == ViewMode::ExcelCompare {
-            let sheet_model: ModelRc<SharedString> = ModelRc::new(VecModel::from(
-                std::iter::once(SharedString::from(""))
-                    .chain(
-                        tab.excel_sheet_names
-                            .iter()
-                            .map(|s| SharedString::from(s.as_str())),
-                    )
-                    .collect::<Vec<_>>(),
-            ));
-            window.set_excel_sheet_names(sheet_model);
-        }
+    if let Some(img) = tab.diff_image.clone() {
+        window.set_diff_image(img);
     }
+    window.set_image_stats(SharedString::from(&tab.image_stats));
+    window.set_image_left_width(tab.image_left_w);
+    window.set_image_left_height(tab.image_left_h);
+    window.set_image_right_width(tab.image_right_w);
+    window.set_image_right_height(tab.image_right_h);
+}
 
-    if tab.view_mode == ViewMode::Blank {
-        window.set_status_text(SharedString::from(""));
+fn restore_tab_table(window: &MainWindow, tab: &TabState) {
+    window.set_table_rows(ModelRc::new(VecModel::from(tab.table_rows.clone())));
+    window.set_table_columns(ModelRc::new(VecModel::from(tab.table_columns.clone())));
+    window.set_table_content_width_px(tab.table_content_width_px);
+    window.set_diff_count(tab.diff_positions.len() as i32);
+    window.set_current_diff_index(tab.current_diff);
+    let highlight_row = if tab.current_diff >= 0 {
+        tab.diff_positions
+            .get(tab.current_diff as usize)
+            .map(|&p| p as i32)
+            .unwrap_or(-1)
+    } else {
+        -1
+    };
+    window.set_table_current_highlight_row(highlight_row);
+
+    if tab.view_mode == ViewMode::ExcelCompare {
+        let sheet_model: ModelRc<SharedString> = ModelRc::new(VecModel::from(
+            std::iter::once(SharedString::from(""))
+                .chain(
+                    tab.excel_sheet_names
+                        .iter()
+                        .map(|s| SharedString::from(s.as_str())),
+                )
+                .collect::<Vec<_>>(),
+        ));
+        window.set_excel_sheet_names(sheet_model);
     }
-
-    // Restore diff comment for current diff block
-    let comment = tab
-        .diff_comments
-        .get(&(tab.current_diff.max(0) as usize))
-        .cloned()
-        .unwrap_or_default();
-    window.set_current_diff_comment(SharedString::from(comment));
-
-    // Restore status filter
-    window.set_diff_status_filter(tab.diff_status_filter);
 }
 
 pub fn sync_tab_list(window: &MainWindow, state: &AppState) {

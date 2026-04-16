@@ -22,14 +22,8 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
     let items = compare_folders_with_options(&left_folder, &right_folder, &options);
     let (folder_item_data, summary) = build_folder_item_data(&items);
 
-    let left_name = left_folder
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let right_name = right_folder
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let left_name = path_file_name(&left_folder);
+    let right_name = path_file_name(&right_folder);
 
     let tab = state.current_tab_mut();
     tab.folder_items = items;
@@ -56,12 +50,7 @@ pub(super) fn build_folder_item_data(
     let folder_item_data: Vec<FolderItemData> = items
         .iter()
         .map(|item| {
-            let status: i32 = match item.status {
-                FileCompareStatus::Identical => 0,
-                FileCompareStatus::Different => 1,
-                FileCompareStatus::LeftOnly => 2,
-                FileCompareStatus::RightOnly => 3,
-            };
+            let status: i32 = item.status.as_i32();
             let depth = item
                 .relative_path
                 .chars()
@@ -289,14 +278,8 @@ pub(super) fn run_zip_compare(
     let items = compare_zip_archives(left_bytes, right_bytes, &left_str, &right_str);
     let (folder_item_data, summary) = build_folder_item_data(&items);
 
-    let left_name = left_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let right_name = right_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let left_name = path_file_name(left_path);
+    let right_name = path_file_name(right_path);
 
     let tab = state.current_tab_mut();
     tab.folder_items = items;
@@ -332,14 +315,8 @@ pub(super) fn run_image_compare(
     left_path: &std::path::Path,
     right_path: &std::path::Path,
 ) {
-    let left_name = left_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let right_name = right_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let left_name = path_file_name(left_path);
+    let right_name = path_file_name(right_path);
 
     match compare_images(left_bytes, right_bytes) {
         Err(e) => {
@@ -419,8 +396,6 @@ fn format_size(bytes: u64) -> String {
 // --- Feature: Folder sort ---
 
 pub fn sort_folder(window: &MainWindow, state: &mut AppState, column: i32) {
-    use crate::models::folder_item::FileCompareStatus;
-
     let tab = state.current_tab_mut();
     if tab.view_mode != ViewMode::FolderCompare || tab.folder_items.is_empty() {
         return;
@@ -442,15 +417,7 @@ pub fn sort_folder(window: &MainWindow, state: &mut AppState, column: i32) {
                 .relative_path
                 .to_lowercase()
                 .cmp(&b.relative_path.to_lowercase()),
-            1 => {
-                let status_ord = |s: &FileCompareStatus| match s {
-                    FileCompareStatus::Identical => 0,
-                    FileCompareStatus::Different => 1,
-                    FileCompareStatus::LeftOnly => 2,
-                    FileCompareStatus::RightOnly => 3,
-                };
-                status_ord(&a.status).cmp(&status_ord(&b.status))
-            }
+            1 => a.status.as_i32().cmp(&b.status.as_i32()),
             2 => a.left_size.unwrap_or(0).cmp(&b.left_size.unwrap_or(0)),
             3 => a.right_size.unwrap_or(0).cmp(&b.right_size.unwrap_or(0)),
             4 => a

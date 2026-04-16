@@ -1,5 +1,8 @@
 use super::*;
 
+const DEFAULT_COL_WIDTH_PX: i32 = 100;
+const MIN_COL_WIDTH_PX: i32 = 30;
+
 // --- Table detail pane ---
 
 /// Update the table detail pane with cell-by-cell comparison for the given row.
@@ -55,7 +58,10 @@ pub(super) fn update_table_detail_pane(window: &MainWindow, state: &AppState, ro
             base_status
         };
         let col_x_px = columns.get(i).map(|c| c.x_px).unwrap_or(0);
-        let col_width_px = columns.get(i).map(|c| c.width_px).unwrap_or(100);
+        let col_width_px = columns
+            .get(i)
+            .map(|c| c.width_px)
+            .unwrap_or(DEFAULT_COL_WIDTH_PX);
 
         detail_cells.push(TableDetailCellData {
             col_name: SharedString::from(col_name),
@@ -167,7 +173,7 @@ pub fn resize_table_column(
         return;
     }
 
-    let new_width = new_width.max(30);
+    let new_width = new_width.max(MIN_COL_WIDTH_PX);
     let old_width = tab.table_columns[col_idx].width_px;
     let width_delta = new_width - old_width;
     if width_delta == 0 {
@@ -250,6 +256,38 @@ pub(super) fn apply_table_rows_to_window(window: &MainWindow, state: &AppState) 
     window.set_table_rows(ModelRc::new(VecModel::from(tab.table_rows.clone())));
 }
 
+/// Clone all cells from a model with status reset to 0.
+fn clone_cells_equal(model: &ModelRc<TableCellData>) -> Vec<TableCellData> {
+    (0..model.row_count())
+        .filter_map(|i| {
+            model.row_data(i).map(|c| TableCellData {
+                text: c.text.clone(),
+                status: 0,
+                col_x_px: c.col_x_px,
+                col_width_px: c.col_width_px,
+            })
+        })
+        .collect()
+}
+
+/// Equalize a table row by copying source cells to both left and right.
+fn equalize_table_row(tab: &mut TabState, row_idx: usize, copy_left_to_right: bool) {
+    let src = if copy_left_to_right {
+        &tab.table_rows[row_idx].left_cells
+    } else {
+        &tab.table_rows[row_idx].right_cells
+    };
+    let cells = clone_cells_equal(src);
+    let base_cells_clone = tab.table_rows[row_idx].base_cells.clone();
+    tab.table_rows[row_idx] = TableRowData {
+        row_number: tab.table_rows[row_idx].row_number,
+        left_cells: ModelRc::new(VecModel::from(cells.clone())),
+        right_cells: ModelRc::new(VecModel::from(cells)),
+        base_cells: base_cells_clone,
+        row_status: 0,
+    };
+}
+
 /// Copy left cells to right for a single diff row (table view).
 pub fn table_copy_to_right(window: &MainWindow, state: &mut AppState, diff_index: i32) {
     {
@@ -259,39 +297,7 @@ pub fn table_copy_to_right(window: &MainWindow, state: &mut AppState, diff_index
         }
     }
     let row_idx = state.current_tab().diff_positions[diff_index as usize];
-    let tab = state.current_tab_mut();
-    let row = &tab.table_rows[row_idx];
-
-    // Read left cells
-    let left_model = &row.left_cells;
-    let cell_count = left_model.row_count();
-    let mut new_right_cells = Vec::with_capacity(cell_count);
-    let mut new_left_cells = Vec::with_capacity(cell_count);
-    for i in 0..cell_count {
-        if let Some(lc) = left_model.row_data(i) {
-            new_right_cells.push(TableCellData {
-                text: lc.text.clone(),
-                status: 0,
-                col_x_px: lc.col_x_px,
-                col_width_px: lc.col_width_px,
-            });
-            new_left_cells.push(TableCellData {
-                text: lc.text.clone(),
-                status: 0,
-                col_x_px: lc.col_x_px,
-                col_width_px: lc.col_width_px,
-            });
-        }
-    }
-
-    let base_cells_clone = tab.table_rows[row_idx].base_cells.clone();
-    tab.table_rows[row_idx] = TableRowData {
-        row_number: tab.table_rows[row_idx].row_number,
-        left_cells: ModelRc::new(VecModel::from(new_left_cells)),
-        right_cells: ModelRc::new(VecModel::from(new_right_cells)),
-        base_cells: base_cells_clone,
-        row_status: 0,
-    };
+    equalize_table_row(state.current_tab_mut(), row_idx, true);
 
     apply_table_rows_to_window(window, state);
     rebuild_table_diff_positions(window, state);
@@ -312,38 +318,7 @@ pub fn table_copy_to_left(window: &MainWindow, state: &mut AppState, diff_index:
         }
     }
     let row_idx = state.current_tab().diff_positions[diff_index as usize];
-    let tab = state.current_tab_mut();
-    let row = &tab.table_rows[row_idx];
-
-    let right_model = &row.right_cells;
-    let cell_count = right_model.row_count();
-    let mut new_left_cells = Vec::with_capacity(cell_count);
-    let mut new_right_cells = Vec::with_capacity(cell_count);
-    for i in 0..cell_count {
-        if let Some(rc) = right_model.row_data(i) {
-            new_left_cells.push(TableCellData {
-                text: rc.text.clone(),
-                status: 0,
-                col_x_px: rc.col_x_px,
-                col_width_px: rc.col_width_px,
-            });
-            new_right_cells.push(TableCellData {
-                text: rc.text.clone(),
-                status: 0,
-                col_x_px: rc.col_x_px,
-                col_width_px: rc.col_width_px,
-            });
-        }
-    }
-
-    let base_cells_clone = tab.table_rows[row_idx].base_cells.clone();
-    tab.table_rows[row_idx] = TableRowData {
-        row_number: tab.table_rows[row_idx].row_number,
-        left_cells: ModelRc::new(VecModel::from(new_left_cells)),
-        right_cells: ModelRc::new(VecModel::from(new_right_cells)),
-        base_cells: base_cells_clone,
-        row_status: 0,
-    };
+    equalize_table_row(state.current_tab_mut(), row_idx, false);
 
     apply_table_rows_to_window(window, state);
     rebuild_table_diff_positions(window, state);
@@ -392,7 +367,7 @@ pub fn table_use_right_and_next(window: &MainWindow, state: &mut AppState) {
 pub fn table_use_all_left(window: &MainWindow, state: &mut AppState) {
     let positions: Vec<usize> = state.current_tab().diff_positions.clone();
     for (i, _) in positions.iter().enumerate() {
-        table_resolve_to_base_inner(state, i);
+        table_resolve_to_base_inner(state, i, true);
     }
     apply_table_rows_to_window(window, state);
     rebuild_table_diff_positions(window, state);
@@ -401,7 +376,7 @@ pub fn table_use_all_left(window: &MainWindow, state: &mut AppState) {
 pub fn table_use_all_right(window: &MainWindow, state: &mut AppState) {
     let positions: Vec<usize> = state.current_tab().diff_positions.clone();
     for (i, _) in positions.iter().enumerate() {
-        table_resolve_to_base_inner_right(state, i);
+        table_resolve_to_base_inner(state, i, false);
     }
     apply_table_rows_to_window(window, state);
     rebuild_table_diff_positions(window, state);
@@ -420,11 +395,7 @@ fn table_resolve_to_base(
             return;
         }
     }
-    if use_left {
-        table_resolve_to_base_inner(state, diff_index as usize);
-    } else {
-        table_resolve_to_base_inner_right(state, diff_index as usize);
-    }
+    table_resolve_to_base_inner(state, diff_index as usize, use_left);
 
     apply_table_rows_to_window(window, state);
     rebuild_table_diff_positions(window, state);
@@ -441,96 +412,56 @@ fn table_resolve_to_base(
     }));
 }
 
-fn table_resolve_to_base_inner(state: &mut AppState, diff_index: usize) {
+/// Copy source pane's cells to base for a single diff row.
+/// When `use_left` is true, left → base; otherwise right → base.
+/// The opposite pane's cells keep their values but get status re-evaluated.
+fn table_resolve_to_base_inner(state: &mut AppState, diff_index: usize, use_left: bool) {
     let tab = state.current_tab();
     if diff_index >= tab.diff_positions.len() {
         return;
     }
     let row_idx = tab.diff_positions[diff_index];
     let row = &tab.table_rows[row_idx];
-    let src_model = &row.left_cells;
-    let cell_count = src_model.row_count();
-    let mut new_base = Vec::with_capacity(cell_count);
-    let mut new_left = Vec::with_capacity(cell_count);
-    let mut new_right = Vec::with_capacity(cell_count);
-    let right_model = &row.right_cells;
-    for i in 0..cell_count {
-        if let Some(lc) = src_model.row_data(i) {
-            new_base.push(TableCellData {
-                text: lc.text.clone(),
-                status: 0,
-                col_x_px: lc.col_x_px,
-                col_width_px: lc.col_width_px,
-            });
-            new_left.push(TableCellData {
-                text: lc.text.clone(),
-                status: 0,
-                col_x_px: lc.col_x_px,
-                col_width_px: lc.col_width_px,
-            });
-            // Right keeps its value; re-evaluate status vs new base (=left)
-            let rc = right_model.row_data(i);
-            let rv = rc.as_ref().map(|c| c.text.clone()).unwrap_or_default();
-            let st = if rv == lc.text { 0 } else { 1 };
-            new_right.push(TableCellData {
-                text: rv,
-                status: st,
-                col_x_px: lc.col_x_px,
-                col_width_px: lc.col_width_px,
-            });
-        }
-    }
-    let has_diff = new_right.iter().any(|c| c.status != 0);
-    let tab = state.current_tab_mut();
-    tab.table_rows[row_idx] = TableRowData {
-        row_number: tab.table_rows[row_idx].row_number,
-        left_cells: ModelRc::new(VecModel::from(new_left)),
-        right_cells: ModelRc::new(VecModel::from(new_right)),
-        base_cells: ModelRc::new(VecModel::from(new_base)),
-        row_status: if has_diff { 1 } else { 0 },
+    let (src_model, other_model) = if use_left {
+        (&row.left_cells, &row.right_cells)
+    } else {
+        (&row.right_cells, &row.left_cells)
     };
-}
-
-fn table_resolve_to_base_inner_right(state: &mut AppState, diff_index: usize) {
-    let tab = state.current_tab();
-    if diff_index >= tab.diff_positions.len() {
-        return;
-    }
-    let row_idx = tab.diff_positions[diff_index];
-    let row = &tab.table_rows[row_idx];
-    let src_model = &row.right_cells;
     let cell_count = src_model.row_count();
     let mut new_base = Vec::with_capacity(cell_count);
-    let mut new_right = Vec::with_capacity(cell_count);
-    let mut new_left = Vec::with_capacity(cell_count);
-    let left_model = &row.left_cells;
+    let mut new_src = Vec::with_capacity(cell_count);
+    let mut new_other = Vec::with_capacity(cell_count);
     for i in 0..cell_count {
-        if let Some(rc) = src_model.row_data(i) {
+        if let Some(sc) = src_model.row_data(i) {
             new_base.push(TableCellData {
-                text: rc.text.clone(),
+                text: sc.text.clone(),
                 status: 0,
-                col_x_px: rc.col_x_px,
-                col_width_px: rc.col_width_px,
+                col_x_px: sc.col_x_px,
+                col_width_px: sc.col_width_px,
             });
-            new_right.push(TableCellData {
-                text: rc.text.clone(),
+            new_src.push(TableCellData {
+                text: sc.text.clone(),
                 status: 0,
-                col_x_px: rc.col_x_px,
-                col_width_px: rc.col_width_px,
+                col_x_px: sc.col_x_px,
+                col_width_px: sc.col_width_px,
             });
-            // Left keeps its value; re-evaluate status vs new base (=right)
-            let lc = left_model.row_data(i);
-            let lv = lc.as_ref().map(|c| c.text.clone()).unwrap_or_default();
-            let st = if lv == rc.text { 0 } else { 1 };
-            new_left.push(TableCellData {
-                text: lv,
+            let oc = other_model.row_data(i);
+            let ov = oc.as_ref().map(|c| c.text.clone()).unwrap_or_default();
+            let st = if ov == sc.text { 0 } else { 1 };
+            new_other.push(TableCellData {
+                text: ov,
                 status: st,
-                col_x_px: rc.col_x_px,
-                col_width_px: rc.col_width_px,
+                col_x_px: sc.col_x_px,
+                col_width_px: sc.col_width_px,
             });
         }
     }
-    let has_diff = new_left.iter().any(|c| c.status != 0);
+    let has_diff = new_other.iter().any(|c| c.status != 0);
+    let (new_left, new_right) = if use_left {
+        (new_src, new_other)
+    } else {
+        (new_other, new_src)
+    };
     let tab = state.current_tab_mut();
     tab.table_rows[row_idx] = TableRowData {
         row_number: tab.table_rows[row_idx].row_number,
@@ -543,90 +474,28 @@ fn table_resolve_to_base_inner_right(state: &mut AppState, diff_index: usize) {
 
 /// Copy all left cells to right for all diff rows (table view).
 pub fn table_copy_all_right(window: &MainWindow, state: &mut AppState) {
-    let tab = state.current_tab();
-    if tab.diff_positions.is_empty() {
+    let positions: Vec<usize> = state.current_tab().diff_positions.clone();
+    if positions.is_empty() {
         return;
     }
-    let positions: Vec<usize> = tab.diff_positions.clone();
-
     let tab = state.current_tab_mut();
     for &row_idx in &positions {
-        let row = &tab.table_rows[row_idx];
-        let left_model = &row.left_cells;
-        let cell_count = left_model.row_count();
-        let mut new_right_cells = Vec::with_capacity(cell_count);
-        let mut new_left_cells = Vec::with_capacity(cell_count);
-        for i in 0..cell_count {
-            if let Some(lc) = left_model.row_data(i) {
-                new_right_cells.push(TableCellData {
-                    text: lc.text.clone(),
-                    status: 0,
-                    col_x_px: lc.col_x_px,
-                    col_width_px: lc.col_width_px,
-                });
-                new_left_cells.push(TableCellData {
-                    text: lc.text.clone(),
-                    status: 0,
-                    col_x_px: lc.col_x_px,
-                    col_width_px: lc.col_width_px,
-                });
-            }
-        }
-        let base_cells_clone = tab.table_rows[row_idx].base_cells.clone();
-        tab.table_rows[row_idx] = TableRowData {
-            row_number: tab.table_rows[row_idx].row_number,
-            left_cells: ModelRc::new(VecModel::from(new_left_cells)),
-            right_cells: ModelRc::new(VecModel::from(new_right_cells)),
-            base_cells: base_cells_clone,
-            row_status: 0,
-        };
+        equalize_table_row(tab, row_idx, true);
     }
-
     apply_table_rows_to_window(window, state);
     rebuild_table_diff_positions(window, state);
 }
 
 /// Copy all right cells to left for all diff rows (table view).
 pub fn table_copy_all_left(window: &MainWindow, state: &mut AppState) {
-    let tab = state.current_tab();
-    if tab.diff_positions.is_empty() {
+    let positions: Vec<usize> = state.current_tab().diff_positions.clone();
+    if positions.is_empty() {
         return;
     }
-    let positions: Vec<usize> = tab.diff_positions.clone();
-
     let tab = state.current_tab_mut();
     for &row_idx in &positions {
-        let row = &tab.table_rows[row_idx];
-        let right_model = &row.right_cells;
-        let cell_count = right_model.row_count();
-        let mut new_left_cells = Vec::with_capacity(cell_count);
-        let mut new_right_cells = Vec::with_capacity(cell_count);
-        for i in 0..cell_count {
-            if let Some(rc) = right_model.row_data(i) {
-                new_left_cells.push(TableCellData {
-                    text: rc.text.clone(),
-                    status: 0,
-                    col_x_px: rc.col_x_px,
-                    col_width_px: rc.col_width_px,
-                });
-                new_right_cells.push(TableCellData {
-                    text: rc.text.clone(),
-                    status: 0,
-                    col_x_px: rc.col_x_px,
-                    col_width_px: rc.col_width_px,
-                });
-            }
-        }
-        let base_cells_clone = tab.table_rows[row_idx].base_cells.clone();
-        tab.table_rows[row_idx] = TableRowData {
-            row_number: tab.table_rows[row_idx].row_number,
-            left_cells: ModelRc::new(VecModel::from(new_left_cells)),
-            right_cells: ModelRc::new(VecModel::from(new_right_cells)),
-            base_cells: base_cells_clone,
-            row_status: 0,
-        };
+        equalize_table_row(tab, row_idx, false);
     }
-
     apply_table_rows_to_window(window, state);
     rebuild_table_diff_positions(window, state);
 }
@@ -750,7 +619,7 @@ pub fn new_blank_table(
     // Create an initial 10×5 empty grid so the user can start editing immediately
     let initial_rows = 10;
     let initial_cols = 5;
-    let (columns, content_width_px) = build_columns(initial_cols, 100);
+    let (columns, content_width_px) = build_columns(initial_cols, DEFAULT_COL_WIDTH_PX);
     let empty_grid: Vec<Vec<String>> = (0..initial_rows)
         .map(|_| vec![String::new(); initial_cols])
         .collect();
@@ -841,7 +710,10 @@ pub(super) fn build_table_rows(
             }
 
             let col_x_px = columns.get(c).map(|col| col.x_px).unwrap_or(0);
-            let col_width_px = columns.get(c).map(|col| col.width_px).unwrap_or(100);
+            let col_width_px = columns
+                .get(c)
+                .map(|col| col.width_px)
+                .unwrap_or(DEFAULT_COL_WIDTH_PX);
 
             left_cells.push(TableCellData {
                 text: SharedString::from(lv),
@@ -970,7 +842,10 @@ pub(super) fn build_table_rows_3way(
             }
 
             let col_x_px = columns.get(c).map(|col| col.x_px).unwrap_or(0);
-            let col_width_px = columns.get(c).map(|col| col.width_px).unwrap_or(100);
+            let col_width_px = columns
+                .get(c)
+                .map(|col| col.width_px)
+                .unwrap_or(DEFAULT_COL_WIDTH_PX);
 
             base_cells.push(TableCellData {
                 text: SharedString::from(bv),
@@ -1032,7 +907,7 @@ pub(super) fn recompute_table_from_csv(
     let need_rebuild_cols = result.max_cols != old_cols;
 
     let columns = if need_rebuild_cols {
-        let (cols, width) = build_columns(result.max_cols, 100);
+        let (cols, width) = build_columns(result.max_cols, DEFAULT_COL_WIDTH_PX);
         let tab = state.current_tab_mut();
         tab.table_columns = cols.clone();
         tab.table_content_width_px = width;
@@ -1085,7 +960,7 @@ pub(super) fn recompute_table_from_csv_3way(
     let need_rebuild_cols = result.max_cols != old_cols;
 
     let columns = if need_rebuild_cols {
-        let (cols, width) = build_columns(result.max_cols, 100);
+        let (cols, width) = build_columns(result.max_cols, DEFAULT_COL_WIDTH_PX);
         let tab = state.current_tab_mut();
         tab.table_columns = cols.clone();
         tab.table_content_width_px = width;
@@ -1135,20 +1010,14 @@ pub(super) fn run_excel_compare(
 ) {
     let result = compare_excel_full(left_bytes, right_bytes);
 
-    let left_name = left_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let right_name = right_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let left_name = path_file_name(left_path);
+    let right_name = path_file_name(right_path);
 
     // Build SheetTableCache for each sheet
     let mut sheet_cache: std::collections::BTreeMap<String, SheetTableCache> =
         std::collections::BTreeMap::new();
     for (sheet_name, data) in &result.sheets {
-        let (columns, content_width_px) = build_columns(data.max_cols, 100);
+        let (columns, content_width_px) = build_columns(data.max_cols, DEFAULT_COL_WIDTH_PX);
         let rows = build_table_rows(
             &data.left_grid,
             &data.right_grid,
@@ -1173,7 +1042,7 @@ pub(super) fn run_excel_compare(
     for data in result.sheets.values() {
         all_max_cols = all_max_cols.max(data.max_cols);
     }
-    let (all_columns, all_content_width_px) = build_columns(all_max_cols, 100);
+    let (all_columns, all_content_width_px) = build_columns(all_max_cols, DEFAULT_COL_WIDTH_PX);
     for data in result.sheets.values() {
         let rows = build_table_rows(
             &data.left_grid,
@@ -1259,7 +1128,7 @@ pub fn switch_excel_sheet(window: &MainWindow, state: &mut AppState, sheet_name:
         for cache in tab.excel_sheet_data.values() {
             all_rows.extend(cache.rows.clone());
         }
-        let (columns, content_width_px) = build_columns(max_cols, 100);
+        let (columns, content_width_px) = build_columns(max_cols, DEFAULT_COL_WIDTH_PX);
         tab.table_rows = all_rows.clone();
         tab.table_columns = columns.clone();
         tab.table_content_width_px = content_width_px;
@@ -1312,7 +1181,7 @@ pub(super) fn run_csv_compare(
 
     let result = compare_csv_full(&left_text, &right_text);
 
-    let (columns, content_width_px) = build_columns(result.max_cols, 100);
+    let (columns, content_width_px) = build_columns(result.max_cols, DEFAULT_COL_WIDTH_PX);
     let table_rows = build_table_rows(
         &result.left_grid,
         &result.right_grid,
@@ -1322,14 +1191,8 @@ pub(super) fn run_csv_compare(
         &columns,
     );
 
-    let left_name = left_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let right_name = right_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let left_name = path_file_name(left_path);
+    let right_name = path_file_name(right_path);
 
     let diff_count = result.diff_count;
     let delimiter_mismatch = result.delimiter_mismatch;
@@ -1409,7 +1272,7 @@ pub(super) fn run_csv_compare_3way(
 
     let result = compare_csv_full_3way(&base_text, &left_text, &right_text);
 
-    let (columns, content_width_px) = build_columns(result.max_cols, 100);
+    let (columns, content_width_px) = build_columns(result.max_cols, DEFAULT_COL_WIDTH_PX);
     let table_rows = build_table_rows_3way(
         &result.base_grid,
         &result.left_grid,
@@ -1420,14 +1283,8 @@ pub(super) fn run_csv_compare_3way(
         &columns,
     );
 
-    let left_name = left_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let right_name = right_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let left_name = path_file_name(left_path);
+    let right_name = path_file_name(right_path);
 
     let diff_count = result.diff_count;
     let conflict_count = result.conflict_count;

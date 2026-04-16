@@ -65,45 +65,36 @@ pub fn collect_pending_saves(
             let right_text = state.tabs[i].right_lines.join("\n") + "\n";
             let left_enc = state.tabs[i].left_encoding.clone();
             let right_enc = state.tabs[i].right_encoding.clone();
-            let base_enc = "UTF-8".to_string(); // base uses UTF-8 by default
+            let base_enc = "UTF-8".to_string();
 
-            if let Some(path) = state.tabs[i].left_path.clone() {
-                let bytes = encode_text(&left_text, &left_enc);
-                if let Err(e) = fs::write(&path, bytes) {
-                    window.set_status_text(SharedString::from(format!(
-                        "Error saving {}: {}",
-                        path.display(),
-                        e
-                    )));
-                }
-            } else if !left_text.trim().is_empty() {
-                queue.push((i, 0, left_text, left_enc));
-            }
-            if let Some(path) = state.tabs[i].base_path.clone() {
-                let bytes = encode_text(&base_text, &base_enc);
-                if let Err(e) = fs::write(&path, bytes) {
-                    window.set_status_text(SharedString::from(format!(
-                        "Error saving {}: {}",
-                        path.display(),
-                        e
-                    )));
-                }
-            } else if !base_text.trim().is_empty() {
-                queue.push((i, 2, base_text, base_enc));
-            }
-            if let Some(path) = state.tabs[i].right_path.clone() {
-                let bytes = encode_text(&right_text, &right_enc);
-                if let Err(e) = fs::write(&path, bytes) {
-                    window.set_status_text(SharedString::from(format!(
-                        "Error saving {}: {}",
-                        path.display(),
-                        e
-                    )));
-                }
-            } else if !right_text.trim().is_empty() {
-                queue.push((i, 1, right_text, right_enc));
-            }
-            // Clear unsaved flag if all three sides have paths
+            save_or_queue(
+                window,
+                &mut queue,
+                i,
+                0,
+                &state.tabs[i].left_path,
+                left_text,
+                left_enc,
+            );
+            save_or_queue(
+                window,
+                &mut queue,
+                i,
+                2,
+                &state.tabs[i].base_path,
+                base_text,
+                base_enc,
+            );
+            save_or_queue(
+                window,
+                &mut queue,
+                i,
+                1,
+                &state.tabs[i].right_path,
+                right_text,
+                right_enc,
+            );
+
             if state.tabs[i].left_path.is_some()
                 && state.tabs[i].base_path.is_some()
                 && state.tabs[i].right_path.is_some()
@@ -112,42 +103,60 @@ pub fn collect_pending_saves(
             }
         } else {
             // 2-way tab
-            let left_path = state.tabs[i].left_path.clone();
             let left_enc = state.tabs[i].left_encoding.clone();
             let left_text = rebuild_left_from_data(&state.tabs[i].diff_line_data);
-            if let Some(path) = left_path {
-                let bytes = encode_text(&left_text, &left_enc);
-                if let Err(e) = fs::write(&path, bytes) {
-                    window.set_status_text(SharedString::from(format!(
-                        "Error saving {}: {}",
-                        path.display(),
-                        e
-                    )));
-                }
-            } else if !left_text.trim().is_empty() {
-                queue.push((i, 0, left_text, left_enc));
-            }
-            let right_path = state.tabs[i].right_path.clone();
+            save_or_queue(
+                window,
+                &mut queue,
+                i,
+                0,
+                &state.tabs[i].left_path,
+                left_text,
+                left_enc,
+            );
+
             let right_enc = state.tabs[i].right_encoding.clone();
             let right_text = rebuild_right_from_data(&state.tabs[i].diff_line_data);
-            if let Some(path) = right_path {
-                let bytes = encode_text(&right_text, &right_enc);
-                if let Err(e) = fs::write(&path, bytes) {
-                    window.set_status_text(SharedString::from(format!(
-                        "Error saving {}: {}",
-                        path.display(),
-                        e
-                    )));
-                }
-            } else if !right_text.trim().is_empty() {
-                queue.push((i, 1, right_text, right_enc));
-            }
+            save_or_queue(
+                window,
+                &mut queue,
+                i,
+                1,
+                &state.tabs[i].right_path,
+                right_text,
+                right_enc,
+            );
+
             if state.tabs[i].left_path.is_some() && state.tabs[i].right_path.is_some() {
                 state.tabs[i].has_unsaved_changes = false;
             }
         }
     }
     queue
+}
+
+/// Save text to path if available, otherwise queue for Save-As dialog.
+fn save_or_queue(
+    window: &MainWindow,
+    queue: &mut Vec<(usize, i32, String, String)>,
+    tab_idx: usize,
+    pane: i32,
+    path: &Option<std::path::PathBuf>,
+    text: String,
+    encoding: String,
+) {
+    if let Some(path) = path {
+        let bytes = encode_text(&text, &encoding);
+        if let Err(e) = fs::write(path, bytes) {
+            window.set_status_text(SharedString::from(format!(
+                "Error saving {}: {}",
+                path.display(),
+                e
+            )));
+        }
+    } else if !text.trim().is_empty() {
+        queue.push((tab_idx, pane, text, encoding));
+    }
 }
 
 pub fn export_html_report(window: &MainWindow, state: &AppState) {
@@ -524,11 +533,7 @@ pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
 
 /// Save a pane of 3-way diff.  pane: 0=left, 1=base(middle), 2=right.
 pub fn save_three_way_pane(window: &MainWindow, state: &mut AppState, pane: i32) {
-    let model = window.get_three_way_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_three_way_vec_model!(model, vec_model, window);
 
     let text = rebuild_three_way_text(vec_model, pane);
     let tab = state.current_tab();
