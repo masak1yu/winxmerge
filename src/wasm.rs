@@ -45,57 +45,68 @@ fn paste_from_clipboard(callback: impl Fn(String) + 'static) {
     });
 }
 
-fn build_diff_line_data(result: &crate::models::diff_line::DiffResult) -> Vec<crate::DiffLineData> {
-    result
-        .lines
-        .iter()
-        .enumerate()
-        .map(|(i, line)| {
-            let status = match line.status {
-                LineStatus::Equal => 0,
-                LineStatus::Added => 1,
-                LineStatus::Removed => 2,
-                LineStatus::Modified => 3,
-                LineStatus::Moved => 4,
-            };
+/// Build per-pane PaneLineData from a DiffResult.
+fn build_pane_line_data(
+    result: &crate::models::diff_line::DiffResult,
+) -> (Vec<crate::PaneLineData>, Vec<crate::PaneLineData>) {
+    let mut left_lines = Vec::with_capacity(result.lines.len());
+    let mut right_lines = Vec::with_capacity(result.lines.len());
+    for (i, line) in result.lines.iter().enumerate() {
+        let status = match line.status {
+            LineStatus::Equal => 0,
+            LineStatus::Added => 1,
+            LineStatus::Removed => 2,
+            LineStatus::Modified => 3,
+            LineStatus::Moved => 4,
+        };
 
-            let diff_index = if result.diff_positions.contains(&i) {
-                result
-                    .diff_positions
-                    .iter()
-                    .position(|&p| p == i)
-                    .map(|p| p as i32)
-                    .unwrap_or(-1)
-            } else {
-                -1
-            };
+        let diff_index = if result.diff_positions.contains(&i) {
+            result
+                .diff_positions
+                .iter()
+                .position(|&p| p == i)
+                .map(|p| p as i32)
+                .unwrap_or(-1)
+        } else {
+            -1
+        };
 
-            let left_word_diff = encode_word_diff(&line.left_word_segments);
-            let right_word_diff = encode_word_diff(&line.right_word_segments);
+        let left_word_diff = encode_word_diff(&line.left_word_segments);
+        let right_word_diff = encode_word_diff(&line.right_word_segments);
 
-            crate::DiffLineData {
-                left_line_no: SharedString::from(
-                    line.left_line_no.map(|n| n.to_string()).unwrap_or_default(),
-                ),
-                right_line_no: SharedString::from(
-                    line.right_line_no
-                        .map(|n| n.to_string())
-                        .unwrap_or_default(),
-                ),
-                left_text: SharedString::from(&line.left_text),
-                right_text: SharedString::from(&line.right_text),
-                status,
-                is_current_diff: false,
-                diff_index,
-                left_highlight: -1,
-                right_highlight: -1,
-                left_word_diff: SharedString::from(left_word_diff),
-                right_word_diff: SharedString::from(right_word_diff),
-                is_search_match: false,
-                is_selected: false,
-            }
-        })
-        .collect()
+        left_lines.push(crate::PaneLineData {
+            line_no: SharedString::from(
+                line.left_line_no.map(|n| n.to_string()).unwrap_or_default(),
+            ),
+            text: SharedString::from(&line.left_text),
+            is_ghost: line.left_line_no.is_none(),
+            status,
+            diff_index,
+            word_diff: SharedString::from(left_word_diff),
+            is_current_diff: false,
+            is_search_match: false,
+            is_selected: false,
+            highlight: -1,
+        });
+
+        right_lines.push(crate::PaneLineData {
+            line_no: SharedString::from(
+                line.right_line_no
+                    .map(|n| n.to_string())
+                    .unwrap_or_default(),
+            ),
+            text: SharedString::from(&line.right_text),
+            is_ghost: line.right_line_no.is_none(),
+            status,
+            diff_index,
+            word_diff: SharedString::from(right_word_diff),
+            is_current_diff: false,
+            is_search_match: false,
+            is_selected: false,
+            highlight: -1,
+        });
+    }
+    (left_lines, right_lines)
 }
 
 fn encode_word_diff(segments: &[crate::models::diff_line::WordDiffSegment]) -> String {
@@ -116,16 +127,23 @@ fn encode_word_diff(segments: &[crate::models::diff_line::WordDiffSegment]) -> S
 
 /// Update `is_current_diff` flags and scroll to the diff at `diff_idx`.
 fn navigate_to_diff(window: &crate::WasmApp, diff_positions: &[usize], diff_idx: i32) {
-    let lines_model = window.get_diff_lines();
-    let mut lines: Vec<crate::DiffLineData> = (0..lines_model.row_count())
-        .map(|i| lines_model.row_data(i).unwrap())
-        .collect();
-
-    for line in &mut lines {
-        line.is_current_diff = line.diff_index == diff_idx;
+    // Update is_current_diff on both pane models
+    for model_rc in [window.get_left_lines(), window.get_right_lines()] {
+        if let Some(vec_model) = model_rc
+            .as_any()
+            .downcast_ref::<VecModel<crate::PaneLineData>>()
+        {
+            for i in 0..vec_model.row_count() {
+                if let Some(mut row) = vec_model.row_data(i) {
+                    let should = row.diff_index == diff_idx;
+                    if row.is_current_diff != should {
+                        row.is_current_diff = should;
+                        vec_model.set_row_data(i, row);
+                    }
+                }
+            }
+        }
     }
-
-    window.set_diff_lines(ModelRc::new(VecModel::from(lines)));
     window.set_current_diff_index(diff_idx);
 
     // Scroll to the line: row height = (font_size + 2)px (matches DiffView ListView row height)
@@ -252,8 +270,9 @@ pub fn run() {
             *diff_positions.borrow_mut() = result.diff_positions.clone();
             current_diff_idx.set(-1);
 
-            let lines = build_diff_line_data(&result);
-            window.set_diff_lines(ModelRc::new(VecModel::from(lines)));
+            let (left_lines, right_lines) = build_pane_line_data(&result);
+            window.set_left_lines(ModelRc::new(VecModel::from(left_lines)));
+            window.set_right_lines(ModelRc::new(VecModel::from(right_lines)));
             window.set_diff_count(diff_count as i32);
             window.set_current_diff_index(-1);
             window.set_diff_scroll_y(0.0);
