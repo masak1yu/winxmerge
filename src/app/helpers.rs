@@ -2,19 +2,6 @@ use super::*;
 
 // --- Shared helpers ---
 
-/// Downcast the window's diff_lines model to `&VecModel<DiffLineData>`.
-/// Usage: `let_diff_vec_model!(model, vec_model, window);`
-/// Expands to: let model = window.get_diff_lines(); let Some(vec_model) = ... else { return; };
-macro_rules! let_diff_vec_model {
-    ($model:ident, $vec:ident, $window:expr) => {
-        let $model = $window.get_diff_lines();
-        let Some($vec) = $model.as_any().downcast_ref::<VecModel<DiffLineData>>() else {
-            return;
-        };
-    };
-}
-pub(super) use let_diff_vec_model;
-
 /// Downcast the window's three_way_lines model to `&VecModel<ThreeWayLineData>`.
 /// Usage: `let_three_way_vec_model!(model, vec_model, window);`
 macro_rules! let_three_way_vec_model {

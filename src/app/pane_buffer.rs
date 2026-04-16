@@ -25,12 +25,6 @@ pub struct PaneBuffer {
     pub ghost_rows: Vec<usize>,
 }
 
-impl PaneBuffer {
-    pub fn row_count(&self) -> usize {
-        self.model.row_count()
-    }
-}
-
 // ---------------------------------------------------------------------------
 // 2-way buffer construction
 // ---------------------------------------------------------------------------

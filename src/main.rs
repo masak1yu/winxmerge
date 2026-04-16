@@ -1142,17 +1142,16 @@ fn main() {
         let window_weak = window.as_weak();
         window.on_move_focus_up(move |line_index, is_left| {
             let window = window_weak.unwrap();
-            let model = window.get_diff_lines();
-            if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+            let model = if is_left {
+                window.get_left_lines()
+            } else {
+                window.get_right_lines()
+            };
+            if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<PaneLineData>>() {
                 let mut target = line_index - 1;
                 while target >= 0 {
                     if let Some(r) = vec_model.row_data(target as usize) {
-                        let has_line_no = if is_left {
-                            !r.left_line_no.is_empty()
-                        } else {
-                            !r.right_line_no.is_empty()
-                        };
-                        if has_line_no {
+                        if !r.is_ghost {
                             break;
                         }
                     }
@@ -1173,18 +1172,17 @@ fn main() {
         let window_weak = window.as_weak();
         window.on_move_focus_down(move |line_index, is_left| {
             let window = window_weak.unwrap();
-            let model = window.get_diff_lines();
-            if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
+            let model = if is_left {
+                window.get_left_lines()
+            } else {
+                window.get_right_lines()
+            };
+            if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<PaneLineData>>() {
                 let count = vec_model.row_count() as i32;
                 let mut target = line_index + 1;
                 while target < count {
                     if let Some(r) = vec_model.row_data(target as usize) {
-                        let has_line_no = if is_left {
-                            !r.left_line_no.is_empty()
-                        } else {
-                            !r.right_line_no.is_empty()
-                        };
-                        if has_line_no {
+                        if !r.is_ghost {
                             break;
                         }
                     }

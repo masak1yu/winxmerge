@@ -33,7 +33,6 @@ pub fn new_blank_text_3way(window: &MainWindow, state: &mut AppState) {
         tab.right_path = None;
         tab.base_path = None;
         tab.title = "Untitled (3-way)".to_string();
-        tab.diff_line_data.clear();
         tab.diff_positions.clear();
         tab.diff_stats = String::new();
         tab.has_unsaved_changes = false;

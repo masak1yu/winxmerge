@@ -59,9 +59,22 @@ pub fn navigate_diff_by_status(
     // Find the matching diff index before mutating state
     let found = candidates.into_iter().find(|&idx| {
         let pos = tab.diff_positions[idx as usize];
-        tab.diff_line_data
-            .get(pos)
-            .is_some_and(|line| line.status == status_filter)
+        // Check status from PaneBuffer (non-ghost side has the real status)
+        if let Some(ref lb) = tab.left_buffer {
+            if let Some(row) = lb.model.row_data(pos) {
+                if !row.is_ghost {
+                    return row.status == status_filter;
+                }
+            }
+        }
+        if let Some(ref rb) = tab.right_buffer {
+            if let Some(row) = rb.model.row_data(pos) {
+                if !row.is_ghost {
+                    return row.status == status_filter;
+                }
+            }
+        }
+        false
     });
     if let Some(idx) = found {
         update_current_diff(window, state, idx);
@@ -99,51 +112,55 @@ pub fn goto_line(window: &MainWindow, state: &AppState, line_number: i32) {
         return;
     }
     let tab = state.current_tab();
-    // Find the diff line index that corresponds to this line number
-    for (idx, data) in tab.diff_line_data.iter().enumerate() {
-        let left_no: i32 = data.left_line_no.parse().unwrap_or(0);
-        let right_no: i32 = data.right_line_no.parse().unwrap_or(0);
-        if left_no == line_number || right_no == line_number {
-            // Scroll to this row
-            window.invoke_scroll_diff_to_row(idx as i32);
-            window.set_status_text(SharedString::from(format!("Line {}", line_number)));
-            // If this line is part of a diff, select it
-            if data.diff_index >= 0 {
-                let model = window.get_diff_lines();
-                if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-                    for i in 0..vec_model.row_count() {
-                        if let Some(mut row) = vec_model.row_data(i) {
-                            let should_highlight = i == idx;
-                            if row.is_current_diff != should_highlight {
-                                row.is_current_diff = should_highlight;
-                                vec_model.set_row_data(i, row);
-                            }
-                        }
-                    }
-                }
-                // Sync is_current_diff to PaneBuffers for LocationPane minimap
-                let tab = state.current_tab();
-                for buf_opt in [&tab.left_buffer, &tab.right_buffer] {
-                    if let Some(buf) = buf_opt {
-                        for i in 0..buf.model.row_count() {
-                            if let Some(mut row) = buf.model.row_data(i) {
-                                let should_highlight = i == idx;
-                                if row.is_current_diff != should_highlight {
-                                    row.is_current_diff = should_highlight;
-                                    buf.model.set_row_data(i, row);
-                                }
+    // Search PaneBuffers for the matching line number
+    let mut found_idx: Option<usize> = None;
+    let mut found_diff_index: i32 = -1;
+    // Check left buffer first, then right
+    for buf_opt in [&tab.left_buffer, &tab.right_buffer] {
+        if found_idx.is_some() {
+            break;
+        }
+        if let Some(buf) = buf_opt {
+            for i in 0..buf.model.row_count() {
+                if let Some(row) = buf.model.row_data(i) {
+                    if !row.is_ghost {
+                        if let Ok(n) = row.line_no.parse::<i32>() {
+                            if n == line_number {
+                                found_idx = Some(i);
+                                found_diff_index = row.diff_index;
+                                break;
                             }
                         }
                     }
                 }
             }
-            return;
         }
     }
-    window.set_status_text(SharedString::from(format!(
-        "Line {} not found",
-        line_number
-    )));
+    if let Some(idx) = found_idx {
+        window.invoke_scroll_diff_to_row(idx as i32);
+        window.set_status_text(SharedString::from(format!("Line {}", line_number)));
+        if found_diff_index >= 0 {
+            // Sync is_current_diff to PaneBuffers
+            for buf_opt in [&tab.left_buffer, &tab.right_buffer] {
+                if let Some(buf) = buf_opt {
+                    for i in 0..buf.model.row_count() {
+                        if let Some(mut row) = buf.model.row_data(i) {
+                            let should_highlight = i == idx;
+                            if row.is_current_diff != should_highlight {
+                                row.is_current_diff = should_highlight;
+                                buf.model.set_row_data(i, row);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        window.set_status_text(SharedString::from(format!(
+            "Line {} not found",
+            line_number
+        )));
+    }
 }
 
 pub fn toggle_bookmark(state: &mut AppState, line_index: i32) {
@@ -250,9 +267,8 @@ pub(super) fn update_current_diff(window: &MainWindow, state: &mut AppState, new
     window.set_current_diff_comment(SharedString::from(comment));
 
     // Update diff detail pane
-    let model = window.get_diff_lines();
     let tab = state.current_tab();
-    update_detail_pane(window, &model, new_index, tab);
+    update_detail_pane(window, new_index, tab);
 }
 
 /// Build a \x01-separated segment string from word diff segments.
@@ -293,12 +309,7 @@ fn parse_word_diff_segments(text: &str, word_diff: &str) -> ModelRc<WordSegment>
     ModelRc::new(VecModel::from(segments))
 }
 
-pub(super) fn update_detail_pane(
-    window: &MainWindow,
-    model: &ModelRc<DiffLineData>,
-    diff_index: i32,
-    _tab: &TabState,
-) {
+pub(super) fn update_detail_pane(window: &MainWindow, diff_index: i32, tab: &TabState) {
     if diff_index < 0 {
         window.set_detail_has_left(false);
         window.set_detail_has_right(false);
@@ -310,47 +321,57 @@ pub(super) fn update_detail_pane(
     let mut left_lines: Vec<DetailLineData> = Vec::new();
     let mut right_lines: Vec<DetailLineData> = Vec::new();
 
-    // Use diff_positions to jump directly to the block start instead of scanning all rows
-    let start = _tab
+    let start = tab
         .diff_positions
         .get(diff_index as usize)
         .copied()
         .unwrap_or(0);
-    let count = model.row_count();
-    for i in start..count {
-        let Some(dl) = model.row_data(i) else {
-            continue;
-        };
-        if dl.diff_index != diff_index {
-            if dl.diff_index > diff_index {
-                break; // diff blocks are contiguous, so we're past the target
+
+    if let (Some(lb), Some(rb)) = (&tab.left_buffer, &tab.right_buffer) {
+        let count = lb.model.row_count();
+        for i in start..count {
+            let (Some(lr), Some(rr)) = (lb.model.row_data(i), rb.model.row_data(i)) else {
+                continue;
+            };
+            // Determine diff_index from the non-ghost side
+            let row_diff_idx = if !lr.is_ghost {
+                lr.diff_index
+            } else {
+                rr.diff_index
+            };
+            if row_diff_idx != diff_index {
+                if row_diff_idx > diff_index {
+                    break;
+                }
+                continue;
             }
-            continue;
-        }
-        let status = dl.status;
+            let status = if !lr.is_ghost { lr.status } else { rr.status };
 
-        // Left side: removed, modified, moved
-        if status == STATUS_REMOVED || status == STATUS_MODIFIED || status == STATUS_MOVED {
-            let segments =
-                parse_word_diff_segments(&dl.left_text.to_string(), &dl.left_word_diff.to_string());
-            left_lines.push(DetailLineData {
-                segments,
-                is_current: true,
-                status,
-            });
-        }
+            // Left side: removed, modified, moved
+            if (status == STATUS_REMOVED || status == STATUS_MODIFIED || status == STATUS_MOVED)
+                && !lr.is_ghost
+            {
+                let segments =
+                    parse_word_diff_segments(&lr.text.to_string(), &lr.word_diff.to_string());
+                left_lines.push(DetailLineData {
+                    segments,
+                    is_current: true,
+                    status,
+                });
+            }
 
-        // Right side: added, modified, moved
-        if status == STATUS_ADDED || status == STATUS_MODIFIED || status == STATUS_MOVED {
-            let segments = parse_word_diff_segments(
-                &dl.right_text.to_string(),
-                &dl.right_word_diff.to_string(),
-            );
-            right_lines.push(DetailLineData {
-                segments,
-                is_current: true,
-                status,
-            });
+            // Right side: added, modified, moved
+            if (status == STATUS_ADDED || status == STATUS_MODIFIED || status == STATUS_MOVED)
+                && !rr.is_ghost
+            {
+                let segments =
+                    parse_word_diff_segments(&rr.text.to_string(), &rr.word_diff.to_string());
+                right_lines.push(DetailLineData {
+                    segments,
+                    is_current: true,
+                    status,
+                });
+            }
         }
     }
 

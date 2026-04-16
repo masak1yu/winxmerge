@@ -1,33 +1,5 @@
 use super::*;
 
-pub fn rebuild_left_from_data(data: &[DiffLineData]) -> String {
-    let mut lines = Vec::new();
-    for row in data {
-        if row.status == STATUS_ADDED {
-            continue;
-        }
-        lines.push(row.left_text.to_string());
-    }
-    if lines.is_empty() {
-        return String::new();
-    }
-    lines.join("\n") + "\n"
-}
-
-pub fn rebuild_right_from_data(data: &[DiffLineData]) -> String {
-    let mut lines = Vec::new();
-    for row in data {
-        if row.status == STATUS_REMOVED {
-            continue;
-        }
-        lines.push(row.right_text.to_string());
-    }
-    if lines.is_empty() {
-        return String::new();
-    }
-    lines.join("\n") + "\n"
-}
-
 /// Save all tabs with unsaved changes.
 /// Tabs with file paths are auto-saved. Tabs without paths prompt for a filename via dialog.
 /// Sync VecModel, auto-save tabs with paths, and return a queue of
@@ -39,13 +11,25 @@ pub fn collect_pending_saves(
     // Sync current tab's live model data into tab state first
     let current_view_mode = state.current_tab().view_mode;
     if current_view_mode == ViewMode::FileDiff {
-        let model = window.get_diff_lines();
-        if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-            let tab = state.current_tab_mut();
-            tab.diff_line_data.clear();
-            for i in 0..vec_model.row_count() {
-                if let Some(row) = vec_model.row_data(i) {
-                    tab.diff_line_data.push(row);
+        // PaneBuffers are the authoritative source — sync left_lines/right_lines from them
+        let tab = state.current_tab_mut();
+        if let Some(ref lb) = tab.left_buffer {
+            tab.left_lines = Vec::new();
+            for i in 0..lb.model.row_count() {
+                if let Some(row) = lb.model.row_data(i) {
+                    if !row.is_ghost {
+                        tab.left_lines.push(row.text.to_string());
+                    }
+                }
+            }
+        }
+        if let Some(ref rb) = tab.right_buffer {
+            tab.right_lines = Vec::new();
+            for i in 0..rb.model.row_count() {
+                if let Some(row) = rb.model.row_data(i) {
+                    if !row.is_ghost {
+                        tab.right_lines.push(row.text.to_string());
+                    }
                 }
             }
         }
@@ -124,9 +108,13 @@ pub fn collect_pending_saves(
                 state.tabs[i].has_unsaved_changes = false;
             }
         } else {
-            // 2-way tab
+            // 2-way tab: extract text from PaneBuffers (authoritative source)
             let left_enc = state.tabs[i].left_encoding.clone();
-            let left_text = rebuild_left_from_data(&state.tabs[i].diff_line_data);
+            let left_text = state.tabs[i]
+                .left_buffer
+                .as_ref()
+                .map(|b| extract_real_lines(b))
+                .unwrap_or_else(|| "\n".to_string());
             save_or_queue(
                 window,
                 &mut queue,
@@ -138,7 +126,11 @@ pub fn collect_pending_saves(
             );
 
             let right_enc = state.tabs[i].right_encoding.clone();
-            let right_text = rebuild_right_from_data(&state.tabs[i].diff_line_data);
+            let right_text = state.tabs[i]
+                .right_buffer
+                .as_ref()
+                .map(|b| extract_real_lines(b))
+                .unwrap_or_else(|| "\n".to_string());
             save_or_queue(
                 window,
                 &mut queue,
@@ -500,21 +492,21 @@ pub fn export_folder_html_report(window: &MainWindow, state: &AppState) {
 }
 
 pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
-    let_diff_vec_model!(model, vec_model, window);
-
     let tab = state.current_tab();
     let (text, path, encoding) = if save_left {
-        (
-            rebuild_left(vec_model),
-            tab.left_path.clone(),
-            tab.left_encoding.clone(),
-        )
+        let text = tab
+            .left_buffer
+            .as_ref()
+            .map(|b| extract_real_lines(b))
+            .unwrap_or_else(|| "\n".to_string());
+        (text, tab.left_path.clone(), tab.left_encoding.clone())
     } else {
-        (
-            rebuild_right(vec_model),
-            tab.right_path.clone(),
-            tab.right_encoding.clone(),
-        )
+        let text = tab
+            .right_buffer
+            .as_ref()
+            .map(|b| extract_real_lines(b))
+            .unwrap_or_else(|| "\n".to_string());
+        (text, tab.right_path.clone(), tab.right_encoding.clone())
     };
 
     let path = if let Some(p) = path {
