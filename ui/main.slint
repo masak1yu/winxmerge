@@ -1228,6 +1228,9 @@ export component MainWindow inherits Window {
 
         if root.view-mode == 3 : DiffView3Way {
             lines: root.three-way-lines;
+            left-lines: root.left-lines;
+            middle-lines: root.middle-lines;
+            right-lines: root.right-lines;
             current-conflict-index: root.current-conflict-index;
             left-title: root.left-path != "" ? root.left-path : "Left";
             base-title: root.base-path != "" ? root.base-path : "Middle";

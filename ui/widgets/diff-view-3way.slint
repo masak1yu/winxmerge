@@ -1,5 +1,6 @@
 import { VerticalBox, HorizontalBox, ListView, Palette } from "std-widgets.slint";
 import { ThemeColors } from "../theme.slint";
+import { PaneLineData } from "diff-view.slint";
 
 export struct ThreeWayLineData {
     base-line-no: string,
@@ -221,7 +222,10 @@ export component DiffView3Way inherits Rectangle {
     in property <string> base-title: "Base";
     in property <string> left-title: "Left";
     in property <string> right-title: "Right";
-    in property <[ThreeWayLineData]> lines;
+    in property <[ThreeWayLineData]> lines;  // legacy (kept for LocationPane + bridge)
+    in property <[PaneLineData]> left-lines;
+    in property <[PaneLineData]> middle-lines;
+    in property <[PaneLineData]> right-lines;
     in property <int> current-conflict-index: -1;
     in property <bool> show-line-numbers: true;
     in property <int> editor-font-size: 13;
@@ -311,7 +315,7 @@ export component DiffView3Way inherits Rectangle {
             }
 
             // Spacer matching LocationPane width
-            if root.lines.length > 0 && root.show-location-pane : Rectangle {
+            if root.left-lines.length > 0 && root.show-location-pane : Rectangle {
                 width: 36px;
                 background: Palette.background.darker(0.05);
                 border-color: Palette.border;
@@ -328,16 +332,16 @@ export component DiffView3Way inherits Rectangle {
                 border-color: Palette.border;
                 border-width: 1px;
                 left-list := ListView {
-                    for line[idx] in lines: ThreeWayLineRow {
+                    for line[idx] in left-lines: ThreeWayLineRow {
                         height: (root.editor-font-size + 2) * 1px;
-                        line-no: line.left-line-no;
-                        text: line.left-text;
+                        line-no: line.line-no;
+                        text: line.text;
                         status: line.status;
-                        is-current: line.is-current;
+                        is-current: line.is-current-diff;
                         is-search-match: line.is-search-match;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
-                        editable: root.inline-edit-enabled && line.left-line-no != "";
+                        editable: root.inline-edit-enabled && !line.is-ghost;
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-left-row;
                         focus-at-end: root.focus-left-at-end;
                         text-edited(t) => { root.edit-text-changed(idx, t, 0); }
@@ -359,16 +363,16 @@ export component DiffView3Way inherits Rectangle {
                 border-width: 1px;
                 ListView {
                     viewport-y: left-list.viewport-y;
-                    for line[idx] in lines: ThreeWayLineRow {
+                    for line[idx] in middle-lines: ThreeWayLineRow {
                         height: (root.editor-font-size + 2) * 1px;
-                        line-no: line.base-line-no;
-                        text: line.base-text;
+                        line-no: line.line-no;
+                        text: line.text;
                         status: line.status;
-                        is-current: line.is-current;
+                        is-current: line.is-current-diff;
                         is-search-match: line.is-search-match;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
-                        editable: root.inline-edit-enabled && line.base-line-no != "";
+                        editable: root.inline-edit-enabled && !line.is-ghost;
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-base-row;
                         focus-at-end: root.focus-base-at-end;
                         text-edited(t) => { root.edit-text-changed(idx, t, 1); }
@@ -390,16 +394,16 @@ export component DiffView3Way inherits Rectangle {
                 border-width: 1px;
                 ListView {
                     viewport-y: left-list.viewport-y;
-                    for line[idx] in lines: ThreeWayLineRow {
+                    for line[idx] in right-lines: ThreeWayLineRow {
                         height: (root.editor-font-size + 2) * 1px;
-                        line-no: line.right-line-no;
-                        text: line.right-text;
+                        line-no: line.line-no;
+                        text: line.text;
                         status: line.status;
-                        is-current: line.is-current;
+                        is-current: line.is-current-diff;
                         is-search-match: line.is-search-match;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
-                        editable: root.inline-edit-enabled && line.right-line-no != "";
+                        editable: root.inline-edit-enabled && !line.is-ghost;
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-right-row;
                         focus-at-end: root.focus-right-at-end;
                         text-edited(t) => { root.edit-text-changed(idx, t, 2); }
@@ -414,7 +418,7 @@ export component DiffView3Way inherits Rectangle {
             }
 
             // Location pane (minimap)
-            if root.lines.length > 0 && root.show-location-pane : ThreeWayLocationPane {
+            if root.left-lines.length > 0 && root.show-location-pane : ThreeWayLocationPane {
                 lines: root.lines;
                 current-conflict-index: root.current-conflict-index;
             }

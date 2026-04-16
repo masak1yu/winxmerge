@@ -61,6 +61,48 @@ pub fn new_blank_text_3way(window: &MainWindow, state: &mut AppState) {
     };
     window.set_view_mode(ViewMode::ThreeWayText.as_i32());
     window.set_three_way_lines(ModelRc::new(VecModel::from(vec![empty_row])));
+
+    // Build per-pane PaneBuffers for blank 3-way
+    let blank_pane_row = PaneLineData {
+        line_no: SharedString::from("1"),
+        text: SharedString::from(""),
+        is_ghost: false,
+        status: 0,
+        diff_index: -1,
+        word_diff: SharedString::default(),
+        is_current_diff: false,
+        is_search_match: false,
+        is_selected: false,
+        highlight: -1,
+    };
+    let left_model = std::rc::Rc::new(VecModel::from(vec![blank_pane_row.clone()]));
+    let middle_model = std::rc::Rc::new(VecModel::from(vec![blank_pane_row.clone()]));
+    let right_model = std::rc::Rc::new(VecModel::from(vec![blank_pane_row]));
+    window.set_left_lines(ModelRc::from(left_model.clone()));
+    window.set_middle_lines(ModelRc::from(middle_model.clone()));
+    window.set_right_lines(ModelRc::from(right_model.clone()));
+    {
+        let tab = state.current_tab_mut();
+        tab.left_buffer = Some(PaneBuffer {
+            model: left_model,
+            row_to_line: vec![Some(0)],
+            line_to_row: vec![0],
+            ghost_rows: Vec::new(),
+        });
+        tab.middle_buffer = Some(PaneBuffer {
+            model: middle_model,
+            row_to_line: vec![Some(0)],
+            line_to_row: vec![0],
+            ghost_rows: Vec::new(),
+        });
+        tab.right_buffer = Some(PaneBuffer {
+            model: right_model,
+            row_to_line: vec![Some(0)],
+            line_to_row: vec![0],
+            ghost_rows: Vec::new(),
+        });
+    }
+
     window.set_diff_count(0);
     window.set_current_diff_index(-1);
     window.set_left_path(SharedString::from(""));
@@ -135,6 +177,16 @@ pub fn run_three_way_diff(window: &MainWindow, state: &mut AppState) {
     tab.title = format!("{} ↔ {} (3-way)", left_name, right_name);
 
     window.set_three_way_lines(ModelRc::new(VecModel::from(line_data)));
+
+    // Build per-pane PaneBuffers
+    let (left_buf, middle_buf, right_buf) = build_pane_buffers_3way(&result);
+    window.set_left_lines(ModelRc::from(left_buf.model.clone()));
+    window.set_middle_lines(ModelRc::from(middle_buf.model.clone()));
+    window.set_right_lines(ModelRc::from(right_buf.model.clone()));
+    tab.left_buffer = Some(left_buf);
+    tab.middle_buffer = Some(middle_buf);
+    tab.right_buffer = Some(right_buf);
+
     window.set_conflict_count(result.conflict_positions.len() as i32);
     window.set_current_conflict_index(tab.current_conflict);
     window.set_view_mode(ViewMode::ThreeWayText.as_i32());
@@ -176,6 +228,16 @@ pub fn recompute_three_way_from_text(
     tab.base_lines = base_text.lines().map(String::from).collect();
 
     window.set_three_way_lines(ModelRc::new(VecModel::from(line_data)));
+
+    // Build per-pane PaneBuffers
+    let (left_buf, middle_buf, right_buf) = build_pane_buffers_3way(&result);
+    window.set_left_lines(ModelRc::from(left_buf.model.clone()));
+    window.set_middle_lines(ModelRc::from(middle_buf.model.clone()));
+    window.set_right_lines(ModelRc::from(right_buf.model.clone()));
+    tab.left_buffer = Some(left_buf);
+    tab.middle_buffer = Some(middle_buf);
+    tab.right_buffer = Some(right_buf);
+
     // BUG-2: Reset stale focus state after model replacement
     window.set_three_way_edit_focus_left_row(-1);
     window.set_three_way_edit_focus_base_row(-1);
@@ -219,6 +281,22 @@ pub fn navigate_conflict(window: &MainWindow, state: &mut AppState, forward: boo
                 if row.is_current != should {
                     row.is_current = should;
                     vec_model.set_row_data(i, row);
+                }
+            }
+        }
+    }
+
+    // Sync is_current_diff to PaneBuffers
+    let tab = state.current_tab();
+    for buf_opt in [&tab.left_buffer, &tab.middle_buffer, &tab.right_buffer] {
+        if let Some(buf) = buf_opt {
+            for i in 0..buf.model.row_count() {
+                if let Some(mut row) = buf.model.row_data(i) {
+                    let should = i == current_pos;
+                    if row.is_current_diff != should {
+                        row.is_current_diff = should;
+                        buf.model.set_row_data(i, row);
+                    }
                 }
             }
         }
@@ -433,6 +511,8 @@ fn resolve_conflict_copy_to_base(
                 }
             }
         }
+        // Rebuild PaneBuffers after conflict resolution
+        rebuild_3way_pane_buffers_from_model(window, state, vec_model);
     }
 
     let tab = state.current_tab_mut();
@@ -523,6 +603,17 @@ pub fn three_way_edit_line(
         _ => row.right_text = SharedString::from(new_text),
     }
     vec_model.set_row_data(row_index as usize, row);
+
+    // Sync PaneBuffer row text
+    {
+        let tab = state.current_tab();
+        let buf = match pane {
+            0 => &tab.left_buffer,
+            1 => &tab.middle_buffer,
+            _ => &tab.right_buffer,
+        };
+        sync_pane_row_text(buf, row_index as usize, new_text);
+    }
 
     // Sync internal line arrays
     let Some(row_ref) = vec_model.row_data(row_index as usize) else {
@@ -662,6 +753,9 @@ pub fn three_way_insert_line_after(
             vec_model.set_row_data(i, r);
         }
     }
+    // Rebuild PaneBuffers after structural change
+    rebuild_3way_pane_buffers_from_model(window, state, vec_model);
+
     // Move focus to the new row in the correct pane
     match pane {
         0 => window.set_three_way_edit_focus_left_row(insert_at as i32),
@@ -759,6 +853,8 @@ pub fn three_way_delete_line(window: &MainWindow, state: &mut AppState, row_inde
                 vec_model.set_row_data(i, r);
             }
         }
+        // Rebuild PaneBuffers after structural change
+        rebuild_3way_pane_buffers_from_model(window, state, vec_model);
         mark_dirty_editing(window, state);
     }
     let prev = if row_index > 0 { row_index - 1 } else { 0 };
@@ -767,4 +863,121 @@ pub fn three_way_delete_line(window: &MainWindow, state: &mut AppState, row_inde
         1 => window.set_three_way_edit_focus_base_row(prev),
         _ => window.set_three_way_edit_focus_right_row(prev),
     }
+}
+
+/// Rebuild 3-way PaneBuffers from the shared ThreeWayLineData VecModel.
+/// Used for structural changes (insert/delete) and conflict resolution.
+fn rebuild_3way_pane_buffers_from_model(
+    window: &MainWindow,
+    state: &mut AppState,
+    vec_model: &VecModel<ThreeWayLineData>,
+) {
+    let count = vec_model.row_count();
+    let mut left_rows: Vec<PaneLineData> = Vec::with_capacity(count);
+    let mut middle_rows: Vec<PaneLineData> = Vec::with_capacity(count);
+    let mut right_rows: Vec<PaneLineData> = Vec::with_capacity(count);
+    let mut left_rtl: Vec<Option<usize>> = Vec::with_capacity(count);
+    let mut middle_rtl: Vec<Option<usize>> = Vec::with_capacity(count);
+    let mut right_rtl: Vec<Option<usize>> = Vec::with_capacity(count);
+    let mut left_ltr: Vec<usize> = Vec::new();
+    let mut middle_ltr: Vec<usize> = Vec::new();
+    let mut right_ltr: Vec<usize> = Vec::new();
+    let mut left_ghosts: Vec<usize> = Vec::new();
+    let mut middle_ghosts: Vec<usize> = Vec::new();
+    let mut right_ghosts: Vec<usize> = Vec::new();
+
+    for i in 0..count {
+        let Some(row) = vec_model.row_data(i) else {
+            continue;
+        };
+        let left_is_ghost = row.left_line_no.is_empty();
+        let middle_is_ghost = row.base_line_no.is_empty();
+        let right_is_ghost = row.right_line_no.is_empty();
+
+        left_rows.push(PaneLineData {
+            line_no: row.left_line_no.clone(),
+            text: row.left_text.clone(),
+            is_ghost: left_is_ghost,
+            status: row.status,
+            diff_index: row.conflict_index,
+            word_diff: SharedString::default(),
+            is_current_diff: row.is_current,
+            is_search_match: row.is_search_match,
+            is_selected: false,
+            highlight: -1,
+        });
+        middle_rows.push(PaneLineData {
+            line_no: row.base_line_no.clone(),
+            text: row.base_text.clone(),
+            is_ghost: middle_is_ghost,
+            status: row.status,
+            diff_index: row.conflict_index,
+            word_diff: SharedString::default(),
+            is_current_diff: row.is_current,
+            is_search_match: row.is_search_match,
+            is_selected: false,
+            highlight: -1,
+        });
+        right_rows.push(PaneLineData {
+            line_no: row.right_line_no.clone(),
+            text: row.right_text.clone(),
+            is_ghost: right_is_ghost,
+            status: row.status,
+            diff_index: row.conflict_index,
+            word_diff: SharedString::default(),
+            is_current_diff: row.is_current,
+            is_search_match: row.is_search_match,
+            is_selected: false,
+            highlight: -1,
+        });
+
+        if left_is_ghost {
+            left_rtl.push(None);
+            left_ghosts.push(i);
+        } else {
+            left_rtl.push(Some(left_ltr.len()));
+            left_ltr.push(i);
+        }
+        if middle_is_ghost {
+            middle_rtl.push(None);
+            middle_ghosts.push(i);
+        } else {
+            middle_rtl.push(Some(middle_ltr.len()));
+            middle_ltr.push(i);
+        }
+        if right_is_ghost {
+            right_rtl.push(None);
+            right_ghosts.push(i);
+        } else {
+            right_rtl.push(Some(right_ltr.len()));
+            right_ltr.push(i);
+        }
+    }
+
+    let left_model = std::rc::Rc::new(VecModel::from(left_rows));
+    let middle_model = std::rc::Rc::new(VecModel::from(middle_rows));
+    let right_model = std::rc::Rc::new(VecModel::from(right_rows));
+    window.set_left_lines(ModelRc::from(left_model.clone()));
+    window.set_middle_lines(ModelRc::from(middle_model.clone()));
+    window.set_right_lines(ModelRc::from(right_model.clone()));
+
+    let tab = state.current_tab_mut();
+    tab.left_buffer = Some(PaneBuffer {
+        model: left_model,
+        row_to_line: left_rtl,
+        line_to_row: left_ltr,
+        ghost_rows: left_ghosts,
+    });
+    tab.middle_buffer = Some(PaneBuffer {
+        model: middle_model,
+        row_to_line: middle_rtl,
+        line_to_row: middle_ltr,
+        ghost_rows: middle_ghosts,
+    });
+    tab.right_buffer = Some(PaneBuffer {
+        model: right_model,
+        row_to_line: right_rtl,
+        line_to_row: right_ltr,
+        ghost_rows: right_ghosts,
+    });
 }

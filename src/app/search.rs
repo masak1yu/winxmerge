@@ -19,6 +19,8 @@ pub fn search_text(window: &MainWindow, state: &mut AppState, query: &str) {
                     }
                 }
             }
+            // Sync to 3-way PaneBuffers
+            sync_search_match_to_3way_pane_buffers(state, false);
             window.set_search_match_count(0);
             window.set_status_text(SharedString::from("Search cleared"));
             return;
@@ -70,6 +72,8 @@ pub fn search_text(window: &MainWindow, state: &mut AppState, query: &str) {
                 query
             )));
         }
+        // Sync to 3-way PaneBuffers
+        sync_search_match_to_3way_pane_buffers_from_matches(state);
         return;
     }
 
@@ -177,6 +181,42 @@ fn sync_search_match_to_pane_buffers_from_matches(state: &AppState) {
     }
 }
 
+/// Clear/set is_search_match on all 3-way PaneBuffer rows.
+fn sync_search_match_to_3way_pane_buffers(state: &AppState, value: bool) {
+    let tab = state.current_tab();
+    for buf_opt in [&tab.left_buffer, &tab.middle_buffer, &tab.right_buffer] {
+        if let Some(buf) = buf_opt {
+            for i in 0..buf.model.row_count() {
+                if let Some(mut row) = buf.model.row_data(i) {
+                    if row.is_search_match != value {
+                        row.is_search_match = value;
+                        buf.model.set_row_data(i, row);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Set is_search_match on 3-way PaneBuffer rows based on tab.search_matches.
+fn sync_search_match_to_3way_pane_buffers_from_matches(state: &AppState) {
+    let tab = state.current_tab();
+    let matches: std::collections::HashSet<usize> = tab.search_matches.iter().copied().collect();
+    for buf_opt in [&tab.left_buffer, &tab.middle_buffer, &tab.right_buffer] {
+        if let Some(buf) = buf_opt {
+            for i in 0..buf.model.row_count() {
+                if let Some(mut row) = buf.model.row_data(i) {
+                    let matched = matches.contains(&i);
+                    if row.is_search_match != matched {
+                        row.is_search_match = matched;
+                        buf.model.set_row_data(i, row);
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn replace_text(window: &MainWindow, state: &mut AppState, search: &str, replacement: &str) {
     let tab = state.current_tab();
     if search.is_empty() || tab.search_matches.is_empty() || tab.current_search_match < 0 {
@@ -191,22 +231,21 @@ pub fn replace_text(window: &MainWindow, state: &mut AppState, search: &str, rep
         let Some(mut row) = vec_model.row_data(match_idx) else {
             return;
         };
-        row.left_text = SharedString::from(case_insensitive_replace(
-            &row.left_text.to_string(),
-            &search_lower,
-            replacement,
-        ));
-        row.base_text = SharedString::from(case_insensitive_replace(
-            &row.base_text.to_string(),
-            &search_lower,
-            replacement,
-        ));
-        row.right_text = SharedString::from(case_insensitive_replace(
-            &row.right_text.to_string(),
-            &search_lower,
-            replacement,
-        ));
+        let new_left =
+            case_insensitive_replace(&row.left_text.to_string(), &search_lower, replacement);
+        let new_base =
+            case_insensitive_replace(&row.base_text.to_string(), &search_lower, replacement);
+        let new_right =
+            case_insensitive_replace(&row.right_text.to_string(), &search_lower, replacement);
+        row.left_text = SharedString::from(&new_left);
+        row.base_text = SharedString::from(&new_base);
+        row.right_text = SharedString::from(&new_right);
         vec_model.set_row_data(match_idx, row);
+
+        // Sync replaced text to 3-way PaneBuffers
+        sync_pane_row_text(&state.current_tab().left_buffer, match_idx, &new_left);
+        sync_pane_row_text(&state.current_tab().middle_buffer, match_idx, &new_base);
+        sync_pane_row_text(&state.current_tab().right_buffer, match_idx, &new_right);
 
         mark_dirty(window, state);
         search_text(window, state, search);
@@ -255,22 +294,29 @@ pub fn replace_all_text(
         let_three_way_vec_model!(model, vec_model, window);
         for &match_idx in &matches {
             if let Some(mut row) = vec_model.row_data(match_idx) {
-                row.left_text = SharedString::from(case_insensitive_replace(
+                let new_left = case_insensitive_replace(
                     &row.left_text.to_string(),
                     &search_lower,
                     replacement,
-                ));
-                row.base_text = SharedString::from(case_insensitive_replace(
+                );
+                let new_base = case_insensitive_replace(
                     &row.base_text.to_string(),
                     &search_lower,
                     replacement,
-                ));
-                row.right_text = SharedString::from(case_insensitive_replace(
+                );
+                let new_right = case_insensitive_replace(
                     &row.right_text.to_string(),
                     &search_lower,
                     replacement,
-                ));
+                );
+                row.left_text = SharedString::from(&new_left);
+                row.base_text = SharedString::from(&new_base);
+                row.right_text = SharedString::from(&new_right);
                 vec_model.set_row_data(match_idx, row);
+                // Sync replaced text to 3-way PaneBuffers
+                sync_pane_row_text(&state.current_tab().left_buffer, match_idx, &new_left);
+                sync_pane_row_text(&state.current_tab().middle_buffer, match_idx, &new_base);
+                sync_pane_row_text(&state.current_tab().right_buffer, match_idx, &new_right);
             }
         }
     } else {

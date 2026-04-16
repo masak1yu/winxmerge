@@ -137,6 +137,11 @@ fn restore_tab_common(window: &MainWindow, tab: &TabState) {
     } else {
         window.set_left_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
     }
+    if let Some(ref buf) = tab.middle_buffer {
+        window.set_middle_lines(ModelRc::from(buf.model.clone()));
+    } else {
+        window.set_middle_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
+    }
     if let Some(ref buf) = tab.right_buffer {
         window.set_right_lines(ModelRc::from(buf.model.clone()));
     } else {
