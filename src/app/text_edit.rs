@@ -288,20 +288,41 @@ pub fn insert_line_after(
     };
     vec_model.insert(insert_at, new_row);
 
-    // Renumber line numbers
+    // Renumber line numbers — only rows from insert_at onward changed
     let mut left_counter = 0usize;
     let mut right_counter = 0usize;
-    for i in 0..vec_model.row_count() {
-        if let Some(mut r) = vec_model.row_data(i) {
+    for i in 0..insert_at {
+        if let Some(r) = vec_model.row_data(i) {
             if !r.left_line_no.is_empty() {
                 left_counter += 1;
-                r.left_line_no = SharedString::from(left_counter.to_string());
             }
             if !r.right_line_no.is_empty() {
                 right_counter += 1;
-                r.right_line_no = SharedString::from(right_counter.to_string());
             }
-            vec_model.set_row_data(i, r);
+        }
+    }
+    for i in insert_at..vec_model.row_count() {
+        if let Some(mut r) = vec_model.row_data(i) {
+            let mut changed = false;
+            if !r.left_line_no.is_empty() {
+                left_counter += 1;
+                let new_no = SharedString::from(left_counter.to_string());
+                if r.left_line_no != new_no {
+                    r.left_line_no = new_no;
+                    changed = true;
+                }
+            }
+            if !r.right_line_no.is_empty() {
+                right_counter += 1;
+                let new_no = SharedString::from(right_counter.to_string());
+                if r.right_line_no != new_no {
+                    r.right_line_no = new_no;
+                    changed = true;
+                }
+            }
+            if changed {
+                vec_model.set_row_data(i, r);
+            }
         }
     }
 
@@ -374,20 +395,41 @@ pub fn delete_line(window: &MainWindow, state: &mut AppState, line_index: i32, i
 
         vec_model.remove(idx);
 
-        // Renumber
+        // Renumber — only rows from idx onward changed
         let mut left_counter = 0usize;
         let mut right_counter = 0usize;
-        for i in 0..vec_model.row_count() {
-            if let Some(mut r) = vec_model.row_data(i) {
+        for i in 0..idx {
+            if let Some(r) = vec_model.row_data(i) {
                 if !r.left_line_no.is_empty() {
                     left_counter += 1;
-                    r.left_line_no = SharedString::from(left_counter.to_string());
                 }
                 if !r.right_line_no.is_empty() {
                     right_counter += 1;
-                    r.right_line_no = SharedString::from(right_counter.to_string());
                 }
-                vec_model.set_row_data(i, r);
+            }
+        }
+        for i in idx..vec_model.row_count() {
+            if let Some(mut r) = vec_model.row_data(i) {
+                let mut changed = false;
+                if !r.left_line_no.is_empty() {
+                    left_counter += 1;
+                    let new_no = SharedString::from(left_counter.to_string());
+                    if r.left_line_no != new_no {
+                        r.left_line_no = new_no;
+                        changed = true;
+                    }
+                }
+                if !r.right_line_no.is_empty() {
+                    right_counter += 1;
+                    let new_no = SharedString::from(right_counter.to_string());
+                    if r.right_line_no != new_no {
+                        r.right_line_no = new_no;
+                        changed = true;
+                    }
+                }
+                if changed {
+                    vec_model.set_row_data(i, r);
+                }
             }
         }
 

@@ -56,16 +56,16 @@ pub fn navigate_diff_by_status(
         v.extend((start..n).rev());
         v
     };
-    let diff_line_data = tab.diff_line_data.clone();
-    let diff_positions = tab.diff_positions.clone();
-    for idx in candidates {
-        let pos = diff_positions[idx as usize];
-        if let Some(line) = diff_line_data.get(pos) {
-            if line.status == status_filter {
-                update_current_diff(window, state, idx);
-                return;
-            }
-        }
+    // Find the matching diff index before mutating state
+    let found = candidates.into_iter().find(|&idx| {
+        let pos = tab.diff_positions[idx as usize];
+        tab.diff_line_data
+            .get(pos)
+            .is_some_and(|line| line.status == status_filter)
+    });
+    if let Some(idx) = found {
+        update_current_diff(window, state, idx);
+        return;
     }
     let label = match status_filter {
         1 => "Added",
@@ -295,12 +295,21 @@ pub(super) fn update_detail_pane(
     let mut left_lines: Vec<DetailLineData> = Vec::new();
     let mut right_lines: Vec<DetailLineData> = Vec::new();
 
+    // Use diff_positions to jump directly to the block start instead of scanning all rows
+    let start = _tab
+        .diff_positions
+        .get(diff_index as usize)
+        .copied()
+        .unwrap_or(0);
     let count = model.row_count();
-    for i in 0..count {
+    for i in start..count {
         let Some(dl) = model.row_data(i) else {
             continue;
         };
         if dl.diff_index != diff_index {
+            if dl.diff_index > diff_index {
+                break; // diff blocks are contiguous, so we're past the target
+            }
             continue;
         }
         let status = dl.status; // 1=added, 2=removed, 3=modified, 4=moved

@@ -1057,12 +1057,12 @@ pub(super) fn recompute_table_from_csv(
     let diff_count = diff_positions.len();
 
     let tab = state.current_tab_mut();
-    tab.table_rows = table_rows.clone();
+    window.set_table_rows(ModelRc::new(VecModel::from(table_rows.clone())));
+    tab.table_rows = table_rows;
     tab.diff_positions = diff_positions;
     tab.current_diff = if diff_count > 0 { 0 } else { -1 };
     tab.editing_dirty = false;
 
-    window.set_table_rows(ModelRc::new(VecModel::from(table_rows)));
     window.set_diff_count(diff_count as i32);
     window.set_current_diff_index(tab.current_diff);
 }
@@ -1111,12 +1111,12 @@ pub(super) fn recompute_table_from_csv_3way(
     let diff_count = diff_positions.len();
 
     let tab = state.current_tab_mut();
-    tab.table_rows = table_rows.clone();
+    window.set_table_rows(ModelRc::new(VecModel::from(table_rows.clone())));
+    tab.table_rows = table_rows;
     tab.diff_positions = diff_positions;
     tab.current_diff = if diff_count > 0 { 0 } else { -1 };
     tab.editing_dirty = false;
 
-    window.set_table_rows(ModelRc::new(VecModel::from(table_rows)));
     window.set_diff_count(diff_count as i32);
     window.set_current_diff_index(tab.current_diff);
 }
@@ -1188,16 +1188,12 @@ pub(super) fn run_excel_compare(
     let tab = state.current_tab_mut();
     tab.view_mode = ViewMode::ExcelCompare;
     tab.title = format!("{} ↔ {}", left_name, right_name);
-    tab.table_rows = all_rows.clone();
-    tab.table_columns = all_columns.clone();
-    tab.table_content_width_px = all_content_width_px;
     tab.excel_sheet_names = sheet_names.clone();
     tab.excel_sheet_data = sheet_cache;
     tab.excel_cells = Vec::new();
 
     // Build diff positions from row statuses
-    let diff_positions: Vec<usize> = tab
-        .table_rows
+    let diff_positions: Vec<usize> = all_rows
         .iter()
         .enumerate()
         .filter(|(_, r)| r.row_status != 0)
@@ -1207,9 +1203,12 @@ pub(super) fn run_excel_compare(
     tab.diff_positions = diff_positions;
     tab.current_diff = if diff_pos_count > 0 { 0 } else { -1 };
 
-    // Set window properties
-    window.set_table_rows(ModelRc::new(VecModel::from(all_rows)));
-    window.set_table_columns(ModelRc::new(VecModel::from(all_columns)));
+    // Set window properties — clone for window, move into tab
+    window.set_table_rows(ModelRc::new(VecModel::from(all_rows.clone())));
+    window.set_table_columns(ModelRc::new(VecModel::from(all_columns.clone())));
+    tab.table_rows = all_rows;
+    tab.table_columns = all_columns;
+    tab.table_content_width_px = all_content_width_px;
     window.set_table_content_width_px(all_content_width_px);
     window.set_diff_count(diff_pos_count as i32);
     window.set_current_diff_index(tab.current_diff);
@@ -1337,21 +1336,13 @@ pub(super) fn run_csv_compare(
     let tab = state.current_tab_mut();
     tab.view_mode = ViewMode::CsvCompare;
     tab.title = format!("{} ↔ {}", left_name, right_name);
-    tab.table_rows = table_rows.clone();
-    tab.table_columns = columns.clone();
-    tab.table_content_width_px = content_width_px;
     tab.csv_delimiter = left_delim;
     tab.excel_cells = Vec::new();
     tab.excel_sheet_names = Vec::new();
     tab.excel_sheet_data.clear();
 
-    window.set_table_rows(ModelRc::new(VecModel::from(table_rows)));
-    window.set_table_columns(ModelRc::new(VecModel::from(columns)));
-    window.set_table_content_width_px(content_width_px);
-
-    // Build diff positions from row statuses
-    let diff_positions: Vec<usize> = tab
-        .table_rows
+    // Build diff positions from row statuses before moving table_rows
+    let diff_positions: Vec<usize> = table_rows
         .iter()
         .enumerate()
         .filter(|(_, r)| r.row_status != 0)
@@ -1360,6 +1351,15 @@ pub(super) fn run_csv_compare(
     let diff_pos_count = diff_positions.len();
     tab.diff_positions = diff_positions;
     tab.current_diff = if diff_pos_count > 0 { 0 } else { -1 };
+
+    // Clone for window, move into tab
+    window.set_table_rows(ModelRc::new(VecModel::from(table_rows.clone())));
+    window.set_table_columns(ModelRc::new(VecModel::from(columns.clone())));
+    window.set_table_content_width_px(content_width_px);
+    tab.table_rows = table_rows;
+    tab.table_columns = columns;
+    tab.table_content_width_px = content_width_px;
+
     window.set_diff_count(diff_pos_count as i32);
     window.set_current_diff_index(tab.current_diff);
 
@@ -1434,21 +1434,13 @@ pub(super) fn run_csv_compare_3way(
     let tab = state.current_tab_mut();
     tab.view_mode = ViewMode::CsvThreeWay;
     tab.title = format!("{} ↔ {} (3-way)", left_name, right_name);
-    tab.table_rows = table_rows.clone();
-    tab.table_columns = columns.clone();
-    tab.table_content_width_px = content_width_px;
     tab.csv_delimiter = base_delim;
     tab.excel_cells = Vec::new();
     tab.excel_sheet_names = Vec::new();
     tab.excel_sheet_data.clear();
 
-    window.set_table_rows(ModelRc::new(VecModel::from(table_rows)));
-    window.set_table_columns(ModelRc::new(VecModel::from(columns)));
-    window.set_table_content_width_px(content_width_px);
-
-    // Build diff positions from row statuses
-    let diff_positions: Vec<usize> = tab
-        .table_rows
+    // Build diff positions from row statuses before moving table_rows
+    let diff_positions: Vec<usize> = table_rows
         .iter()
         .enumerate()
         .filter(|(_, r)| r.row_status != 0)
@@ -1457,6 +1449,15 @@ pub(super) fn run_csv_compare_3way(
     let diff_pos_count = diff_positions.len();
     tab.diff_positions = diff_positions;
     tab.current_diff = if diff_pos_count > 0 { 0 } else { -1 };
+
+    // Clone for window, move into tab
+    window.set_table_rows(ModelRc::new(VecModel::from(table_rows.clone())));
+    window.set_table_columns(ModelRc::new(VecModel::from(columns.clone())));
+    window.set_table_content_width_px(content_width_px);
+    tab.table_rows = table_rows;
+    tab.table_columns = columns;
+    tab.table_content_width_px = content_width_px;
+
     window.set_diff_count(diff_pos_count as i32);
     window.set_current_diff_index(tab.current_diff);
 

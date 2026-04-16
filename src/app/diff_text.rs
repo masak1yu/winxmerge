@@ -257,8 +257,7 @@ pub(super) fn apply_diff_result(
 
     tab.left_lines = left_text.lines().map(String::from).collect();
     tab.right_lines = right_text.lines().map(String::from).collect();
-    tab.diff_positions = result.diff_positions.clone();
-    tab.current_diff = if result.diff_positions.is_empty() {
+    let current_diff = if result.diff_positions.is_empty() {
         -1
     } else {
         0
@@ -335,9 +334,10 @@ pub(super) fn apply_diff_result(
         })
         .collect();
 
-    tab.diff_line_data = diff_line_data.clone();
-
-    let model = ModelRc::new(VecModel::from(diff_line_data));
+    tab.diff_positions = result.diff_positions;
+    tab.current_diff = current_diff;
+    let model = ModelRc::new(VecModel::from(diff_line_data.clone()));
+    tab.diff_line_data = diff_line_data;
     window.set_diff_lines(model);
     window.set_diff_count(result.diff_count as i32);
     window.set_current_diff_index(tab.current_diff);
