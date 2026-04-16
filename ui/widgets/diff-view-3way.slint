@@ -141,8 +141,9 @@ component ThreeWayLineRow inherits Rectangle {
 // WinMerge-style 3-bar location pane with connector regions
 // Bar layout: [left-bar][connector-LM][middle-bar][connector-MR][right-bar]
 // Status: 0=Equal, 1=LeftChanged, 2=RightChanged, 3=BothChanged, 4=Conflict
+// Uses left-lines (PaneLineData) as the representative model for status/diff-index.
 component ThreeWayLocationPane inherits Rectangle {
-    in property <[ThreeWayLineData]> lines;
+    in property <[PaneLineData]> lines;
     in property <int> current-conflict-index: -1;
 
     width: 36px;
@@ -162,7 +163,7 @@ component ThreeWayLocationPane inherits Rectangle {
         x: root.start-x;
         width: root.bar-width;
         background: line.status == 0 ? transparent :
-                    (line.conflict-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
+                    (line.diff-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
                     line.status == 1 ? ThemeColors.added-fg :
                     line.status == 3 ? ThemeColors.modified-fg :
                     line.status == 4 ? ThemeColors.removed-fg : transparent;
@@ -187,7 +188,7 @@ component ThreeWayLocationPane inherits Rectangle {
         x: root.start-x + root.bar-width + root.gap-width;
         width: root.bar-width;
         background: line.status == 0 ? transparent :
-                    (line.conflict-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
+                    (line.diff-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
                     line.status == 3 ? ThemeColors.modified-fg :
                     line.status == 4 ? ThemeColors.removed-fg : transparent;
     }
@@ -211,7 +212,7 @@ component ThreeWayLocationPane inherits Rectangle {
         x: root.start-x + root.bar-width * 2 + root.gap-width * 2;
         width: root.bar-width;
         background: line.status == 0 ? transparent :
-                    (line.conflict-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
+                    (line.diff-index == root.current-conflict-index && root.current-conflict-index >= 0) ? ThemeColors.location-current :
                     line.status == 2 ? ThemeColors.added-fg :
                     line.status == 3 ? ThemeColors.modified-fg :
                     line.status == 4 ? ThemeColors.removed-fg : transparent;
@@ -222,7 +223,6 @@ export component DiffView3Way inherits Rectangle {
     in property <string> base-title: "Base";
     in property <string> left-title: "Left";
     in property <string> right-title: "Right";
-    in property <[ThreeWayLineData]> lines;  // legacy (kept for LocationPane + bridge)
     in property <[PaneLineData]> left-lines;
     in property <[PaneLineData]> middle-lines;
     in property <[PaneLineData]> right-lines;
@@ -419,7 +419,7 @@ export component DiffView3Way inherits Rectangle {
 
             // Location pane (minimap)
             if root.left-lines.length > 0 && root.show-location-pane : ThreeWayLocationPane {
-                lines: root.lines;
+                lines: root.left-lines;
                 current-conflict-index: root.current-conflict-index;
             }
         }
