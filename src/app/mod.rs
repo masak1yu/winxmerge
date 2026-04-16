@@ -122,6 +122,11 @@ pub struct TabState {
     pub left_path: Option<PathBuf>,
     pub right_path: Option<PathBuf>,
     pub base_path: Option<PathBuf>,
+    /// Per-pane independent buffers (Phase 0+).
+    /// These are populated alongside the legacy shared models during migration.
+    pub left_buffer: Option<PaneBuffer>,
+    pub right_buffer: Option<PaneBuffer>,
+    pub middle_buffer: Option<PaneBuffer>,
     pub three_way_conflict_positions: Vec<usize>,
     pub current_conflict: i32,
     pub diff_positions: Vec<usize>,
@@ -209,6 +214,9 @@ impl TabState {
             left_path: None,
             right_path: None,
             base_path: None,
+            left_buffer: None,
+            right_buffer: None,
+            middle_buffer: None,
             three_way_conflict_positions: Vec::new(),
             current_conflict: -1,
             diff_positions: Vec::new(),
@@ -306,6 +314,7 @@ mod diff_text;
 mod folder;
 mod helpers;
 mod options;
+pub mod pane_buffer;
 mod save_export;
 mod search;
 mod tab;
@@ -318,6 +327,7 @@ pub use diff_text::*;
 pub use folder::*;
 pub use helpers::*;
 pub use options::*;
+pub use pane_buffer::*;
 pub use save_export::*;
 pub use search::*;
 pub use tab::*;

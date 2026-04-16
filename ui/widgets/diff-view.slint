@@ -6,6 +6,22 @@ export struct WordSegment {
     is-changed: bool,
 }
 
+// Per-pane line data for independent buffer architecture (Phase 0+)
+export struct PaneLineData {
+    line-no: string,
+    text: string,
+    is-ghost: bool,
+    // 0=Equal, 1=Added, 2=Removed, 3=Modified, 4=Moved
+    status: int,
+    diff-index: int,
+    word-diff: string,
+    is-current-diff: bool,
+    is-search-match: bool,
+    is-selected: bool,
+    // Syntax highlight: -1=none, 0=keyword, 1=string, 2=comment, 3=number, 4=function, etc.
+    highlight: int,
+}
+
 export struct DiffLineData {
     left-line-no: string,
     right-line-no: string,
