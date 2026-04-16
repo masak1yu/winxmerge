@@ -425,31 +425,27 @@ pub fn apply_pending_diff_if_ready(window: &MainWindow, state: &mut AppState) {
 }
 
 pub(super) fn rebuild_left(vec_model: &VecModel<DiffLineData>) -> String {
-    let mut lines = Vec::new();
-    for i in 0..vec_model.row_count() {
-        let Some(row) = vec_model.row_data(i) else {
-            continue;
-        };
-        if row.status == STATUS_ADDED {
-            continue;
-        }
-        lines.push(row.left_text.to_string());
+    let data: Vec<DiffLineData> = (0..vec_model.row_count())
+        .filter_map(|i| vec_model.row_data(i))
+        .collect();
+    let text = rebuild_left_from_data(&data);
+    if text.is_empty() {
+        "\n".to_string()
+    } else {
+        text
     }
-    lines.join("\n") + "\n"
 }
 
 pub(super) fn rebuild_right(vec_model: &VecModel<DiffLineData>) -> String {
-    let mut lines = Vec::new();
-    for i in 0..vec_model.row_count() {
-        let Some(row) = vec_model.row_data(i) else {
-            continue;
-        };
-        if row.status == STATUS_REMOVED {
-            continue;
-        }
-        lines.push(row.right_text.to_string());
+    let data: Vec<DiffLineData> = (0..vec_model.row_count())
+        .filter_map(|i| vec_model.row_data(i))
+        .collect();
+    let text = rebuild_right_from_data(&data);
+    if text.is_empty() {
+        "\n".to_string()
+    } else {
+        text
     }
-    lines.join("\n") + "\n"
 }
 
 /// Rebuild text for a specific pane (0=left, 1=base, 2=right) from the 3-way VecModel.

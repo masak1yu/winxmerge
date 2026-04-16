@@ -20,70 +20,7 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
         ..Default::default()
     };
     let items = compare_folders_with_options(&left_folder, &right_folder, &options);
-
-    let folder_item_data: Vec<FolderItemData> = items
-        .iter()
-        .map(|item| {
-            let status: i32 = match item.status {
-                FileCompareStatus::Identical => 0,
-                FileCompareStatus::Different => 1,
-                FileCompareStatus::LeftOnly => 2,
-                FileCompareStatus::RightOnly => 3,
-            };
-            // Compute tree depth from path separators
-            let depth = item
-                .relative_path
-                .chars()
-                .filter(|&c| c == '/' || c == '\\')
-                .count() as i32;
-            FolderItemData {
-                relative_path: SharedString::from(&item.relative_path),
-                is_directory: item.is_directory,
-                status,
-                left_size: item
-                    .left_size
-                    .map(|s| SharedString::from(format_size(s)))
-                    .unwrap_or_default(),
-                right_size: item
-                    .right_size
-                    .map(|s| SharedString::from(format_size(s)))
-                    .unwrap_or_default(),
-                left_modified: item
-                    .left_modified
-                    .as_ref()
-                    .map(|s| SharedString::from(s.as_str()))
-                    .unwrap_or_default(),
-                right_modified: item
-                    .right_modified
-                    .as_ref()
-                    .map(|s| SharedString::from(s.as_str()))
-                    .unwrap_or_default(),
-                depth,
-            }
-        })
-        .collect();
-
-    let identical = items
-        .iter()
-        .filter(|i| i.status == FileCompareStatus::Identical)
-        .count();
-    let different = items
-        .iter()
-        .filter(|i| i.status == FileCompareStatus::Different)
-        .count();
-    let left_only = items
-        .iter()
-        .filter(|i| i.status == FileCompareStatus::LeftOnly)
-        .count();
-    let right_only = items
-        .iter()
-        .filter(|i| i.status == FileCompareStatus::RightOnly)
-        .count();
-    let total = items.len();
-    let summary = format!(
-        "Identical: {} | Different: {} | Left only: {} | Right only: {} | Total: {}",
-        identical, different, left_only, right_only, total
-    );
+    let (folder_item_data, summary) = build_folder_item_data(&items);
 
     let left_name = left_folder
         .file_name()
@@ -350,60 +287,7 @@ pub(super) fn run_zip_compare(
     let left_str = left_path.to_string_lossy();
     let right_str = right_path.to_string_lossy();
     let items = compare_zip_archives(left_bytes, right_bytes, &left_str, &right_str);
-
-    let folder_item_data: Vec<FolderItemData> = items
-        .iter()
-        .map(|item| {
-            let status: i32 = match item.status {
-                crate::models::folder_item::FileCompareStatus::Identical => 0,
-                crate::models::folder_item::FileCompareStatus::Different => 1,
-                crate::models::folder_item::FileCompareStatus::LeftOnly => 2,
-                crate::models::folder_item::FileCompareStatus::RightOnly => 3,
-            };
-            let depth = item.relative_path.chars().filter(|&c| c == '/').count() as i32;
-            FolderItemData {
-                relative_path: SharedString::from(&item.relative_path),
-                is_directory: item.is_directory,
-                status,
-                left_size: item
-                    .left_size
-                    .map(|s| SharedString::from(format_size(s)))
-                    .unwrap_or_default(),
-                right_size: item
-                    .right_size
-                    .map(|s| SharedString::from(format_size(s)))
-                    .unwrap_or_default(),
-                left_modified: item
-                    .left_modified
-                    .as_ref()
-                    .map(|s| SharedString::from(s.as_str()))
-                    .unwrap_or_default(),
-                right_modified: item
-                    .right_modified
-                    .as_ref()
-                    .map(|s| SharedString::from(s.as_str()))
-                    .unwrap_or_default(),
-                depth,
-            }
-        })
-        .collect();
-
-    let identical = items
-        .iter()
-        .filter(|i| i.status == crate::models::folder_item::FileCompareStatus::Identical)
-        .count();
-    let different = items
-        .iter()
-        .filter(|i| i.status == crate::models::folder_item::FileCompareStatus::Different)
-        .count();
-    let left_only = items
-        .iter()
-        .filter(|i| i.status == crate::models::folder_item::FileCompareStatus::LeftOnly)
-        .count();
-    let right_only = items
-        .iter()
-        .filter(|i| i.status == crate::models::folder_item::FileCompareStatus::RightOnly)
-        .count();
+    let (folder_item_data, summary) = build_folder_item_data(&items);
 
     let left_name = left_path
         .file_name()
@@ -413,15 +297,6 @@ pub(super) fn run_zip_compare(
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
-
-    let summary = format!(
-        "Identical: {} | Different: {} | Left only: {} | Right only: {} | Total: {}",
-        identical,
-        different,
-        left_only,
-        right_only,
-        items.len()
-    );
 
     let tab = state.current_tab_mut();
     tab.folder_items = items;
@@ -543,51 +418,6 @@ fn format_size(bytes: u64) -> String {
 
 // --- Feature: Folder sort ---
 
-/// Helper: convert folder_items to folder_item_data
-fn folder_items_to_data(items: &[crate::models::folder_item::FolderItem]) -> Vec<FolderItemData> {
-    use crate::models::folder_item::FileCompareStatus;
-    items
-        .iter()
-        .map(|item| {
-            let status: i32 = match item.status {
-                FileCompareStatus::Identical => 0,
-                FileCompareStatus::Different => 1,
-                FileCompareStatus::LeftOnly => 2,
-                FileCompareStatus::RightOnly => 3,
-            };
-            let depth = item
-                .relative_path
-                .chars()
-                .filter(|&c| c == '/' || c == '\\')
-                .count() as i32;
-            FolderItemData {
-                relative_path: SharedString::from(&item.relative_path),
-                is_directory: item.is_directory,
-                status,
-                left_size: item
-                    .left_size
-                    .map(|s| SharedString::from(format_size(s)))
-                    .unwrap_or_default(),
-                right_size: item
-                    .right_size
-                    .map(|s| SharedString::from(format_size(s)))
-                    .unwrap_or_default(),
-                left_modified: item
-                    .left_modified
-                    .as_ref()
-                    .map(|s| SharedString::from(s.as_str()))
-                    .unwrap_or_default(),
-                right_modified: item
-                    .right_modified
-                    .as_ref()
-                    .map(|s| SharedString::from(s.as_str()))
-                    .unwrap_or_default(),
-                depth,
-            }
-        })
-        .collect()
-}
-
 pub fn sort_folder(window: &MainWindow, state: &mut AppState, column: i32) {
     use crate::models::folder_item::FileCompareStatus;
 
@@ -638,7 +468,7 @@ pub fn sort_folder(window: &MainWindow, state: &mut AppState, column: i32) {
         if ascending { ord } else { ord.reverse() }
     });
 
-    let data = folder_items_to_data(&tab.folder_items);
+    let (data, _) = build_folder_item_data(&tab.folder_items);
     tab.folder_item_data = data.clone();
     let sort_col = tab.folder_sort_column;
     let sort_asc = tab.folder_sort_ascending;
