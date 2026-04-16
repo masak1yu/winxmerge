@@ -263,13 +263,7 @@ fn build_three_way_line_data(result: &ThreeWayResult) -> Vec<ThreeWayLineData> {
         .iter()
         .enumerate()
         .map(|(i, line)| {
-            let status: i32 = match line.status {
-                ThreeWayStatus::Equal => 0,
-                ThreeWayStatus::LeftChanged => 1,
-                ThreeWayStatus::RightChanged => 2,
-                ThreeWayStatus::BothChanged => 3,
-                ThreeWayStatus::Conflict => 4,
-            };
+            let status: i32 = line.status.as_i32();
             let conflict_index = block_indices[i];
             ThreeWayLineData {
                 base_line_no: line
@@ -560,11 +554,7 @@ pub fn three_way_edit_line(
     new_text: &str,
     pane: i32,
 ) {
-    let model = window.get_three_way_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_three_way_vec_model!(model, vec_model, window);
     if row_index < 0 || row_index as usize >= vec_model.row_count() {
         return;
     }
@@ -607,12 +597,7 @@ pub fn three_way_edit_line(
             }
         }
     }
-    tab.has_unsaved_changes = true;
-    window.set_has_unsaved_changes(true);
-    if !tab.editing_dirty {
-        tab.editing_dirty = true;
-        window.set_status_text(SharedString::from("Editing — press F5 to compare"));
-    }
+    mark_dirty_editing(window, state);
 }
 
 /// Insert a blank row after `row_index` in the 3-way view. pane: 0=left, 1=base, 2=right.
@@ -625,11 +610,7 @@ pub fn three_way_insert_line_after(
     if row_index < 0 {
         return;
     }
-    let model = window.get_three_way_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_three_way_vec_model!(model, vec_model, window);
     let insert_at = (row_index + 1) as usize;
     let count = vec_model.row_count();
     if insert_at > count {
@@ -720,13 +701,7 @@ pub fn three_way_insert_line_after(
         1 => window.set_three_way_edit_focus_base_row(insert_at as i32),
         _ => window.set_three_way_edit_focus_right_row(insert_at as i32),
     }
-    let tab = state.current_tab_mut();
-    tab.has_unsaved_changes = true;
-    window.set_has_unsaved_changes(true);
-    if !tab.editing_dirty {
-        tab.editing_dirty = true;
-        window.set_status_text(SharedString::from("Editing — press F5 to compare"));
-    }
+    mark_dirty_editing(window, state);
 }
 
 /// Delete the row at `row_index` in the 3-way view if the pane's cell is empty.
@@ -734,11 +709,7 @@ pub fn three_way_delete_line(window: &MainWindow, state: &mut AppState, row_inde
     if row_index < 0 {
         return;
     }
-    let model = window.get_three_way_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_three_way_vec_model!(model, vec_model, window);
     let idx = row_index as usize;
     if idx >= vec_model.row_count() {
         return;

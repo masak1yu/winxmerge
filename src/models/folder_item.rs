@@ -8,6 +8,17 @@ pub enum FileCompareStatus {
     RightOnly,
 }
 
+impl FileCompareStatus {
+    pub fn as_i32(&self) -> i32 {
+        match self {
+            Self::Identical => 0,
+            Self::Different => 1,
+            Self::LeftOnly => 2,
+            Self::RightOnly => 3,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FolderItem {
     pub relative_path: String,

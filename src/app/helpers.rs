@@ -15,10 +15,33 @@ macro_rules! let_diff_vec_model {
 }
 pub(super) use let_diff_vec_model;
 
+/// Downcast the window's three_way_lines model to `&VecModel<ThreeWayLineData>`.
+/// Usage: `let_three_way_vec_model!(model, vec_model, window);`
+macro_rules! let_three_way_vec_model {
+    ($model:ident, $vec:ident, $window:expr) => {
+        let $model = $window.get_three_way_lines();
+        let Some($vec) = $model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() else {
+            return;
+        };
+    };
+}
+pub(super) use let_three_way_vec_model;
+
 /// Mark the current tab as having unsaved changes and sync to the window.
 pub(super) fn mark_dirty(window: &MainWindow, state: &mut AppState) {
     state.current_tab_mut().has_unsaved_changes = true;
     window.set_has_unsaved_changes(true);
+}
+
+/// Mark dirty and enter editing mode (shows "press F5 to compare" hint).
+pub(super) fn mark_dirty_editing(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab_mut();
+    tab.has_unsaved_changes = true;
+    window.set_has_unsaved_changes(true);
+    if !tab.editing_dirty {
+        tab.editing_dirty = true;
+        window.set_status_text(SharedString::from("Editing — press F5 to compare"));
+    }
 }
 
 // --- Native dialog helpers ---

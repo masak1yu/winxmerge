@@ -310,16 +310,7 @@ pub fn insert_line_after(
         }
     }
 
-    // Mark dirty
-    {
-        let tab = state.current_tab_mut();
-        tab.has_unsaved_changes = true;
-        if !tab.editing_dirty {
-            tab.editing_dirty = true;
-            window.set_status_text(SharedString::from("Editing — press F5 to compare"));
-        }
-    }
-    window.set_has_unsaved_changes(true);
+    mark_dirty_editing(window, state);
     window.set_can_undo(true);
 
     // Move focus to the newly inserted row
@@ -413,13 +404,7 @@ pub fn delete_line(window: &MainWindow, state: &mut AppState, line_index: i32, i
             }
         }
 
-        let tab = state.current_tab_mut();
-        tab.has_unsaved_changes = true;
-        if !tab.editing_dirty {
-            tab.editing_dirty = true;
-            window.set_status_text(SharedString::from("Editing — press F5 to compare"));
-        }
-        window.set_has_unsaved_changes(true);
+        mark_dirty_editing(window, state);
         window.set_can_undo(true);
     }
     // Find the nearest previous editable (non-ghost) row
@@ -489,13 +474,8 @@ pub fn edit_line(
         }
     }
 
-    tab.has_unsaved_changes = true;
-    window.set_has_unsaved_changes(true);
+    mark_dirty_editing(window, state);
     window.set_can_undo(true);
-    if !tab.editing_dirty {
-        tab.editing_dirty = true;
-        window.set_status_text(SharedString::from("Editing — press F5 to compare"));
-    }
 }
 
 pub fn copy_current_line_text(window: &MainWindow, state: &AppState, is_left: bool) {

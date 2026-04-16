@@ -7,6 +7,18 @@ pub enum LineStatus {
     Moved,
 }
 
+impl LineStatus {
+    pub fn as_i32(&self) -> i32 {
+        match self {
+            Self::Equal => 0,
+            Self::Added => 1,
+            Self::Removed => 2,
+            Self::Modified => 3,
+            Self::Moved => 4,
+        }
+    }
+}
+
 /// A segment of word-level diff within a modified line.
 /// `changed` = true means this segment differs between left and right.
 #[derive(Debug, Clone)]

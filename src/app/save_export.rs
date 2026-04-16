@@ -524,11 +524,7 @@ pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
 
 /// Save a pane of 3-way diff.  pane: 0=left, 1=base(middle), 2=right.
 pub fn save_three_way_pane(window: &MainWindow, state: &mut AppState, pane: i32) {
-    let model = window.get_three_way_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_three_way_vec_model!(model, vec_model, window);
 
     let text = rebuild_three_way_text(vec_model, pane);
     let tab = state.current_tab();

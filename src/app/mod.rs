@@ -168,7 +168,7 @@ pub struct TabState {
     pub excel_cells: Vec<ExcelCellData>,
     /// Excel sheet names for the selector
     pub excel_sheet_names: Vec<String>,
-    /// Image comparison cached images and stats (view_mode == 5)
+    /// Image comparison cached images and stats (ViewMode::ImageCompare)
     pub left_image: Option<slint::Image>,
     pub right_image: Option<slint::Image>,
     pub diff_image: Option<slint::Image>,

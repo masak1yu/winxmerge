@@ -56,12 +56,7 @@ pub(super) fn build_folder_item_data(
     let folder_item_data: Vec<FolderItemData> = items
         .iter()
         .map(|item| {
-            let status: i32 = match item.status {
-                FileCompareStatus::Identical => 0,
-                FileCompareStatus::Different => 1,
-                FileCompareStatus::LeftOnly => 2,
-                FileCompareStatus::RightOnly => 3,
-            };
+            let status: i32 = item.status.as_i32();
             let depth = item
                 .relative_path
                 .chars()
@@ -419,8 +414,6 @@ fn format_size(bytes: u64) -> String {
 // --- Feature: Folder sort ---
 
 pub fn sort_folder(window: &MainWindow, state: &mut AppState, column: i32) {
-    use crate::models::folder_item::FileCompareStatus;
-
     let tab = state.current_tab_mut();
     if tab.view_mode != ViewMode::FolderCompare || tab.folder_items.is_empty() {
         return;
@@ -442,15 +435,7 @@ pub fn sort_folder(window: &MainWindow, state: &mut AppState, column: i32) {
                 .relative_path
                 .to_lowercase()
                 .cmp(&b.relative_path.to_lowercase()),
-            1 => {
-                let status_ord = |s: &FileCompareStatus| match s {
-                    FileCompareStatus::Identical => 0,
-                    FileCompareStatus::Different => 1,
-                    FileCompareStatus::LeftOnly => 2,
-                    FileCompareStatus::RightOnly => 3,
-                };
-                status_ord(&a.status).cmp(&status_ord(&b.status))
-            }
+            1 => a.status.as_i32().cmp(&b.status.as_i32()),
             2 => a.left_size.unwrap_or(0).cmp(&b.left_size.unwrap_or(0)),
             3 => a.right_size.unwrap_or(0).cmp(&b.right_size.unwrap_or(0)),
             4 => a

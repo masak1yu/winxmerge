@@ -10,6 +10,18 @@ pub enum ThreeWayStatus {
     Conflict,     // OP_DIFF:     Left!=Right!=Base
 }
 
+impl ThreeWayStatus {
+    pub fn as_i32(&self) -> i32 {
+        match self {
+            Self::Equal => 0,
+            Self::LeftChanged => 1,
+            Self::RightChanged => 2,
+            Self::BothChanged => 3,
+            Self::Conflict => 4,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ThreeWayLine {
     pub base_text: String,

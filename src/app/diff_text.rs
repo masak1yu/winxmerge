@@ -284,13 +284,7 @@ pub(super) fn apply_diff_result(
         .iter()
         .enumerate()
         .map(|(i, line)| {
-            let status: i32 = match line.status {
-                LineStatus::Equal => 0,
-                LineStatus::Added => 1,
-                LineStatus::Removed => 2,
-                LineStatus::Modified => 3,
-                LineStatus::Moved => 4,
-            };
+            let status: i32 = line.status.as_i32();
             let diff_index = line_block_idx[i];
 
             // Map line numbers to highlight indices
