@@ -132,10 +132,18 @@ pub fn copy_to_right(window: &MainWindow, state: &mut AppState, diff_index: i32)
 
     recompute_diff_from_text(window, state, &left_text, &right_text);
 
-    let tab = state.current_tab();
+    // Update diff index without scrolling — copy-only should not move the view
+    let tab = state.current_tab_mut();
     if !tab.diff_positions.is_empty() {
-        let new_idx = (diff_index as usize).min(tab.diff_positions.len() - 1);
-        update_current_diff(window, state, new_idx as i32);
+        let new_idx = (diff_index as usize).min(tab.diff_positions.len() - 1) as i32;
+        tab.current_diff = new_idx;
+        window.set_current_diff_index(new_idx);
+        window.set_status_text(SharedString::from(format!(
+            "Difference {} of {} [{}]",
+            new_idx + 1,
+            tab.diff_positions.len(),
+            tab.diff_stats
+        )));
     }
     window.set_can_undo(true);
     window.set_can_redo(false);
@@ -145,13 +153,23 @@ pub fn copy_to_right(window: &MainWindow, state: &mut AppState, diff_index: i32)
 pub fn copy_right_and_next(window: &MainWindow, state: &mut AppState) {
     let diff_index = state.current_tab().current_diff;
     copy_to_right(window, state, diff_index);
-    navigate_diff(window, state, true);
+    // After copy, current_diff already points to the next diff (shifted),
+    // so use update_current_diff to scroll to it
+    let tab = state.current_tab();
+    if !tab.diff_positions.is_empty() {
+        let idx = tab.current_diff.min(tab.diff_positions.len() as i32 - 1);
+        update_current_diff(window, state, idx);
+    }
 }
 
 pub fn copy_left_and_next(window: &MainWindow, state: &mut AppState) {
     let diff_index = state.current_tab().current_diff;
     copy_to_left(window, state, diff_index);
-    navigate_diff(window, state, true);
+    let tab = state.current_tab();
+    if !tab.diff_positions.is_empty() {
+        let idx = tab.current_diff.min(tab.diff_positions.len() as i32 - 1);
+        update_current_diff(window, state, idx);
+    }
 }
 
 pub fn copy_to_left(window: &MainWindow, state: &mut AppState, diff_index: i32) {
@@ -171,10 +189,18 @@ pub fn copy_to_left(window: &MainWindow, state: &mut AppState, diff_index: i32) 
 
     recompute_diff_from_text(window, state, &left_text, &right_text);
 
-    let tab = state.current_tab();
+    // Update diff index without scrolling
+    let tab = state.current_tab_mut();
     if !tab.diff_positions.is_empty() {
-        let new_idx = (diff_index as usize).min(tab.diff_positions.len() - 1);
-        update_current_diff(window, state, new_idx as i32);
+        let new_idx = (diff_index as usize).min(tab.diff_positions.len() - 1) as i32;
+        tab.current_diff = new_idx;
+        window.set_current_diff_index(new_idx);
+        window.set_status_text(SharedString::from(format!(
+            "Difference {} of {} [{}]",
+            new_idx + 1,
+            tab.diff_positions.len(),
+            tab.diff_stats
+        )));
     }
     window.set_can_undo(true);
     window.set_can_redo(false);
