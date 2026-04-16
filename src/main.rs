@@ -351,6 +351,8 @@ fn main() {
                 if left_choice == 0 {
                     if vm == 4 || vm == 6 || vm == 8 {
                         save_table_file(&window, &mut s, 0);
+                    } else if vm == 3 {
+                        save_three_way_pane(&window, &mut s, 0);
                     } else {
                         save_file(&window, &mut s, true);
                     }
@@ -358,6 +360,8 @@ fn main() {
                 if right_choice == 0 {
                     if vm == 4 || vm == 6 || vm == 8 {
                         save_table_file(&window, &mut s, 2);
+                    } else if vm == 3 {
+                        save_three_way_pane(&window, &mut s, 2);
                     } else {
                         save_file(&window, &mut s, false);
                     }
@@ -408,6 +412,10 @@ fn main() {
             if vm == 4 || vm == 6 || vm == 8 {
                 save_table_file(&window, &mut s, 0);
                 save_table_file(&window, &mut s, 2);
+            } else if vm == 3 {
+                save_three_way_pane(&window, &mut s, 0);
+                save_three_way_pane(&window, &mut s, 1);
+                save_three_way_pane(&window, &mut s, 2);
             } else {
                 save_file(&window, &mut s, true);
                 save_file(&window, &mut s, false);
@@ -2338,27 +2346,36 @@ fn main() {
                     b.first().cloned()
                 } {
                     let bytes = encode_text(&text, &enc);
-                    if fs::write(&path, bytes).is_ok() {
-                        let mut s = state.borrow_mut();
-                        match pane {
-                            0 => s.tabs[tab_idx].left_path = Some(path),
-                            2 => s.tabs[tab_idx].base_path = Some(path),
-                            _ => s.tabs[tab_idx].right_path = Some(path),
+                    match fs::write(&path, &bytes) {
+                        Ok(()) => {
+                            let mut s = state.borrow_mut();
+                            match pane {
+                                0 => s.tabs[tab_idx].left_path = Some(path),
+                                2 => s.tabs[tab_idx].base_path = Some(path),
+                                _ => s.tabs[tab_idx].right_path = Some(path),
+                            }
+                            // Check if this tab is now fully saved (all sides have paths)
+                            let all_saved = if s.tabs[tab_idx].view_mode == 3 {
+                                s.tabs[tab_idx].left_path.is_some()
+                                    && s.tabs[tab_idx].base_path.is_some()
+                                    && s.tabs[tab_idx].right_path.is_some()
+                            } else {
+                                s.tabs[tab_idx].left_path.is_some()
+                                    && s.tabs[tab_idx].right_path.is_some()
+                            };
+                            if all_saved {
+                                s.tabs[tab_idx].has_unsaved_changes = false;
+                            }
+                            let still_unsaved = s.tabs.iter().any(|t| t.has_unsaved_changes);
+                            window.set_has_unsaved_changes(still_unsaved);
                         }
-                        // Check if this tab is now fully saved (all sides have paths)
-                        let all_saved = if s.tabs[tab_idx].view_mode == 3 {
-                            s.tabs[tab_idx].left_path.is_some()
-                                && s.tabs[tab_idx].base_path.is_some()
-                                && s.tabs[tab_idx].right_path.is_some()
-                        } else {
-                            s.tabs[tab_idx].left_path.is_some()
-                                && s.tabs[tab_idx].right_path.is_some()
-                        };
-                        if all_saved {
-                            s.tabs[tab_idx].has_unsaved_changes = false;
+                        Err(e) => {
+                            window.set_status_text(slint::SharedString::from(format!(
+                                "Error saving {}: {}",
+                                path.display(),
+                                e
+                            )));
                         }
-                        let still_unsaved = s.tabs.iter().any(|t| t.has_unsaved_changes);
-                        window.set_has_unsaved_changes(still_unsaved);
                     }
                 }
             }
