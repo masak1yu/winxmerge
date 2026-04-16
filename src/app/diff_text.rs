@@ -82,7 +82,6 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
                 "different"
             }
         );
-        window.set_diff_lines(ModelRc::new(VecModel::from(Vec::<DiffLineData>::new())));
         window.set_left_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
         window.set_right_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
         window.set_diff_count(0);
@@ -200,8 +199,6 @@ pub fn recompute_diff_from_text_with_highlights(
             *slot = Some(PendingDiffResult {
                 tab_index,
                 diff_result,
-                left_text: left_text_owned,
-                right_text: right_text_owned,
                 left_highlights: left_highlights_owned,
                 right_highlights: right_highlights_owned,
                 tab_width,
@@ -216,7 +213,6 @@ pub fn recompute_diff_from_text_with_highlights(
             "Computing diff... ({} lines)",
             line_count
         )));
-        window.set_diff_lines(ModelRc::new(VecModel::from(Vec::<DiffLineData>::new())));
         window.set_left_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
         window.set_right_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
         window.set_diff_count(0);
@@ -230,8 +226,6 @@ pub fn recompute_diff_from_text_with_highlights(
         window,
         state,
         result,
-        left_text,
-        right_text,
         left_highlights,
         right_highlights,
         tab_width,
@@ -243,8 +237,6 @@ pub(super) fn apply_diff_result(
     window: &MainWindow,
     state: &mut AppState,
     result: DiffResult,
-    left_text: &str,
-    right_text: &str,
     left_highlights: &[i32],
     right_highlights: &[i32],
     tab_width: usize,
@@ -253,8 +245,6 @@ pub(super) fn apply_diff_result(
     tab.is_computing = false;
     tab.editing_dirty = false;
 
-    tab.left_lines = left_text.lines().map(String::from).collect();
-    tab.right_lines = right_text.lines().map(String::from).collect();
     let current_diff = if result.diff_positions.is_empty() {
         -1
     } else {
@@ -353,8 +343,6 @@ pub fn apply_pending_diff_if_ready(window: &MainWindow, state: &mut AppState) {
         window,
         state,
         p.diff_result,
-        &p.left_text,
-        &p.right_text,
         &p.left_highlights,
         &p.right_highlights,
         p.tab_width,
@@ -603,8 +591,12 @@ pub fn compare_clipboard_as_left(window: &MainWindow, state: &mut AppState) {
     window.set_left_eol_type(SharedString::from(""));
 
     let tab = state.current_tab();
-    let right_text = tab.right_lines.join("\n");
-    let right_text = if right_text.is_empty() {
+    let right_text = tab
+        .right_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_default();
+    let right_text = if right_text.trim().is_empty() {
         if let Some(rp) = tab.right_path.clone() {
             match read_file_or_report(window, &rp) {
                 Some(bytes) => {
@@ -621,7 +613,6 @@ pub fn compare_clipboard_as_left(window: &MainWindow, state: &mut AppState) {
     };
 
     recompute_diff_from_text(window, state, &text, &right_text);
-    state.current_tab_mut().left_lines = text.lines().map(String::from).collect();
     state.current_tab_mut().title = "(Clipboard) ↔ right".to_string();
     sync_tab_list(window, state);
 }
@@ -645,8 +636,12 @@ pub fn compare_clipboard_as_right(window: &MainWindow, state: &mut AppState) {
     window.set_right_eol_type(SharedString::from(""));
 
     let tab = state.current_tab();
-    let left_text = tab.left_lines.join("\n");
-    let left_text = if left_text.is_empty() {
+    let left_text = tab
+        .left_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_default();
+    let left_text = if left_text.trim().is_empty() {
         if let Some(lp) = tab.left_path.clone() {
             match read_file_or_report(window, &lp) {
                 Some(bytes) => {
@@ -663,7 +658,6 @@ pub fn compare_clipboard_as_right(window: &MainWindow, state: &mut AppState) {
     };
 
     recompute_diff_from_text(window, state, &left_text, &text);
-    state.current_tab_mut().right_lines = text.lines().map(String::from).collect();
     state.current_tab_mut().title = "left ↔ (Clipboard)".to_string();
     sync_tab_list(window, state);
 }

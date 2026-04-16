@@ -20,15 +20,14 @@ use crate::models::diff_line::LineStatus;
 use crate::models::folder_item::FileCompareStatus;
 use crate::settings::AppSettings;
 use crate::{
-    DetailLineData, DiffLineData, ExcelCellData, FolderItemData, MainWindow, PaneLineData,
-    PluginEntryData, TabData, TableCellData, TableColumnInfo, TableDetailCellData, TableRowData,
-    WordSegment,
+    DetailLineData, ExcelCellData, FolderItemData, MainWindow, PaneLineData, PluginEntryData,
+    TabData, TableCellData, TableColumnInfo, TableDetailCellData, TableRowData, WordSegment,
 };
 
 /// Line count threshold above which diff is computed on a background thread
 const ASYNC_DIFF_THRESHOLD: usize = 30_000;
 
-/// DiffLineData.status codes (matches `status: int` in diff-view.slint)
+/// PaneLineData.status codes (matches `status: int` in diff-view.slint)
 pub const STATUS_EQUAL: i32 = 0;
 pub const STATUS_ADDED: i32 = 1;
 pub const STATUS_REMOVED: i32 = 2;
@@ -84,8 +83,6 @@ impl From<i32> for ViewMode {
 pub struct PendingDiffResult {
     pub tab_index: usize,
     pub diff_result: DiffResult,
-    pub left_text: String,
-    pub right_text: String,
     pub left_highlights: Vec<i32>,
     pub right_highlights: Vec<i32>,
     pub tab_width: usize,
@@ -122,8 +119,7 @@ pub struct TabState {
     pub left_path: Option<PathBuf>,
     pub right_path: Option<PathBuf>,
     pub base_path: Option<PathBuf>,
-    /// Per-pane independent buffers (Phase 0+).
-    /// These are populated alongside the legacy shared models during migration.
+    /// Per-pane independent buffers — sole authoritative data source for text content.
     pub left_buffer: Option<PaneBuffer>,
     pub right_buffer: Option<PaneBuffer>,
     pub middle_buffer: Option<PaneBuffer>,
@@ -131,9 +127,6 @@ pub struct TabState {
     pub current_conflict: i32,
     pub diff_positions: Vec<usize>,
     pub current_diff: i32,
-    pub left_lines: Vec<String>,
-    pub right_lines: Vec<String>,
-    pub base_lines: Vec<String>,
     pub has_unsaved_changes: bool,
     // True after any inline edit; cleared on rescan/compare
     pub editing_dirty: bool,
@@ -220,9 +213,6 @@ impl TabState {
             current_conflict: -1,
             diff_positions: Vec::new(),
             current_diff: -1,
-            left_lines: Vec::new(),
-            right_lines: Vec::new(),
-            base_lines: Vec::new(),
             has_unsaved_changes: false,
             editing_dirty: false,
             undo_stack: Vec::new(),

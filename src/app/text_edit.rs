@@ -34,9 +34,17 @@ pub fn undo(window: &MainWindow, state: &mut AppState) {
         return;
     }
 
-    // Save current state to redo stack
-    let current_left = tab.left_lines.join("\n") + "\n";
-    let current_right = tab.right_lines.join("\n") + "\n";
+    // Save current state to redo stack (derive from PaneBuffers)
+    let current_left = tab
+        .left_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
+    let current_right = tab
+        .right_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
     tab.redo_stack.push(TextSnapshot {
         left_text: current_left,
         right_text: current_right,
@@ -65,9 +73,17 @@ pub fn redo(window: &MainWindow, state: &mut AppState) {
         return;
     }
 
-    // Save current state to undo stack
-    let current_left = tab.left_lines.join("\n") + "\n";
-    let current_right = tab.right_lines.join("\n") + "\n";
+    // Save current state to undo stack (derive from PaneBuffers)
+    let current_left = tab
+        .left_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
+    let current_right = tab
+        .right_buffer
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
     tab.undo_stack.push(TextSnapshot {
         left_text: current_left,
         right_text: current_right,
@@ -234,11 +250,17 @@ pub fn copy_all_diffs_to_left(window: &MainWindow, state: &mut AppState) {
 
 pub fn copy_all_text(window: &MainWindow, state: &AppState, is_left: bool) {
     let tab = state.current_tab();
-    let text = if is_left {
-        tab.left_lines.join("\n")
+    let buf = if is_left {
+        &tab.left_buffer
     } else {
-        tab.right_lines.join("\n")
+        &tab.right_buffer
     };
+    let text = buf
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_default();
+    // extract_real_lines adds trailing newline; trim for clipboard
+    let text = text.trim_end_matches('\n').to_string();
 
     if let Ok(mut clipboard) = arboard::Clipboard::new() {
         let _ = clipboard.set_text(&text);
@@ -272,32 +294,6 @@ pub fn insert_line_after(
     push_undo_snapshot(state);
 
     let insert_at = (line_index + 1) as usize;
-
-    // Determine line_no from the current row of the target pane
-    let line_no = {
-        let tab = state.current_tab();
-        let buf = if is_left {
-            &tab.left_buffer
-        } else {
-            &tab.right_buffer
-        };
-        buf.as_ref()
-            .and_then(|b| b.model.row_data(line_index as usize))
-            .and_then(|r| r.line_no.parse::<usize>().ok())
-            .unwrap_or(1)
-    };
-
-    // Insert empty line into left_lines or right_lines
-    {
-        let tab = state.current_tab_mut();
-        if is_left {
-            let pos = line_no.min(tab.left_lines.len());
-            tab.left_lines.insert(pos, String::new());
-        } else {
-            let pos = line_no.min(tab.right_lines.len());
-            tab.right_lines.insert(pos, String::new());
-        }
-    }
 
     // Insert real row in target pane, ghost row in other pane
     let status = if is_left {
@@ -377,15 +373,14 @@ pub fn insert_line_after(
     }
 }
 
-/// Delete a row (Backspace at start of line). Removes from both PaneBuffers
-/// and syncs left_lines / right_lines.
+/// Delete a row (Backspace at start of line). Removes from both PaneBuffers.
 pub fn delete_line(window: &MainWindow, state: &mut AppState, line_index: i32, is_left: bool) {
     if line_index < 0 {
         return;
     }
     let idx = line_index as usize;
 
-    let (can_delete, line_no_parsed) = {
+    let can_delete = {
         let tab = state.current_tab();
         let buf = if is_left {
             &tab.left_buffer
@@ -399,23 +394,11 @@ pub fn delete_line(window: &MainWindow, state: &mut AppState, line_index: i32, i
         let Some(row) = b.model.row_data(idx) else {
             return;
         };
-        (row.text.is_empty(), row.line_no.parse::<usize>().ok())
+        row.text.is_empty()
     };
 
     if can_delete {
         push_undo_snapshot(state);
-
-        // Sync left_lines / right_lines: remove the corresponding real line
-        if let Some(line_no) = line_no_parsed {
-            let tab = state.current_tab_mut();
-            if is_left {
-                if line_no > 0 && line_no <= tab.left_lines.len() {
-                    tab.left_lines.remove(line_no - 1);
-                }
-            } else if line_no > 0 && line_no <= tab.right_lines.len() {
-                tab.right_lines.remove(line_no - 1);
-            }
-        }
 
         // Remove row from both PaneBuffers (aligned)
         {
@@ -490,8 +473,8 @@ pub fn edit_line(
 
     push_undo_snapshot(state);
 
-    // Update PaneBuffer row text
-    let line_no = {
+    // Update PaneBuffer row text (authoritative source)
+    {
         let tab = state.current_tab();
         let buf = if is_left {
             &tab.left_buffer
@@ -499,22 +482,6 @@ pub fn edit_line(
             &tab.right_buffer
         };
         sync_pane_row_text(buf, line_index as usize, new_text);
-        // Get line number for syncing left_lines/right_lines
-        buf.as_ref()
-            .and_then(|b| b.model.row_data(line_index as usize))
-            .and_then(|r| r.line_no.parse::<usize>().ok())
-    };
-
-    // Sync to left_lines / right_lines
-    if let Some(line_no) = line_no {
-        let tab = state.current_tab_mut();
-        if is_left {
-            if line_no > 0 && line_no <= tab.left_lines.len() {
-                tab.left_lines[line_no - 1] = new_text.to_string();
-            }
-        } else if line_no > 0 && line_no <= tab.right_lines.len() {
-            tab.right_lines[line_no - 1] = new_text.to_string();
-        }
     }
 
     mark_dirty_editing(window, state);
@@ -661,8 +628,6 @@ pub fn new_blank_text(window: &MainWindow, state: &mut AppState) {
         tab.left_path = None;
         tab.right_path = None;
         tab.title = "Untitled".to_string();
-        tab.left_lines = vec![String::new()];
-        tab.right_lines = vec![String::new()];
         tab.diff_positions.clear();
         tab.diff_stats = String::new();
         tab.has_unsaved_changes = false;

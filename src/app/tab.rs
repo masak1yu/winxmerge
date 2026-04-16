@@ -119,8 +119,6 @@ pub(super) fn restore_tab(window: &MainWindow, state: &AppState) {
 }
 
 fn restore_tab_common(window: &MainWindow, tab: &TabState) {
-    // Legacy diff-lines: set empty model (unused by ListViews, kept for Slint property compat)
-    window.set_diff_lines(ModelRc::new(VecModel::from(Vec::<DiffLineData>::new())));
     // Restore per-pane models (authoritative source)
     if let Some(ref buf) = tab.left_buffer {
         window.set_left_lines(ModelRc::from(buf.model.clone()));

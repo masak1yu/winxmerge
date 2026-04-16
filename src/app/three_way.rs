@@ -37,9 +37,6 @@ pub fn new_blank_text_3way(window: &MainWindow, state: &mut AppState) {
         tab.diff_stats = String::new();
         tab.has_unsaved_changes = false;
         tab.editing_dirty = false;
-        tab.left_lines = vec![String::new()];
-        tab.right_lines = vec![String::new()];
-        tab.base_lines = vec![String::new()];
         tab.left_encoding = "UTF-8".to_string();
         tab.right_encoding = "UTF-8".to_string();
         tab.left_eol_type = "LF".to_string();
@@ -204,9 +201,6 @@ pub fn recompute_three_way_from_text(
         0
     };
     tab.editing_dirty = false;
-    tab.left_lines = left_text.lines().map(String::from).collect();
-    tab.right_lines = right_text.lines().map(String::from).collect();
-    tab.base_lines = base_text.lines().map(String::from).collect();
 
     // Build per-pane PaneBuffers
     let (left_buf, middle_buf, right_buf) = build_pane_buffers_3way(&result);
