@@ -83,6 +83,8 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
             }
         );
         window.set_diff_lines(ModelRc::new(VecModel::from(Vec::<DiffLineData>::new())));
+        window.set_left_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
+        window.set_right_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
         window.set_diff_count(0);
         window.set_current_diff_index(-1);
         window.set_status_text(SharedString::from(msg));
@@ -215,6 +217,8 @@ pub fn recompute_diff_from_text_with_highlights(
             line_count
         )));
         window.set_diff_lines(ModelRc::new(VecModel::from(Vec::<DiffLineData>::new())));
+        window.set_left_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
+        window.set_right_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
         window.set_diff_count(0);
         window.set_current_diff_index(-1);
         return;
@@ -260,6 +264,15 @@ pub(super) fn apply_diff_result(
     let diff_line_data =
         build_diff_line_data(&result, left_highlights, right_highlights, tab_width);
     let stats = compute_diff_stats(&result);
+
+    // Build per-pane independent buffers
+    let (left_buf, right_buf) =
+        build_pane_buffers_2way(&result, left_highlights, right_highlights, tab_width);
+    window.set_left_lines(ModelRc::from(left_buf.model.clone()));
+    window.set_right_lines(ModelRc::from(right_buf.model.clone()));
+    tab.left_buffer = Some(left_buf);
+    tab.right_buffer = Some(right_buf);
+    tab.middle_buffer = None;
 
     tab.diff_positions = result.diff_positions;
     tab.current_diff = current_diff;

@@ -1112,6 +1112,8 @@ export component MainWindow inherits Window {
 
         if root.view-mode == 0 : DiffView {
             diff-lines: root.diff-lines;
+            left-lines: root.left-lines;
+            right-lines: root.right-lines;
             current-diff-index: root.current-diff-index;
             scroll-y <=> root.diff-scroll-y;
             edit-focus-row <=> root.diff-edit-focus-row;

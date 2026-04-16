@@ -131,6 +131,17 @@ pub(super) fn restore_tab(window: &MainWindow, state: &AppState) {
 fn restore_tab_common(window: &MainWindow, tab: &TabState) {
     let model = ModelRc::new(VecModel::from(tab.diff_line_data.clone()));
     window.set_diff_lines(model);
+    // Restore per-pane models (if available)
+    if let Some(ref buf) = tab.left_buffer {
+        window.set_left_lines(ModelRc::from(buf.model.clone()));
+    } else {
+        window.set_left_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
+    }
+    if let Some(ref buf) = tab.right_buffer {
+        window.set_right_lines(ModelRc::from(buf.model.clone()));
+    } else {
+        window.set_right_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
+    }
     window.set_diff_count(tab.diff_positions.len() as i32);
     window.set_current_diff_index(tab.current_diff);
     window.set_has_unsaved_changes(tab.has_unsaved_changes);

@@ -20,9 +20,9 @@ use crate::models::diff_line::LineStatus;
 use crate::models::folder_item::FileCompareStatus;
 use crate::settings::AppSettings;
 use crate::{
-    DetailLineData, DiffLineData, ExcelCellData, FolderItemData, MainWindow, PluginEntryData,
-    TabData, TableCellData, TableColumnInfo, TableDetailCellData, TableRowData, ThreeWayLineData,
-    WordSegment,
+    DetailLineData, DiffLineData, ExcelCellData, FolderItemData, MainWindow, PaneLineData,
+    PluginEntryData, TabData, TableCellData, TableColumnInfo, TableDetailCellData, TableRowData,
+    ThreeWayLineData, WordSegment,
 };
 
 /// Line count threshold above which diff is computed on a background thread

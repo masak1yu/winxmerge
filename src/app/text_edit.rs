@@ -622,6 +622,40 @@ pub fn new_blank_text(window: &MainWindow, state: &mut AppState) {
         tab.right_eol_type = "LF".to_string();
     }
 
+    // Build per-pane buffers for blank document
+    {
+        let blank_line = PaneLineData {
+            line_no: SharedString::from("1"),
+            text: SharedString::from(""),
+            is_ghost: false,
+            status: STATUS_EQUAL,
+            diff_index: -1,
+            word_diff: SharedString::from(""),
+            is_current_diff: false,
+            is_search_match: false,
+            is_selected: false,
+            highlight: -1,
+        };
+        let left_model = std::rc::Rc::new(VecModel::from(vec![blank_line.clone()]));
+        let right_model = std::rc::Rc::new(VecModel::from(vec![blank_line]));
+        window.set_left_lines(ModelRc::from(left_model.clone()));
+        window.set_right_lines(ModelRc::from(right_model.clone()));
+        let tab = state.current_tab_mut();
+        tab.left_buffer = Some(PaneBuffer {
+            model: left_model,
+            row_to_line: vec![Some(0)],
+            line_to_row: vec![0],
+            ghost_rows: vec![],
+        });
+        tab.right_buffer = Some(PaneBuffer {
+            model: right_model,
+            row_to_line: vec![Some(0)],
+            line_to_row: vec![0],
+            ghost_rows: vec![],
+        });
+        tab.middle_buffer = None;
+    }
+
     window.set_view_mode(ViewMode::FileDiff.as_i32());
     let model = ModelRc::new(VecModel::from(state.current_tab().diff_line_data.clone()));
     window.set_diff_lines(model);
