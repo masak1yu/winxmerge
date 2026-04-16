@@ -68,10 +68,10 @@ pub fn navigate_diff_by_status(
         return;
     }
     let label = match status_filter {
-        1 => "Added",
-        2 => "Removed",
-        3 => "Modified",
-        4 => "Moved",
+        STATUS_ADDED => "Added",
+        STATUS_REMOVED => "Removed",
+        STATUS_MODIFIED => "Modified",
+        STATUS_MOVED => "Moved",
         _ => "status",
     };
     window.set_status_text(SharedString::from(format!("No more {} diffs", label)));
@@ -312,10 +312,10 @@ pub(super) fn update_detail_pane(
             }
             continue;
         }
-        let status = dl.status; // 1=added, 2=removed, 3=modified, 4=moved
+        let status = dl.status;
 
-        // Left side: removed(2), modified(3), moved(4)
-        if status == 2 || status == 3 || status == 4 {
+        // Left side: removed, modified, moved
+        if status == STATUS_REMOVED || status == STATUS_MODIFIED || status == STATUS_MOVED {
             let segments =
                 parse_word_diff_segments(&dl.left_text.to_string(), &dl.left_word_diff.to_string());
             left_lines.push(DetailLineData {
@@ -325,8 +325,8 @@ pub(super) fn update_detail_pane(
             });
         }
 
-        // Right side: added(1), modified(3), moved(4)
-        if status == 1 || status == 3 || status == 4 {
+        // Right side: added, modified, moved
+        if status == STATUS_ADDED || status == STATUS_MODIFIED || status == STATUS_MOVED {
             let segments = parse_word_diff_segments(
                 &dl.right_text.to_string(),
                 &dl.right_word_diff.to_string(),

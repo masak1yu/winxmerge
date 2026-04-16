@@ -28,6 +28,13 @@ use crate::{
 /// Line count threshold above which diff is computed on a background thread
 const ASYNC_DIFF_THRESHOLD: usize = 30_000;
 
+/// DiffLineData.status codes (matches `status: int` in diff-view.slint)
+pub const STATUS_EQUAL: i32 = 0;
+pub const STATUS_ADDED: i32 = 1;
+pub const STATUS_REMOVED: i32 = 2;
+pub const STATUS_MODIFIED: i32 = 3;
+pub const STATUS_MOVED: i32 = 4;
+
 /// View mode discriminants match `view-mode: int` in main.slint.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]

@@ -171,17 +171,12 @@ pub fn replace_text(window: &MainWindow, state: &mut AppState, search: &str, rep
         ));
         vec_model.set_row_data(match_idx, row);
 
-        state.current_tab_mut().has_unsaved_changes = true;
-        window.set_has_unsaved_changes(true);
+        mark_dirty(window, state);
         search_text(window, state, search);
         return;
     }
 
-    let model = window.get_diff_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_diff_vec_model!(model, vec_model, window);
 
     let match_idx = tab.search_matches[tab.current_search_match as usize];
     let Some(mut row) = vec_model.row_data(match_idx) else {
@@ -195,8 +190,7 @@ pub fn replace_text(window: &MainWindow, state: &mut AppState, search: &str, rep
         SharedString::from(case_insensitive_replace(&right, &search_lower, replacement));
     vec_model.set_row_data(match_idx, row);
 
-    state.current_tab_mut().has_unsaved_changes = true;
-    window.set_has_unsaved_changes(true);
+    mark_dirty(window, state);
 
     search_text(window, state, search);
 }
@@ -242,11 +236,7 @@ pub fn replace_all_text(
             }
         }
     } else {
-        let model = window.get_diff_lines();
-        let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-            Some(m) => m,
-            None => return,
-        };
+        let_diff_vec_model!(model, vec_model, window);
         for &match_idx in &matches {
             if let Some(mut row) = vec_model.row_data(match_idx) {
                 let left = row.left_text.to_string();
@@ -264,8 +254,7 @@ pub fn replace_all_text(
     }
 
     let count = matches.len();
-    state.current_tab_mut().has_unsaved_changes = true;
-    window.set_has_unsaved_changes(true);
+    mark_dirty(window, state);
 
     search_text(window, state, search);
     window.set_status_text(SharedString::from(format!(

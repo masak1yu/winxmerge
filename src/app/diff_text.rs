@@ -200,7 +200,7 @@ pub fn recompute_diff_from_text_with_highlights(
         std::thread::spawn(move || {
             let diff_result =
                 compute_diff_with_options(&left_text_owned, &right_text_owned, &options);
-            let mut slot = pending_slot.lock().unwrap();
+            let mut slot = pending_slot.lock().expect("diff pending mutex poisoned");
             *slot = Some(PendingDiffResult {
                 tab_index,
                 diff_result,
@@ -390,7 +390,10 @@ pub(super) fn apply_diff_result(
 /// Call this from a periodic timer on the main thread.
 pub fn apply_pending_diff_if_ready(window: &MainWindow, state: &mut AppState) {
     let pending = {
-        let mut slot = state.pending_diff.lock().unwrap();
+        let mut slot = state
+            .pending_diff
+            .lock()
+            .expect("diff pending mutex poisoned");
         slot.take()
     };
     let Some(p) = pending else { return };
@@ -427,7 +430,7 @@ pub(super) fn rebuild_left(vec_model: &VecModel<DiffLineData>) -> String {
         let Some(row) = vec_model.row_data(i) else {
             continue;
         };
-        if row.status == 1 {
+        if row.status == STATUS_ADDED {
             continue;
         }
         lines.push(row.left_text.to_string());
@@ -441,7 +444,7 @@ pub(super) fn rebuild_right(vec_model: &VecModel<DiffLineData>) -> String {
         let Some(row) = vec_model.row_data(i) else {
             continue;
         };
-        if row.status == 2 {
+        if row.status == STATUS_REMOVED {
             continue;
         }
         lines.push(row.right_text.to_string());
@@ -485,12 +488,12 @@ pub(super) fn rebuild_right_after_copy_from_left(
         };
         if row.diff_index == target_diff_index {
             match row.status {
-                2 => lines.push(row.left_text.to_string()), // Removed: copy left text to right
-                1 => continue,                              // Added: drop (left has nothing)
-                3 => lines.push(row.left_text.to_string()), // Modified: use left
+                STATUS_REMOVED => lines.push(row.left_text.to_string()),
+                STATUS_ADDED => continue,
+                STATUS_MODIFIED => lines.push(row.left_text.to_string()),
                 _ => lines.push(row.right_text.to_string()),
             }
-        } else if row.status == 2 {
+        } else if row.status == STATUS_REMOVED {
             continue;
         } else {
             lines.push(row.right_text.to_string());
@@ -510,12 +513,12 @@ pub(super) fn rebuild_left_after_copy_from_right(
         };
         if row.diff_index == target_diff_index {
             match row.status {
-                1 => lines.push(row.right_text.to_string()), // Added: copy right text to left
-                2 => continue,                               // Removed: drop (right has nothing)
-                3 => lines.push(row.right_text.to_string()), // Modified: use right
+                STATUS_ADDED => lines.push(row.right_text.to_string()),
+                STATUS_REMOVED => continue,
+                STATUS_MODIFIED => lines.push(row.right_text.to_string()),
                 _ => lines.push(row.left_text.to_string()),
             }
-        } else if row.status == 1 {
+        } else if row.status == STATUS_ADDED {
             continue;
         } else {
             lines.push(row.left_text.to_string());
@@ -638,8 +641,12 @@ pub fn rescan(window: &MainWindow, state: &mut AppState) {
         && !tab.has_unsaved_changes
     {
         // No edits — reload from disk
-        let left_path = tab.left_path.clone().unwrap();
-        let right_path = tab.right_path.clone().unwrap();
+        let Some(left_path) = tab.left_path.clone() else {
+            return;
+        };
+        let Some(right_path) = tab.right_path.clone() else {
+            return;
+        };
         let left_bytes = match read_file_or_report(window, &left_path) {
             Some(b) => b,
             None => return,
@@ -684,9 +691,15 @@ pub fn rescan(window: &MainWindow, state: &mut AppState) {
         && !tab.editing_dirty
         && !tab.has_unsaved_changes
     {
-        let base_path = tab.base_path.clone().unwrap();
-        let left_path = tab.left_path.clone().unwrap();
-        let right_path = tab.right_path.clone().unwrap();
+        let Some(base_path) = tab.base_path.clone() else {
+            return;
+        };
+        let Some(left_path) = tab.left_path.clone() else {
+            return;
+        };
+        let Some(right_path) = tab.right_path.clone() else {
+            return;
+        };
         let base_bytes = match read_file_or_report(window, &base_path) {
             Some(b) => b,
             None => return,

@@ -31,7 +31,9 @@ pub fn undo(window: &MainWindow, state: &mut AppState) {
         right_text: current_right,
     });
 
-    let snapshot = tab.undo_stack.pop().unwrap();
+    let Some(snapshot) = tab.undo_stack.pop() else {
+        return;
+    };
     recompute_diff_from_text(window, state, &snapshot.left_text, &snapshot.right_text);
 
     let tab = state.current_tab();
@@ -60,7 +62,9 @@ pub fn redo(window: &MainWindow, state: &mut AppState) {
         right_text: current_right,
     });
 
-    let snapshot = tab.redo_stack.pop().unwrap();
+    let Some(snapshot) = tab.redo_stack.pop() else {
+        return;
+    };
     recompute_diff_from_text(window, state, &snapshot.left_text, &snapshot.right_text);
 
     let tab = state.current_tab();
@@ -75,19 +79,14 @@ pub fn copy_to_right(window: &MainWindow, state: &mut AppState, diff_index: i32)
         return;
     }
 
-    let model = window.get_diff_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_diff_vec_model!(model, vec_model, window);
 
     push_undo_snapshot(state, vec_model);
 
     let right_text = rebuild_right_after_copy_from_left(vec_model, diff_index);
     let left_text = rebuild_left(vec_model);
 
-    state.current_tab_mut().has_unsaved_changes = true;
-    window.set_has_unsaved_changes(true);
+    mark_dirty(window, state);
 
     recompute_diff_from_text(window, state, &left_text, &right_text);
 
@@ -119,19 +118,14 @@ pub fn copy_to_left(window: &MainWindow, state: &mut AppState, diff_index: i32) 
         return;
     }
 
-    let model = window.get_diff_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_diff_vec_model!(model, vec_model, window);
 
     push_undo_snapshot(state, vec_model);
 
     let left_text = rebuild_left_after_copy_from_right(vec_model, diff_index);
     let right_text = rebuild_right(vec_model);
 
-    state.current_tab_mut().has_unsaved_changes = true;
-    window.set_has_unsaved_changes(true);
+    mark_dirty(window, state);
 
     recompute_diff_from_text(window, state, &left_text, &right_text);
 
@@ -151,19 +145,14 @@ pub fn copy_all_diffs_to_right(window: &MainWindow, state: &mut AppState) {
         return;
     }
 
-    let model = window.get_diff_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_diff_vec_model!(model, vec_model, window);
 
     push_undo_snapshot(state, vec_model);
 
     // Copy all left to right: right becomes identical to left
     let left_text = rebuild_left(vec_model);
 
-    state.current_tab_mut().has_unsaved_changes = true;
-    window.set_has_unsaved_changes(true);
+    mark_dirty(window, state);
 
     recompute_diff_from_text(window, state, &left_text, &left_text);
 
@@ -178,19 +167,14 @@ pub fn copy_all_diffs_to_left(window: &MainWindow, state: &mut AppState) {
         return;
     }
 
-    let model = window.get_diff_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_diff_vec_model!(model, vec_model, window);
 
     push_undo_snapshot(state, vec_model);
 
     // Left becomes right for all diffs
     let right_text = rebuild_right(vec_model);
 
-    state.current_tab_mut().has_unsaved_changes = true;
-    window.set_has_unsaved_changes(true);
+    mark_dirty(window, state);
 
     recompute_diff_from_text(window, state, &right_text, &right_text);
 
@@ -223,11 +207,7 @@ pub fn insert_line_after(
     line_index: i32,
     is_left: bool,
 ) {
-    let model = window.get_diff_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_diff_vec_model!(model, vec_model, window);
     if line_index < 0 || line_index as usize >= vec_model.row_count() {
         return;
     }
@@ -276,7 +256,11 @@ pub fn insert_line_after(
         },
         left_text: SharedString::from(""),
         right_text: SharedString::from(""),
-        status: if is_left { 2 } else { 1 },
+        status: if is_left {
+            STATUS_REMOVED
+        } else {
+            STATUS_ADDED
+        },
         is_current_diff: false,
         diff_index: -1,
         left_highlight: 0,
@@ -353,11 +337,7 @@ pub fn delete_line(window: &MainWindow, state: &mut AppState, line_index: i32, i
         return;
     }
 
-    let model = window.get_diff_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_diff_vec_model!(model, vec_model, window);
     let idx = line_index as usize;
     if idx >= vec_model.row_count() {
         return;
@@ -472,11 +452,7 @@ pub fn edit_line(
     is_left: bool,
 ) {
     // Always operate on the shared diff model
-    let model = window.get_diff_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_diff_vec_model!(model, vec_model, window);
 
     if line_index < 0 || line_index as usize >= vec_model.row_count() {
         return;
@@ -551,11 +527,7 @@ pub fn copy_current_line_text(window: &MainWindow, state: &AppState, is_left: bo
 }
 
 pub fn set_row_selection(window: &MainWindow, state: &mut AppState, row_idx: i32, extend: bool) {
-    let model = window.get_diff_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_diff_vec_model!(model, vec_model, window);
 
     let tab = state.current_tab_mut();
     if !extend || tab.selection_start < 0 {
@@ -585,24 +557,19 @@ pub fn copy_selection_to_right(window: &MainWindow, state: &mut AppState) {
     let sel_min = tab.selection_start.min(tab.selection_end) as usize;
     let sel_max = tab.selection_start.max(tab.selection_end) as usize;
 
-    let model = window.get_diff_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_diff_vec_model!(model, vec_model, window);
 
     let count = sel_max.min(vec_model.row_count().saturating_sub(1)) + 1 - sel_min;
     for i in sel_min..=sel_max.min(vec_model.row_count().saturating_sub(1)) {
         if let Some(mut row) = vec_model.row_data(i) {
-            if row.status != 0 {
+            if row.status != STATUS_EQUAL {
                 row.right_text = row.left_text.clone();
-                row.status = 0;
+                row.status = STATUS_EQUAL;
                 vec_model.set_row_data(i, row);
             }
         }
     }
-    state.current_tab_mut().has_unsaved_changes = true;
-    window.set_has_unsaved_changes(true);
+    mark_dirty(window, state);
     window.set_status_text(SharedString::from(format!(
         "Copied {} lines to right",
         count
@@ -617,24 +584,19 @@ pub fn copy_selection_to_left(window: &MainWindow, state: &mut AppState) {
     let sel_min = tab.selection_start.min(tab.selection_end) as usize;
     let sel_max = tab.selection_start.max(tab.selection_end) as usize;
 
-    let model = window.get_diff_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_diff_vec_model!(model, vec_model, window);
 
     let count = sel_max.min(vec_model.row_count().saturating_sub(1)) + 1 - sel_min;
     for i in sel_min..=sel_max.min(vec_model.row_count().saturating_sub(1)) {
         if let Some(mut row) = vec_model.row_data(i) {
-            if row.status != 0 {
+            if row.status != STATUS_EQUAL {
                 row.left_text = row.right_text.clone();
-                row.status = 0;
+                row.status = STATUS_EQUAL;
                 vec_model.set_row_data(i, row);
             }
         }
     }
-    state.current_tab_mut().has_unsaved_changes = true;
-    window.set_has_unsaved_changes(true);
+    mark_dirty(window, state);
     window.set_status_text(SharedString::from(format!(
         "Copied {} lines to left",
         count
@@ -662,7 +624,7 @@ pub fn new_blank_text(window: &MainWindow, state: &mut AppState) {
             right_line_no: SharedString::from("1"),
             left_text: SharedString::from(""),
             right_text: SharedString::from(""),
-            status: 0,
+            status: STATUS_EQUAL,
             is_current_diff: false,
             diff_index: -1,
             left_highlight: -1,

@@ -3,7 +3,7 @@ use super::*;
 pub fn rebuild_left_from_data(data: &[DiffLineData]) -> String {
     let mut lines = Vec::new();
     for row in data {
-        if row.status == 1 {
+        if row.status == STATUS_ADDED {
             continue;
         }
         lines.push(row.left_text.to_string());
@@ -17,7 +17,7 @@ pub fn rebuild_left_from_data(data: &[DiffLineData]) -> String {
 pub fn rebuild_right_from_data(data: &[DiffLineData]) -> String {
     let mut lines = Vec::new();
     for row in data {
-        if row.status == 2 {
+        if row.status == STATUS_REMOVED {
             continue;
         }
         lines.push(row.right_text.to_string());
@@ -469,11 +469,7 @@ pub fn export_folder_html_report(window: &MainWindow, state: &AppState) {
 }
 
 pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
-    let model = window.get_diff_lines();
-    let vec_model = match model.as_any().downcast_ref::<VecModel<DiffLineData>>() {
-        Some(m) => m,
-        None => return,
-    };
+    let_diff_vec_model!(model, vec_model, window);
 
     let tab = state.current_tab();
     let (text, path, encoding) = if save_left {

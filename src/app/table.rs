@@ -664,7 +664,9 @@ pub(super) fn table_undo(window: &MainWindow, state: &mut AppState) {
     };
     tab.table_redo_stack.push(current);
 
-    let snapshot = tab.table_undo_stack.pop().unwrap();
+    let Some(snapshot) = tab.table_undo_stack.pop() else {
+        return;
+    };
     restore_table_grid(&tab.table_rows, &snapshot.left_grid, 0);
     restore_table_grid(&tab.table_rows, &snapshot.right_grid, 2);
     restore_table_grid(&tab.table_rows, &snapshot.base_grid, 1);
@@ -691,7 +693,9 @@ pub(super) fn table_redo(window: &MainWindow, state: &mut AppState) {
     };
     tab.table_undo_stack.push(current);
 
-    let snapshot = tab.table_redo_stack.pop().unwrap();
+    let Some(snapshot) = tab.table_redo_stack.pop() else {
+        return;
+    };
     restore_table_grid(&tab.table_rows, &snapshot.left_grid, 0);
     restore_table_grid(&tab.table_rows, &snapshot.right_grid, 2);
     restore_table_grid(&tab.table_rows, &snapshot.base_grid, 1);

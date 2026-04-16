@@ -328,7 +328,9 @@ pub(super) fn update_three_way_detail_pane(
         // Left side (always include for 3-way)
         let seg = ModelRc::new(VecModel::from(vec![WordSegment {
             text: row.left_text.clone(),
-            is_changed: status == 1 || status == 3 || status == 4,
+            is_changed: status == STATUS_ADDED
+                || status == STATUS_MODIFIED
+                || status == STATUS_MOVED,
         }]));
         left_lines.push(DetailLineData {
             segments: seg,
@@ -339,7 +341,7 @@ pub(super) fn update_three_way_detail_pane(
         // Base (middle) side (always include for 3-way)
         let seg = ModelRc::new(VecModel::from(vec![WordSegment {
             text: row.base_text.clone(),
-            is_changed: status == 3 || status == 4,
+            is_changed: status == STATUS_MODIFIED || status == STATUS_MOVED,
         }]));
         base_lines.push(DetailLineData {
             segments: seg,
@@ -350,7 +352,9 @@ pub(super) fn update_three_way_detail_pane(
         // Right side (always include for 3-way)
         let seg = ModelRc::new(VecModel::from(vec![WordSegment {
             text: row.right_text.clone(),
-            is_changed: status == 2 || status == 3 || status == 4,
+            is_changed: status == STATUS_REMOVED
+                || status == STATUS_MODIFIED
+                || status == STATUS_MOVED,
         }]));
         right_lines.push(DetailLineData {
             segments: seg,
@@ -817,8 +821,7 @@ pub fn three_way_delete_line(window: &MainWindow, state: &mut AppState, row_inde
                 vec_model.set_row_data(i, r);
             }
         }
-        state.current_tab_mut().has_unsaved_changes = true;
-        window.set_has_unsaved_changes(true);
+        mark_dirty(window, state);
     }
     let prev = if row_index > 0 { row_index - 1 } else { 0 };
     match pane {
