@@ -431,6 +431,17 @@ pub fn extract_real_lines(buffer: &PaneBuffer) -> String {
     }
 }
 
+/// Sync a single PaneBuffer row's text content.
+/// No-op if buffer is None or the row doesn't exist.
+pub fn sync_pane_row_text(buffer: &Option<PaneBuffer>, row_idx: usize, new_text: &str) {
+    if let Some(buf) = buffer {
+        if let Some(mut row) = buf.model.row_data(row_idx) {
+            row.text = SharedString::from(new_text);
+            buf.model.set_row_data(row_idx, row);
+        }
+    }
+}
+
 /// Renumber real lines in a PaneBuffer after insert/delete operations.
 /// Rebuilds `row_to_line`, `line_to_row`, and `ghost_rows` from the model.
 pub fn renumber_pane_buffer(buffer: &mut PaneBuffer) {

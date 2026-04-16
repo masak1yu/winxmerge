@@ -1,4 +1,100 @@
+use std::rc::Rc;
+
 use super::*;
+
+/// Rebuild PaneBuffers from the current DiffLineData VecModel after structural changes.
+/// This is used during bridge mode where the shared model is still authoritative.
+fn rebuild_pane_buffers_from_diff_model(
+    window: &MainWindow,
+    state: &mut AppState,
+    vec_model: &VecModel<DiffLineData>,
+) {
+    let count = vec_model.row_count();
+    let mut left_rows: Vec<PaneLineData> = Vec::with_capacity(count);
+    let mut right_rows: Vec<PaneLineData> = Vec::with_capacity(count);
+    let mut left_row_to_line: Vec<Option<usize>> = Vec::with_capacity(count);
+    let mut right_row_to_line: Vec<Option<usize>> = Vec::with_capacity(count);
+    let mut left_ghost_rows: Vec<usize> = Vec::new();
+    let mut right_ghost_rows: Vec<usize> = Vec::new();
+    let mut left_line_to_row: Vec<usize> = Vec::new();
+    let mut right_line_to_row: Vec<usize> = Vec::new();
+
+    for i in 0..count {
+        let Some(row) = vec_model.row_data(i) else {
+            continue;
+        };
+        let left_is_ghost = row.left_line_no.is_empty();
+        let right_is_ghost = row.right_line_no.is_empty();
+
+        left_rows.push(PaneLineData {
+            line_no: row.left_line_no.clone(),
+            text: row.left_text.clone(),
+            is_ghost: left_is_ghost,
+            status: if left_is_ghost {
+                STATUS_EQUAL
+            } else {
+                row.status
+            },
+            diff_index: row.diff_index,
+            word_diff: row.left_word_diff.clone(),
+            is_current_diff: row.is_current_diff,
+            is_search_match: row.is_search_match,
+            is_selected: row.is_selected,
+            highlight: row.left_highlight,
+        });
+        right_rows.push(PaneLineData {
+            line_no: row.right_line_no.clone(),
+            text: row.right_text.clone(),
+            is_ghost: right_is_ghost,
+            status: if right_is_ghost {
+                STATUS_EQUAL
+            } else {
+                row.status
+            },
+            diff_index: row.diff_index,
+            word_diff: row.right_word_diff.clone(),
+            is_current_diff: row.is_current_diff,
+            is_search_match: row.is_search_match,
+            is_selected: row.is_selected,
+            highlight: row.right_highlight,
+        });
+
+        if left_is_ghost {
+            left_row_to_line.push(None);
+            left_ghost_rows.push(i);
+        } else {
+            left_row_to_line.push(Some(left_line_to_row.len()));
+            left_line_to_row.push(i);
+        }
+        if right_is_ghost {
+            right_row_to_line.push(None);
+            right_ghost_rows.push(i);
+        } else {
+            right_row_to_line.push(Some(right_line_to_row.len()));
+            right_line_to_row.push(i);
+        }
+    }
+
+    let left_model = Rc::new(VecModel::from(left_rows));
+    let right_model = Rc::new(VecModel::from(right_rows));
+    window.set_left_lines(ModelRc::from(left_model.clone()));
+    window.set_right_lines(ModelRc::from(right_model.clone()));
+
+    let tab = state.current_tab_mut();
+    tab.left_buffer = Some(PaneBuffer {
+        model: left_model,
+        row_to_line: left_row_to_line,
+        line_to_row: left_line_to_row,
+        ghost_rows: left_ghost_rows,
+    });
+    tab.right_buffer = Some(PaneBuffer {
+        model: right_model,
+        row_to_line: right_row_to_line,
+        line_to_row: right_line_to_row,
+        ghost_rows: right_ghost_rows,
+    });
+    tab.middle_buffer = None;
+}
 
 /// Renumber left/right line numbers in the diff model starting from `from_row`.
 /// Counts existing line numbers in rows before `from_row`, then sequentially
@@ -342,6 +438,9 @@ pub fn insert_line_after(
 
     renumber_diff_lines(vec_model, insert_at);
 
+    // Rebuild PaneBuffers after structural change
+    rebuild_pane_buffers_from_diff_model(window, state, vec_model);
+
     mark_dirty_editing(window, state);
     window.set_can_undo(true);
 
@@ -400,6 +499,9 @@ pub fn delete_line(window: &MainWindow, state: &mut AppState, line_index: i32, i
 
         renumber_diff_lines(vec_model, idx);
 
+        // Rebuild PaneBuffers after structural change
+        rebuild_pane_buffers_from_diff_model(window, state, vec_model);
+
         mark_dirty_editing(window, state);
         window.set_can_undo(true);
     }
@@ -451,6 +553,16 @@ pub fn edit_line(
         row.right_text = SharedString::from(new_text);
     }
     vec_model.set_row_data(line_index as usize, row);
+
+    // Sync PaneBuffer row text
+    {
+        let tab = state.current_tab();
+        if is_left {
+            sync_pane_row_text(&tab.left_buffer, line_index as usize, new_text);
+        } else {
+            sync_pane_row_text(&tab.right_buffer, line_index as usize, new_text);
+        }
+    }
 
     let tab = state.current_tab_mut();
     let Some(data) = vec_model.row_data(line_index as usize) else {
@@ -523,6 +635,22 @@ pub fn set_row_selection(window: &MainWindow, state: &mut AppState, row_idx: i32
             }
         }
     }
+
+    // Sync is_selected to PaneBuffers
+    let tab = state.current_tab();
+    for buf_opt in [&tab.left_buffer, &tab.right_buffer] {
+        if let Some(buf) = buf_opt {
+            for i in 0..buf.model.row_count() {
+                if let Some(mut row) = buf.model.row_data(i) {
+                    let selected = i >= sel_min && i <= sel_max;
+                    if row.is_selected != selected {
+                        row.is_selected = selected;
+                        buf.model.set_row_data(i, row);
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn copy_selection_to_right(window: &MainWindow, state: &mut AppState) {
@@ -545,6 +673,8 @@ pub fn copy_selection_to_right(window: &MainWindow, state: &mut AppState) {
             }
         }
     }
+    // Sync text + status changes to PaneBuffers
+    rebuild_pane_buffers_from_diff_model(window, state, vec_model);
     mark_dirty(window, state);
     window.set_status_text(SharedString::from(format!(
         "Copied {} lines to right",
@@ -572,6 +702,8 @@ pub fn copy_selection_to_left(window: &MainWindow, state: &mut AppState) {
             }
         }
     }
+    // Sync text + status changes to PaneBuffers
+    rebuild_pane_buffers_from_diff_model(window, state, vec_model);
     mark_dirty(window, state);
     window.set_status_text(SharedString::from(format!(
         "Copied {} lines to left",

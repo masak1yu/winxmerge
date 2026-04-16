@@ -121,6 +121,21 @@ pub fn goto_line(window: &MainWindow, state: &AppState, line_number: i32) {
                         }
                     }
                 }
+                // Sync is_current_diff to PaneBuffers for LocationPane minimap
+                let tab = state.current_tab();
+                for buf_opt in [&tab.left_buffer, &tab.right_buffer] {
+                    if let Some(buf) = buf_opt {
+                        for i in 0..buf.model.row_count() {
+                            if let Some(mut row) = buf.model.row_data(i) {
+                                let should_highlight = i == idx;
+                                if row.is_current_diff != should_highlight {
+                                    row.is_current_diff = should_highlight;
+                                    buf.model.set_row_data(i, row);
+                                }
+                            }
+                        }
+                    }
+                }
             }
             return;
         }
