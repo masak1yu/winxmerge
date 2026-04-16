@@ -1,5 +1,47 @@
 use super::*;
 
+/// Renumber left/right line numbers in the diff model starting from `from_row`.
+/// Counts existing line numbers in rows before `from_row`, then sequentially
+/// renumbers all rows from `from_row` onward.
+fn renumber_diff_lines(vec_model: &VecModel<DiffLineData>, from_row: usize) {
+    let mut left_counter = 0usize;
+    let mut right_counter = 0usize;
+    for i in 0..from_row {
+        if let Some(r) = vec_model.row_data(i) {
+            if !r.left_line_no.is_empty() {
+                left_counter += 1;
+            }
+            if !r.right_line_no.is_empty() {
+                right_counter += 1;
+            }
+        }
+    }
+    for i in from_row..vec_model.row_count() {
+        if let Some(mut r) = vec_model.row_data(i) {
+            let mut changed = false;
+            if !r.left_line_no.is_empty() {
+                left_counter += 1;
+                let new_no = SharedString::from(left_counter.to_string());
+                if r.left_line_no != new_no {
+                    r.left_line_no = new_no;
+                    changed = true;
+                }
+            }
+            if !r.right_line_no.is_empty() {
+                right_counter += 1;
+                let new_no = SharedString::from(right_counter.to_string());
+                if r.right_line_no != new_no {
+                    r.right_line_no = new_no;
+                    changed = true;
+                }
+            }
+            if changed {
+                vec_model.set_row_data(i, r);
+            }
+        }
+    }
+}
+
 pub(super) fn push_undo_snapshot(state: &mut AppState, vec_model: &VecModel<DiffLineData>) {
     let left_text = rebuild_left(vec_model);
     let right_text = rebuild_right(vec_model);
@@ -272,43 +314,7 @@ pub fn insert_line_after(
     };
     vec_model.insert(insert_at, new_row);
 
-    // Renumber line numbers — only rows from insert_at onward changed
-    let mut left_counter = 0usize;
-    let mut right_counter = 0usize;
-    for i in 0..insert_at {
-        if let Some(r) = vec_model.row_data(i) {
-            if !r.left_line_no.is_empty() {
-                left_counter += 1;
-            }
-            if !r.right_line_no.is_empty() {
-                right_counter += 1;
-            }
-        }
-    }
-    for i in insert_at..vec_model.row_count() {
-        if let Some(mut r) = vec_model.row_data(i) {
-            let mut changed = false;
-            if !r.left_line_no.is_empty() {
-                left_counter += 1;
-                let new_no = SharedString::from(left_counter.to_string());
-                if r.left_line_no != new_no {
-                    r.left_line_no = new_no;
-                    changed = true;
-                }
-            }
-            if !r.right_line_no.is_empty() {
-                right_counter += 1;
-                let new_no = SharedString::from(right_counter.to_string());
-                if r.right_line_no != new_no {
-                    r.right_line_no = new_no;
-                    changed = true;
-                }
-            }
-            if changed {
-                vec_model.set_row_data(i, r);
-            }
-        }
-    }
+    renumber_diff_lines(vec_model, insert_at);
 
     mark_dirty_editing(window, state);
     window.set_can_undo(true);
@@ -366,43 +372,7 @@ pub fn delete_line(window: &MainWindow, state: &mut AppState, line_index: i32, i
 
         vec_model.remove(idx);
 
-        // Renumber — only rows from idx onward changed
-        let mut left_counter = 0usize;
-        let mut right_counter = 0usize;
-        for i in 0..idx {
-            if let Some(r) = vec_model.row_data(i) {
-                if !r.left_line_no.is_empty() {
-                    left_counter += 1;
-                }
-                if !r.right_line_no.is_empty() {
-                    right_counter += 1;
-                }
-            }
-        }
-        for i in idx..vec_model.row_count() {
-            if let Some(mut r) = vec_model.row_data(i) {
-                let mut changed = false;
-                if !r.left_line_no.is_empty() {
-                    left_counter += 1;
-                    let new_no = SharedString::from(left_counter.to_string());
-                    if r.left_line_no != new_no {
-                        r.left_line_no = new_no;
-                        changed = true;
-                    }
-                }
-                if !r.right_line_no.is_empty() {
-                    right_counter += 1;
-                    let new_no = SharedString::from(right_counter.to_string());
-                    if r.right_line_no != new_no {
-                        r.right_line_no = new_no;
-                        changed = true;
-                    }
-                }
-                if changed {
-                    vec_model.set_row_data(i, r);
-                }
-            }
-        }
+        renumber_diff_lines(vec_model, idx);
 
         mark_dirty_editing(window, state);
         window.set_can_undo(true);

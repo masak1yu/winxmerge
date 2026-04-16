@@ -22,14 +22,8 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
     let items = compare_folders_with_options(&left_folder, &right_folder, &options);
     let (folder_item_data, summary) = build_folder_item_data(&items);
 
-    let left_name = left_folder
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let right_name = right_folder
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let left_name = path_file_name(&left_folder);
+    let right_name = path_file_name(&right_folder);
 
     let tab = state.current_tab_mut();
     tab.folder_items = items;
@@ -284,14 +278,8 @@ pub(super) fn run_zip_compare(
     let items = compare_zip_archives(left_bytes, right_bytes, &left_str, &right_str);
     let (folder_item_data, summary) = build_folder_item_data(&items);
 
-    let left_name = left_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let right_name = right_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let left_name = path_file_name(left_path);
+    let right_name = path_file_name(right_path);
 
     let tab = state.current_tab_mut();
     tab.folder_items = items;
@@ -327,14 +315,8 @@ pub(super) fn run_image_compare(
     left_path: &std::path::Path,
     right_path: &std::path::Path,
 ) {
-    let left_name = left_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let right_name = right_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let left_name = path_file_name(left_path);
+    let right_name = path_file_name(right_path);
 
     match compare_images(left_bytes, right_bytes) {
         Err(e) => {

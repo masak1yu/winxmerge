@@ -118,14 +118,8 @@ pub fn run_three_way_diff(window: &MainWindow, state: &mut AppState) {
     let result = compute_three_way_diff(&base_text, &left_text, &right_text);
     let line_data = build_three_way_line_data(&result);
 
-    let left_name = left_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let right_name = right_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let left_name = path_file_name(&left_path);
+    let right_name = path_file_name(&right_path);
 
     let tab = state.current_tab_mut();
     tab.three_way_conflict_positions = result.conflict_positions.clone();

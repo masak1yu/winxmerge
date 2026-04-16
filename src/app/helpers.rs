@@ -44,6 +44,14 @@ pub(super) fn mark_dirty_editing(window: &MainWindow, state: &mut AppState) {
     }
 }
 
+/// Extract the file name from a path as a `String`.
+pub(super) fn path_file_name(p: impl AsRef<std::path::Path>) -> String {
+    p.as_ref()
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default()
+}
+
 // --- Native dialog helpers ---
 
 /// Returns true if the platform supports native file dialogs.

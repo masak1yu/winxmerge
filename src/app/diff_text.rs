@@ -107,14 +107,8 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
         .and_then(|m| m.modified().ok());
 
     // Generate title from filenames
-    let left_name = left_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let right_name = right_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let left_name = path_file_name(&left_path);
+    let right_name = path_file_name(&right_path);
     tab.title = format!("{} ↔ {}", left_name, right_name);
 
     // Compute syntax highlights (if enabled)
