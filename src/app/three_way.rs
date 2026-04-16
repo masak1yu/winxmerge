@@ -367,71 +367,21 @@ pub(super) fn update_three_way_detail_pane(
 
 /// Copy left text to base (middle) pane for the given diff index.
 pub fn resolve_conflict_use_left(window: &MainWindow, state: &mut AppState, conflict_index: i32) {
-    let tab = state.current_tab();
-    if conflict_index < 0 || conflict_index as usize >= tab.three_way_conflict_positions.len() {
-        return;
-    }
-
-    let pos = tab.three_way_conflict_positions[conflict_index as usize];
-    let model = window.get_three_way_lines();
-    if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-        // Find all rows in this block (same conflict_index)
-        let block_ci = vec_model
-            .row_data(pos)
-            .map(|r| r.conflict_index)
-            .unwrap_or(-1);
-        if block_ci < 0 {
-            return;
-        }
-        for i in 0..vec_model.row_count() {
-            if let Some(mut row) = vec_model.row_data(i) {
-                if row.conflict_index == block_ci {
-                    if !row.left_line_no.is_empty() {
-                        // Left has a real line — copy it to base
-                        row.base_text = row.left_text.clone();
-                        if row.base_line_no.is_empty() {
-                            row.base_line_no = SharedString::from("+");
-                        }
-                    }
-                    // Don't touch base_text if left is a ghost row
-                    row.status = if row.left_text == row.right_text {
-                        0
-                    } else {
-                        2
-                    };
-                    vec_model.set_row_data(i, row);
-                }
-            }
-        }
-        // Rebuild tab.base_lines from VecModel (authoritative after copy)
-        let tab = state.current_tab_mut();
-        tab.base_lines = Vec::new();
-        for i in 0..vec_model.row_count() {
-            if let Some(row) = vec_model.row_data(i) {
-                if !row.base_line_no.is_empty() {
-                    tab.base_lines.push(row.base_text.to_string());
-                }
-            }
-        }
-    }
-
-    let tab = state.current_tab_mut();
-    tab.has_unsaved_changes = true;
-    tab.editing_dirty = true;
-    window.set_has_unsaved_changes(true);
-    window.set_status_text(SharedString::from("Left → Middle copied"));
-
-    // BUG-3: Clear stale focus state after copy
-    window.set_three_way_edit_focus_left_row(-1);
-    window.set_three_way_edit_focus_base_row(-1);
-    window.set_three_way_edit_focus_right_row(-1);
-
-    let model = window.get_three_way_lines();
-    update_three_way_detail_pane(window, &model, conflict_index);
+    resolve_conflict_copy_to_base(window, state, conflict_index, true);
 }
 
 /// Copy right text to base (middle) pane for the given diff index.
 pub fn resolve_conflict_use_right(window: &MainWindow, state: &mut AppState, conflict_index: i32) {
+    resolve_conflict_copy_to_base(window, state, conflict_index, false);
+}
+
+/// Copy left or right text to base (middle) pane for the given diff index.
+fn resolve_conflict_copy_to_base(
+    window: &MainWindow,
+    state: &mut AppState,
+    conflict_index: i32,
+    use_left: bool,
+) {
     let tab = state.current_tab();
     if conflict_index < 0 || conflict_index as usize >= tab.three_way_conflict_positions.len() {
         return;
@@ -447,21 +397,27 @@ pub fn resolve_conflict_use_right(window: &MainWindow, state: &mut AppState, con
         if block_ci < 0 {
             return;
         }
+        // Status when source matches the other side: Equal(0).
+        // Status when they differ: LeftChanged(1) if right was copied, RightChanged(2) if left was copied.
+        let diff_status = if use_left { 2 } else { 1 };
         for i in 0..vec_model.row_count() {
             if let Some(mut row) = vec_model.row_data(i) {
                 if row.conflict_index == block_ci {
-                    if !row.right_line_no.is_empty() {
-                        // Right has a real line — copy it to base
-                        row.base_text = row.right_text.clone();
+                    let (src_line_no, src_text) = if use_left {
+                        (&row.left_line_no, row.left_text.clone())
+                    } else {
+                        (&row.right_line_no, row.right_text.clone())
+                    };
+                    if !src_line_no.is_empty() {
+                        row.base_text = src_text.clone();
                         if row.base_line_no.is_empty() {
                             row.base_line_no = SharedString::from("+");
                         }
                     }
-                    // Don't touch base_text if right is a ghost row
                     row.status = if row.left_text == row.right_text {
                         0
                     } else {
-                        1
+                        diff_status
                     };
                     vec_model.set_row_data(i, row);
                 }
@@ -483,7 +439,12 @@ pub fn resolve_conflict_use_right(window: &MainWindow, state: &mut AppState, con
     tab.has_unsaved_changes = true;
     tab.editing_dirty = true;
     window.set_has_unsaved_changes(true);
-    window.set_status_text(SharedString::from("Right → Middle copied"));
+    let msg = if use_left {
+        "Left → Middle copied"
+    } else {
+        "Right → Middle copied"
+    };
+    window.set_status_text(SharedString::from(msg));
 
     // BUG-3: Clear stale focus state after copy
     window.set_three_way_edit_focus_left_row(-1);
