@@ -16,10 +16,10 @@ cargo fmt                           # フォーマット
 - `ui/main.slint` — メインUI・ツールバー・ダイアログ
 - `ui/widgets/diff-view-3way.slint` — 3-wayペイン（ThreeWayLineRow）
 - `ui/widgets/diff-view.slint` — 2-wayペイン
-- VecModelが**唯一の正（authoritative）データソース**。tab内部配列は補助。
+- **PaneBuffer**（per-pane `VecModel<PaneLineData>`）が**唯一の正（authoritative）データソース**。tab内部配列は補助。
 
 ## Gotchas（既知の罠）
-1. **ghost行のbase_line_no**: コピー時にbase側ghost行（base_line_no空）にテキストを入れても、`rebuild_three_way_text`がスキップする。コピー時は必ず`base_line_no`に"+"等の非空値を設定すること。
+1. **ghost行のis_ghost**: コピー時にbase側ghost行（`is_ghost=true`）にテキストを入れる場合、`is_ghost=false`+`line_no="+"`に変更すること。ghost行はsave/rescan時にスキップされる。
 2. **最後の行を削除すると入力不能**: `three_way_delete_line`でreal_line_countが1のときは削除禁止。
 3. **F5(rescan)で編集内容消失**: rescanは`editing_dirty || has_unsaved_changes`のとき必ずVecModelから再構築すること。ファイル再読み込みは未編集時のみ。テキストdiff（view_mode 0/3）もテーブル（view_mode 4/6/8）も同じルール。新しいview_modeに編集機能を追加したら、`rescan()`にもガード分岐を必ず追加すること。
 4. **merge_hunksのファイル側レンジ計算**: hunkの`new_start/new_end`を直接使うとequal行を見落とす。`net = Σ(new_count - old_count)`で計算すること。
