@@ -2,20 +2,6 @@ import { VerticalBox, HorizontalBox, ListView, Palette } from "std-widgets.slint
 import { ThemeColors } from "../theme.slint";
 import { PaneLineData } from "diff-view.slint";
 
-export struct ThreeWayLineData {
-    base-line-no: string,
-    left-line-no: string,
-    right-line-no: string,
-    base-text: string,
-    left-text: string,
-    right-text: string,
-    // 0=Equal, 1=LeftChanged, 2=RightChanged, 3=BothChanged, 4=Conflict
-    status: int,
-    is-current: bool,
-    conflict-index: int,
-    is-search-match: bool,
-}
-
 component ThreeWayLineRow inherits Rectangle {
     in property <string> line-no;
     in-out property <string> text;

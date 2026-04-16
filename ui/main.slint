@@ -1,6 +1,6 @@
 import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit, ScrollView, ListView, Slider } from "std-widgets.slint";
 import { DiffView, DiffLineData, PaneLineData, WordSegment } from "widgets/diff-view.slint";
-import { DiffView3Way, ThreeWayLineData } from "widgets/diff-view-3way.slint";
+import { DiffView3Way } from "widgets/diff-view-3way.slint";
 import { FolderView, FolderItemData } from "widgets/folder-view.slint";
 import { TabBar, TabData } from "widgets/tab-bar.slint";
 import { OpenDialog, RecentEntryData } from "dialogs/open-dialog.slint";
@@ -26,7 +26,7 @@ export struct DetailLineData {
     status: int,  // 1=added, 2=removed, 3=modified, 4=moved
 }
 
-export { DiffLineData, PaneLineData, WordSegment, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThreeWayLineData, ThemeColors, FileEntryData, TableRowData, TableCellData, TableColumnInfo, TableDetailCellData }
+export { DiffLineData, PaneLineData, WordSegment, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThemeColors, FileEntryData, TableRowData, TableCellData, TableColumnInfo, TableDetailCellData }
 
 // Toolbar icon button: fixed 32x32 with image icon + optional overlay text
 component ToolBtn inherits Rectangle {
@@ -356,7 +356,6 @@ export component MainWindow inherits Window {
     in-out property <[RecentEntryData]> recent-entries;
 
     // 3-way merge
-    in-out property <[ThreeWayLineData]> three-way-lines;
     in-out property <int> conflict-count: 0;
     in-out property <int> current-conflict-index: -1;
     in-out property <string> base-path: "";

@@ -34,23 +34,34 @@ pub fn collect_pending_saves(
             }
         }
     } else if current_view_mode == ViewMode::ThreeWayText {
-        // Rebuild internal arrays from VecModel (authoritative source) to avoid desync
-        let model = window.get_three_way_lines();
-        if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-            let tab = state.current_tab_mut();
+        // Rebuild internal arrays from PaneBuffers (authoritative source) to avoid desync
+        let tab = state.current_tab_mut();
+        if let Some(ref lb) = tab.left_buffer {
             tab.left_lines = Vec::new();
+            for i in 0..lb.model.row_count() {
+                if let Some(row) = lb.model.row_data(i) {
+                    if !row.is_ghost {
+                        tab.left_lines.push(row.text.to_string());
+                    }
+                }
+            }
+        }
+        if let Some(ref mb) = tab.middle_buffer {
             tab.base_lines = Vec::new();
+            for i in 0..mb.model.row_count() {
+                if let Some(row) = mb.model.row_data(i) {
+                    if !row.is_ghost {
+                        tab.base_lines.push(row.text.to_string());
+                    }
+                }
+            }
+        }
+        if let Some(ref rb) = tab.right_buffer {
             tab.right_lines = Vec::new();
-            for i in 0..vec_model.row_count() {
-                if let Some(row) = vec_model.row_data(i) {
-                    if !row.left_line_no.is_empty() {
-                        tab.left_lines.push(row.left_text.to_string());
-                    }
-                    if !row.base_line_no.is_empty() {
-                        tab.base_lines.push(row.base_text.to_string());
-                    }
-                    if !row.right_line_no.is_empty() {
-                        tab.right_lines.push(row.right_text.to_string());
+            for i in 0..rb.model.row_count() {
+                if let Some(row) = rb.model.row_data(i) {
+                    if !row.is_ghost {
+                        tab.right_lines.push(row.text.to_string());
                     }
                 }
             }
@@ -547,9 +558,16 @@ pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
 
 /// Save a pane of 3-way diff.  pane: 0=left, 1=base(middle), 2=right.
 pub fn save_three_way_pane(window: &MainWindow, state: &mut AppState, pane: i32) {
-    let_three_way_vec_model!(model, vec_model, window);
-
-    let text = rebuild_three_way_text(vec_model, pane);
+    let tab = state.current_tab();
+    let buf = match pane {
+        0 => &tab.left_buffer,
+        1 => &tab.middle_buffer,
+        _ => &tab.right_buffer,
+    };
+    let text = buf
+        .as_ref()
+        .map(|b| extract_real_lines(b))
+        .unwrap_or_else(|| "\n".to_string());
     let tab = state.current_tab();
     let (path, encoding) = match pane {
         0 => (tab.left_path.clone(), tab.left_encoding.clone()),

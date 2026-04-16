@@ -361,31 +361,6 @@ pub fn apply_pending_diff_if_ready(window: &MainWindow, state: &mut AppState) {
     );
 }
 
-/// Rebuild text for a specific pane (0=left, 1=base, 2=right) from the 3-way VecModel.
-/// Skips ghost lines (empty line_no) since they don't represent real content.
-pub(super) fn rebuild_three_way_text(vec_model: &VecModel<ThreeWayLineData>, pane: i32) -> String {
-    let mut lines = Vec::new();
-    for i in 0..vec_model.row_count() {
-        let Some(row) = vec_model.row_data(i) else {
-            continue;
-        };
-        let (line_no, text) = match pane {
-            0 => (&row.left_line_no, &row.left_text),
-            1 => (&row.base_line_no, &row.base_text),
-            _ => (&row.right_line_no, &row.right_text),
-        };
-        // Only include lines that have a real line number (skip ghost lines)
-        if !line_no.is_empty() {
-            lines.push(text.to_string());
-        }
-    }
-    if lines.is_empty() {
-        String::new()
-    } else {
-        lines.join("\n") + "\n"
-    }
-}
-
 pub fn start_compare(
     window: &MainWindow,
     state: &mut AppState,
@@ -486,14 +461,23 @@ pub fn rescan(window: &MainWindow, state: &mut AppState) {
         run_three_way_diff(window, state);
         window.set_status_text(SharedString::from("Files rescanned"));
     } else if tab.view_mode == ViewMode::ThreeWayText {
-        // 3-way editing in progress or blank: rebuild from VecModel (authoritative source)
-        let model = window.get_three_way_lines();
-        if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-            let left_text = rebuild_three_way_text(vec_model, 0);
-            let base_text = rebuild_three_way_text(vec_model, 1);
-            let right_text = rebuild_three_way_text(vec_model, 2);
-            recompute_three_way_from_text(window, state, &base_text, &left_text, &right_text);
-        }
+        // 3-way editing in progress or blank: rebuild from PaneBuffers (authoritative source)
+        let left_text = tab
+            .left_buffer
+            .as_ref()
+            .map(|b| extract_real_lines(b))
+            .unwrap_or_else(|| "\n".to_string());
+        let base_text = tab
+            .middle_buffer
+            .as_ref()
+            .map(|b| extract_real_lines(b))
+            .unwrap_or_else(|| "\n".to_string());
+        let right_text = tab
+            .right_buffer
+            .as_ref()
+            .map(|b| extract_real_lines(b))
+            .unwrap_or_else(|| "\n".to_string());
+        recompute_three_way_from_text(window, state, &base_text, &left_text, &right_text);
         window.set_status_text(SharedString::from("Compared"));
     } else if tab.view_mode == ViewMode::FolderCompare {
         run_folder_compare(window, state);

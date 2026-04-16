@@ -46,20 +46,7 @@ pub fn new_blank_text_3way(window: &MainWindow, state: &mut AppState) {
         tab.right_eol_type = "LF".to_string();
     }
 
-    let empty_row = ThreeWayLineData {
-        base_line_no: SharedString::from("1"),
-        left_line_no: SharedString::from("1"),
-        right_line_no: SharedString::from("1"),
-        base_text: SharedString::from(""),
-        left_text: SharedString::from(""),
-        right_text: SharedString::from(""),
-        status: 0,
-        is_current: false,
-        conflict_index: -1,
-        is_search_match: false,
-    };
     window.set_view_mode(ViewMode::ThreeWayText.as_i32());
-    window.set_three_way_lines(ModelRc::new(VecModel::from(vec![empty_row])));
 
     // Build per-pane PaneBuffers for blank 3-way
     let blank_pane_row = PaneLineData {
@@ -157,7 +144,6 @@ pub fn run_three_way_diff(window: &MainWindow, state: &mut AppState) {
     let (right_text, right_enc) = decode_file(&right_bytes);
 
     let result = compute_three_way_diff(&base_text, &left_text, &right_text);
-    let line_data = build_three_way_line_data(&result);
 
     let left_name = path_file_name(&left_path);
     let right_name = path_file_name(&right_path);
@@ -174,8 +160,6 @@ pub fn run_three_way_diff(window: &MainWindow, state: &mut AppState) {
     tab.right_encoding = right_enc.to_string();
     tab.base_encoding = base_enc.to_string();
     tab.title = format!("{} ↔ {} (3-way)", left_name, right_name);
-
-    window.set_three_way_lines(ModelRc::new(VecModel::from(line_data)));
 
     // Build per-pane PaneBuffers
     let (left_buf, middle_buf, right_buf) = build_pane_buffers_3way(&result);
@@ -211,7 +195,6 @@ pub fn recompute_three_way_from_text(
     right_text: &str,
 ) {
     let result = compute_three_way_diff(base_text, left_text, right_text);
-    let line_data = build_three_way_line_data(&result);
 
     let tab = state.current_tab_mut();
     tab.three_way_conflict_positions = result.conflict_positions.clone();
@@ -224,8 +207,6 @@ pub fn recompute_three_way_from_text(
     tab.left_lines = left_text.lines().map(String::from).collect();
     tab.right_lines = right_text.lines().map(String::from).collect();
     tab.base_lines = base_text.lines().map(String::from).collect();
-
-    window.set_three_way_lines(ModelRc::new(VecModel::from(line_data)));
 
     // Build per-pane PaneBuffers
     let (left_buf, middle_buf, right_buf) = build_pane_buffers_3way(&result);
@@ -293,57 +274,6 @@ pub fn navigate_conflict(window: &MainWindow, state: &mut AppState, forward: boo
     )));
 
     update_three_way_detail_pane(window, new_index, state.current_tab());
-}
-
-/// Build ThreeWayLineData from ThreeWayResult with block-level conflict_index.
-/// All lines in the same contiguous diff block share the same conflict_index.
-fn build_three_way_line_data(result: &ThreeWayResult) -> Vec<ThreeWayLineData> {
-    // Assign block-level conflict_index: consecutive non-Equal lines share the same index
-    let mut block_indices: Vec<i32> = vec![-1; result.lines.len()];
-    let mut current_block = -1i32;
-    let mut was_in_diff = false;
-    for (i, line) in result.lines.iter().enumerate() {
-        if line.status != ThreeWayStatus::Equal {
-            if !was_in_diff {
-                current_block += 1;
-                was_in_diff = true;
-            }
-            block_indices[i] = current_block;
-        } else {
-            was_in_diff = false;
-        }
-    }
-
-    result
-        .lines
-        .iter()
-        .enumerate()
-        .map(|(i, line)| {
-            let status: i32 = line.status.as_i32();
-            let conflict_index = block_indices[i];
-            ThreeWayLineData {
-                base_line_no: line
-                    .base_line_no
-                    .map(|n: u32| SharedString::from(n.to_string()))
-                    .unwrap_or_default(),
-                left_line_no: line
-                    .left_line_no
-                    .map(|n: u32| SharedString::from(n.to_string()))
-                    .unwrap_or_default(),
-                right_line_no: line
-                    .right_line_no
-                    .map(|n: u32| SharedString::from(n.to_string()))
-                    .unwrap_or_default(),
-                base_text: SharedString::from(&line.base_text),
-                left_text: SharedString::from(&line.left_text),
-                right_text: SharedString::from(&line.right_text),
-                status,
-                is_current: conflict_index == 0 && !result.conflict_positions.is_empty(),
-                conflict_index,
-                is_search_match: false,
-            }
-        })
-        .collect()
 }
 
 pub(super) fn update_three_way_detail_pane(

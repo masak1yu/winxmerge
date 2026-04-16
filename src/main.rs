@@ -1230,28 +1230,25 @@ fn main() {
         let window_weak = window.as_weak();
         window.on_three_way_move_focus_up(move |row, pane| {
             let window = window_weak.unwrap();
-            let model = window.get_three_way_lines();
-            if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-                let mut target = row - 1;
-                while target >= 0 {
-                    if let Some(r) = vec_model.row_data(target as usize) {
-                        let has_line_no = match pane {
-                            0 => !r.left_line_no.is_empty(),
-                            1 => !r.base_line_no.is_empty(),
-                            _ => !r.right_line_no.is_empty(),
-                        };
-                        if has_line_no {
-                            break;
-                        }
+            let pane_model = match pane {
+                0 => window.get_left_lines(),
+                1 => window.get_middle_lines(),
+                _ => window.get_right_lines(),
+            };
+            let mut target = row - 1;
+            while target >= 0 {
+                if let Some(r) = pane_model.row_data(target as usize) {
+                    if !r.is_ghost {
+                        break;
                     }
-                    target -= 1;
                 }
-                if target >= 0 {
-                    match pane {
-                        0 => window.set_three_way_edit_focus_left_row(target),
-                        1 => window.set_three_way_edit_focus_base_row(target),
-                        _ => window.set_three_way_edit_focus_right_row(target),
-                    }
+                target -= 1;
+            }
+            if target >= 0 {
+                match pane {
+                    0 => window.set_three_way_edit_focus_left_row(target),
+                    1 => window.set_three_way_edit_focus_base_row(target),
+                    _ => window.set_three_way_edit_focus_right_row(target),
                 }
             }
         });
@@ -1261,29 +1258,26 @@ fn main() {
         let window_weak = window.as_weak();
         window.on_three_way_move_focus_down(move |row, pane| {
             let window = window_weak.unwrap();
-            let model = window.get_three_way_lines();
-            if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
-                let count = vec_model.row_count() as i32;
-                let mut target = row + 1;
-                while target < count {
-                    if let Some(r) = vec_model.row_data(target as usize) {
-                        let has_line_no = match pane {
-                            0 => !r.left_line_no.is_empty(),
-                            1 => !r.base_line_no.is_empty(),
-                            _ => !r.right_line_no.is_empty(),
-                        };
-                        if has_line_no {
-                            break;
-                        }
+            let pane_model = match pane {
+                0 => window.get_left_lines(),
+                1 => window.get_middle_lines(),
+                _ => window.get_right_lines(),
+            };
+            let count = pane_model.row_count() as i32;
+            let mut target = row + 1;
+            while target < count {
+                if let Some(r) = pane_model.row_data(target as usize) {
+                    if !r.is_ghost {
+                        break;
                     }
-                    target += 1;
                 }
-                if target < count {
-                    match pane {
-                        0 => window.set_three_way_edit_focus_left_row(target),
-                        1 => window.set_three_way_edit_focus_base_row(target),
-                        _ => window.set_three_way_edit_focus_right_row(target),
-                    }
+                target += 1;
+            }
+            if target < count {
+                match pane {
+                    0 => window.set_three_way_edit_focus_left_row(target),
+                    1 => window.set_three_way_edit_focus_base_row(target),
+                    _ => window.set_three_way_edit_focus_right_row(target),
                 }
             }
         });
