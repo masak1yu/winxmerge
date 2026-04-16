@@ -302,10 +302,12 @@ pub fn table_copy_to_right(window: &MainWindow, state: &mut AppState, diff_index
     apply_table_rows_to_window(window, state);
     rebuild_table_diff_positions(window, state);
 
-    let tab = state.current_tab();
+    // Update diff index without scrolling — copy-only should not move the view
+    let tab = state.current_tab_mut();
     if !tab.diff_positions.is_empty() {
-        let new_idx = (diff_index as usize).min(tab.diff_positions.len() - 1);
-        update_current_diff(window, state, new_idx as i32);
+        let new_idx = (diff_index as usize).min(tab.diff_positions.len() - 1) as i32;
+        tab.current_diff = new_idx;
+        window.set_current_diff_index(new_idx);
     }
 }
 
@@ -323,23 +325,33 @@ pub fn table_copy_to_left(window: &MainWindow, state: &mut AppState, diff_index:
     apply_table_rows_to_window(window, state);
     rebuild_table_diff_positions(window, state);
 
-    let tab = state.current_tab();
+    // Update diff index without scrolling
+    let tab = state.current_tab_mut();
     if !tab.diff_positions.is_empty() {
-        let new_idx = (diff_index as usize).min(tab.diff_positions.len() - 1);
-        update_current_diff(window, state, new_idx as i32);
+        let new_idx = (diff_index as usize).min(tab.diff_positions.len() - 1) as i32;
+        tab.current_diff = new_idx;
+        window.set_current_diff_index(new_idx);
     }
 }
 
 pub fn table_copy_right_and_next(window: &MainWindow, state: &mut AppState) {
     let diff_index = state.current_tab().current_diff;
     table_copy_to_right(window, state, diff_index);
-    navigate_diff(window, state, true);
+    let tab = state.current_tab();
+    if !tab.diff_positions.is_empty() {
+        let idx = tab.current_diff.min(tab.diff_positions.len() as i32 - 1);
+        update_current_diff(window, state, idx);
+    }
 }
 
 pub fn table_copy_left_and_next(window: &MainWindow, state: &mut AppState) {
     let diff_index = state.current_tab().current_diff;
     table_copy_to_left(window, state, diff_index);
-    navigate_diff(window, state, true);
+    let tab = state.current_tab();
+    if !tab.diff_positions.is_empty() {
+        let idx = tab.current_diff.min(tab.diff_positions.len() as i32 - 1);
+        update_current_diff(window, state, idx);
+    }
 }
 
 /// 3-way table: copy left cells to base cells for a single diff row (use-left).
@@ -355,13 +367,21 @@ pub fn table_use_right(window: &MainWindow, state: &mut AppState, diff_index: i3
 pub fn table_use_left_and_next(window: &MainWindow, state: &mut AppState) {
     let diff_index = state.current_tab().current_diff;
     table_use_left(window, state, diff_index);
-    navigate_diff(window, state, true);
+    let tab = state.current_tab();
+    if !tab.diff_positions.is_empty() {
+        let idx = tab.current_diff.min(tab.diff_positions.len() as i32 - 1);
+        update_current_diff(window, state, idx);
+    }
 }
 
 pub fn table_use_right_and_next(window: &MainWindow, state: &mut AppState) {
     let diff_index = state.current_tab().current_diff;
     table_use_right(window, state, diff_index);
-    navigate_diff(window, state, true);
+    let tab = state.current_tab();
+    if !tab.diff_positions.is_empty() {
+        let idx = tab.current_diff.min(tab.diff_positions.len() as i32 - 1);
+        update_current_diff(window, state, idx);
+    }
 }
 
 pub fn table_use_all_left(window: &MainWindow, state: &mut AppState) {
@@ -400,10 +420,12 @@ fn table_resolve_to_base(
     apply_table_rows_to_window(window, state);
     rebuild_table_diff_positions(window, state);
 
-    let tab = state.current_tab();
+    // Update diff index without scrolling
+    let tab = state.current_tab_mut();
     if !tab.diff_positions.is_empty() {
-        let new_idx = (diff_index as usize).min(tab.diff_positions.len() - 1);
-        update_current_diff(window, state, new_idx as i32);
+        let new_idx = (diff_index as usize).min(tab.diff_positions.len() - 1) as i32;
+        tab.current_diff = new_idx;
+        window.set_current_diff_index(new_idx);
     }
     window.set_status_text(SharedString::from(if use_left {
         "Left → Base copied"
@@ -580,21 +602,72 @@ pub(super) fn table_redo(window: &MainWindow, state: &mut AppState) {
 pub fn new_blank_table_3way(
     window: &MainWindow,
     state: &mut AppState,
-    file_type: i32,
+    _file_type: i32,
     delimiter: &str,
-    newline_in_quotes: bool,
-    quote_char: &str,
+    _newline_in_quotes: bool,
+    _quote_char: &str,
 ) {
-    // 3-way table: base + left + right — reuse new_blank_table logic but with view_mode awareness
-    // For now, open as a 2-pane table view since 3-way table merge is the same as 2-pane in WinMerge
-    new_blank_table(
-        window,
-        state,
-        file_type,
-        delimiter,
-        newline_in_quotes,
-        quote_char,
+    let delim_str = if delimiter == "TAB" { "\t" } else { delimiter };
+    let delim_byte = delim_str.as_bytes().first().copied().unwrap_or(b',');
+    let current_is_blank = {
+        let tab = state.current_tab();
+        tab.view_mode == ViewMode::Blank && tab.left_path.is_none() && tab.right_path.is_none()
+    };
+    if !current_is_blank {
+        add_tab(window, state);
+    }
+
+    let initial_rows = 10;
+    let initial_cols = 5;
+    let (columns, content_width_px) = build_columns(initial_cols, DEFAULT_COL_WIDTH_PX);
+    let empty_grid: Vec<Vec<String>> = (0..initial_rows)
+        .map(|_| vec![String::new(); initial_cols])
+        .collect();
+    let cell_status: Vec<Vec<i32>> = (0..initial_rows)
+        .map(|_| vec![0i32; initial_cols])
+        .collect();
+    let table_rows = build_table_rows_3way(
+        &empty_grid,
+        &empty_grid,
+        &empty_grid,
+        &cell_status,
+        initial_rows,
+        initial_cols,
+        &columns,
     );
+
+    {
+        let tab = state.current_tab_mut();
+        tab.view_mode = ViewMode::CsvThreeWay;
+        tab.left_path = None;
+        tab.right_path = None;
+        tab.base_path = None;
+        tab.title = "Untitled".to_string();
+        tab.excel_cells = Vec::new();
+        tab.table_rows = table_rows.clone();
+        tab.table_columns = columns.clone();
+        tab.table_content_width_px = content_width_px;
+        tab.csv_delimiter = delim_byte;
+        tab.excel_sheet_data.clear();
+        tab.diff_positions.clear();
+        tab.diff_stats = String::new();
+        tab.has_unsaved_changes = false;
+        tab.left_encoding = "UTF-8".to_string();
+        tab.right_encoding = "UTF-8".to_string();
+        tab.base_encoding = "UTF-8".to_string();
+    }
+
+    window.set_view_mode(ViewMode::CsvThreeWay.as_i32());
+    window.set_table_rows(ModelRc::new(VecModel::from(table_rows)));
+    window.set_table_columns(ModelRc::new(VecModel::from(columns)));
+    window.set_table_content_width_px(content_width_px);
+    window.set_diff_count(0);
+    window.set_left_path(SharedString::from(""));
+    window.set_right_path(SharedString::from(""));
+    window.set_base_path(SharedString::from(""));
+    window.set_has_unsaved_changes(false);
+    window.set_status_text(SharedString::from("New blank 3-way table document"));
+    sync_tab_list(window, state);
 }
 
 pub fn new_blank_table(

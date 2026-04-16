@@ -49,6 +49,28 @@ pub fn collect_pending_saves(
                 }
             }
         }
+    } else if current_view_mode == ViewMode::ThreeWayText {
+        // Rebuild internal arrays from VecModel (authoritative source) to avoid desync
+        let model = window.get_three_way_lines();
+        if let Some(vec_model) = model.as_any().downcast_ref::<VecModel<ThreeWayLineData>>() {
+            let tab = state.current_tab_mut();
+            tab.left_lines = Vec::new();
+            tab.base_lines = Vec::new();
+            tab.right_lines = Vec::new();
+            for i in 0..vec_model.row_count() {
+                if let Some(row) = vec_model.row_data(i) {
+                    if !row.left_line_no.is_empty() {
+                        tab.left_lines.push(row.left_text.to_string());
+                    }
+                    if !row.base_line_no.is_empty() {
+                        tab.base_lines.push(row.base_text.to_string());
+                    }
+                    if !row.right_line_no.is_empty() {
+                        tab.right_lines.push(row.right_text.to_string());
+                    }
+                }
+            }
+        }
     }
 
     let mut queue = Vec::new();

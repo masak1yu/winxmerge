@@ -572,30 +572,42 @@ pub fn three_way_insert_line_after(
         return;
     }
 
-    // Sync internal line arrays
-    let current_row = match vec_model.row_data(row_index as usize) {
-        Some(r) => r,
-        None => return,
-    };
-    {
-        let tab = state.current_tab_mut();
+    // Find the correct insertion position in the internal line array.
+    // If the current row is a ghost for this pane (empty line_no), scan backwards
+    // to find the last real line number for this pane.
+    let parse_pane_line_no = |r: &ThreeWayLineData| -> Option<usize> {
         match pane {
-            0 => {
-                let line_no = current_row.left_line_no.parse::<usize>().unwrap_or(1);
-                let pos = line_no.min(tab.left_lines.len());
-                tab.left_lines.insert(pos, String::new());
-            }
-            1 => {
-                let line_no = current_row.base_line_no.parse::<usize>().unwrap_or(1);
-                let pos = line_no.min(tab.base_lines.len());
-                tab.base_lines.insert(pos, String::new());
-            }
-            _ => {
-                let line_no = current_row.right_line_no.parse::<usize>().unwrap_or(1);
-                let pos = line_no.min(tab.right_lines.len());
-                tab.right_lines.insert(pos, String::new());
+            0 => r.left_line_no.parse::<usize>().ok(),
+            1 => r.base_line_no.parse::<usize>().ok(),
+            _ => r.right_line_no.parse::<usize>().ok(),
+        }
+    };
+    let mut insert_pos = 0usize;
+    // First try the current row
+    if let Some(r) = vec_model.row_data(row_index as usize) {
+        if let Some(n) = parse_pane_line_no(&r) {
+            insert_pos = n;
+        } else {
+            // Ghost row: scan backwards for the nearest real line in this pane
+            for i in (0..row_index as usize).rev() {
+                if let Some(r) = vec_model.row_data(i) {
+                    if let Some(n) = parse_pane_line_no(&r) {
+                        insert_pos = n;
+                        break;
+                    }
+                }
             }
         }
+    }
+    {
+        let tab = state.current_tab_mut();
+        let lines = match pane {
+            0 => &mut tab.left_lines,
+            1 => &mut tab.base_lines,
+            _ => &mut tab.right_lines,
+        };
+        let pos = insert_pos.min(lines.len());
+        lines.insert(pos, String::new());
     }
 
     // Build new row: only the edited pane gets a placeholder line number, others empty
@@ -747,7 +759,7 @@ pub fn three_way_delete_line(window: &MainWindow, state: &mut AppState, row_inde
                 vec_model.set_row_data(i, r);
             }
         }
-        mark_dirty(window, state);
+        mark_dirty_editing(window, state);
     }
     let prev = if row_index > 0 { row_index - 1 } else { 0 };
     match pane {
