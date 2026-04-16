@@ -53,8 +53,9 @@ pub fn compare_images(left_data: &[u8], right_data: &[u8]) -> Result<ImageCompar
     let dh = lh.max(rh);
     let total = (dw as u64) * (dh as u64);
 
-    let mut diff_rgba = vec![255u8; (dw * dh * 4) as usize];
-    let mut overlay_rgba = vec![0u8; (dw * dh * 4) as usize];
+    let buf_size = (dw as usize) * (dh as usize) * 4;
+    let mut diff_rgba = vec![255u8; buf_size];
+    let mut overlay_rgba = vec![0u8; buf_size];
     let mut diff_pixels = 0u64;
 
     for y in 0..dh {
@@ -72,7 +73,7 @@ pub fn compare_images(left_data: &[u8], right_data: &[u8]) -> Result<ImageCompar
                 image::Rgba([0u8, 0, 0, 0])
             };
 
-            let idx = ((y * dw + x) * 4) as usize;
+            let idx = ((y as usize) * (dw as usize) + (x as usize)) * 4;
             if !in_left || !in_right || lp != rp {
                 // Highlight differences in red
                 diff_rgba[idx] = 255;

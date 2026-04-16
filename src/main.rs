@@ -33,8 +33,8 @@ use std::rc::Rc;
 use crate::encoding::encode_text;
 #[cfg(not(target_arch = "wasm32"))]
 use app::{
-    AppState, add_tab, apply_options, apply_pending_diff_if_ready, check_files_changed, close_tab,
-    collect_pending_saves, compare_clipboard_as_left, compare_clipboard_as_right,
+    AppState, ViewMode, add_tab, apply_options, apply_pending_diff_if_ready, check_files_changed,
+    close_tab, collect_pending_saves, compare_clipboard_as_left, compare_clipboard_as_right,
     copy_all_diffs_to_left, copy_all_diffs_to_right, copy_all_text, copy_current_line_text,
     copy_left_and_next, copy_right_and_next, copy_selection_to_left, copy_selection_to_right,
     copy_to_left, copy_to_right, delete_line, discard_and_proceed, edit_line, export_all_comments,
@@ -273,9 +273,9 @@ fn main() {
             let tab = s.current_tab_mut();
             tab.left_path = Some(left);
             tab.right_path = Some(right);
-            tab.view_mode = 0;
+            tab.view_mode = ViewMode::FileDiff;
         }
-        window.set_view_mode(0);
+        window.set_view_mode(ViewMode::FileDiff.as_i32());
         app::run_diff(&window, &mut s);
         app::sync_tab_list(&window, &s);
     } else {
@@ -349,15 +349,19 @@ fn main() {
                 let mut s = state.borrow_mut();
                 let vm = s.current_tab().view_mode;
                 if left_choice == 0 {
-                    if vm == 4 || vm == 6 || vm == 8 {
+                    if vm.is_table_mode() {
                         save_table_file(&window, &mut s, 0);
+                    } else if vm == ViewMode::ThreeWayText {
+                        save_three_way_pane(&window, &mut s, 0);
                     } else {
                         save_file(&window, &mut s, true);
                     }
                 }
                 if right_choice == 0 {
-                    if vm == 4 || vm == 6 || vm == 8 {
+                    if vm.is_table_mode() {
                         save_table_file(&window, &mut s, 2);
+                    } else if vm == ViewMode::ThreeWayText {
+                        save_three_way_pane(&window, &mut s, 2);
                     } else {
                         save_file(&window, &mut s, false);
                     }
@@ -405,9 +409,13 @@ fn main() {
             let prev_active = s.active_tab;
             s.active_tab = idx as usize;
             let vm = s.current_tab().view_mode;
-            if vm == 4 || vm == 6 || vm == 8 {
+            if vm.is_table_mode() {
                 save_table_file(&window, &mut s, 0);
                 save_table_file(&window, &mut s, 2);
+            } else if vm == ViewMode::ThreeWayText {
+                save_three_way_pane(&window, &mut s, 0);
+                save_three_way_pane(&window, &mut s, 1);
+                save_three_way_pane(&window, &mut s, 2);
             } else {
                 save_file(&window, &mut s, true);
                 save_file(&window, &mut s, false);
@@ -541,9 +549,9 @@ fn main() {
                     let mut s = state.borrow_mut();
                     let tab = s.current_tab_mut();
                     tab.left_path = Some(path);
-                    if tab.view_mode == 7 {
-                        tab.view_mode = 0;
-                        window.set_view_mode(0);
+                    if tab.view_mode == ViewMode::Blank {
+                        tab.view_mode = ViewMode::FileDiff;
+                        window.set_view_mode(ViewMode::FileDiff.as_i32());
                     }
                 }
             } else if !has_native_file_dialog() {
@@ -588,9 +596,9 @@ fn main() {
                     let mut s = state.borrow_mut();
                     let tab = s.current_tab_mut();
                     tab.right_path = Some(path);
-                    if tab.view_mode == 7 {
-                        tab.view_mode = 0;
-                        window.set_view_mode(0);
+                    if tab.view_mode == ViewMode::Blank {
+                        tab.view_mode = ViewMode::FileDiff;
+                        window.set_view_mode(ViewMode::FileDiff.as_i32());
                     }
                 }
             } else if !has_native_file_dialog() {
@@ -707,8 +715,8 @@ fn main() {
             let window = window_weak.unwrap();
             let mut s = state.borrow_mut();
             let tab = s.current_tab_mut();
-            tab.view_mode = 1;
-            window.set_view_mode(1);
+            tab.view_mode = ViewMode::FolderCompare;
+            window.set_view_mode(ViewMode::FolderCompare.as_i32());
             if tab.is_virtual_folder {
                 // Restore from cached data (no disk rescan)
                 let data = tab.folder_item_data.clone();
@@ -787,9 +795,9 @@ fn main() {
             let window = window_weak.unwrap();
             let mut s = state.borrow_mut();
             let vm = s.current_tab().view_mode;
-            if vm == 4 || vm == 6 || vm == 8 {
+            if vm.is_table_mode() {
                 save_table_file(&window, &mut s, 0);
-            } else if vm == 3 {
+            } else if vm == ViewMode::ThreeWayText {
                 save_three_way_pane(&window, &mut s, 0);
             } else {
                 save_file(&window, &mut s, true);
@@ -804,9 +812,9 @@ fn main() {
             let window = window_weak.unwrap();
             let mut s = state.borrow_mut();
             let vm = s.current_tab().view_mode;
-            if vm == 4 || vm == 6 || vm == 8 {
+            if vm.is_table_mode() {
                 save_table_file(&window, &mut s, 2);
-            } else if vm == 3 {
+            } else if vm == ViewMode::ThreeWayText {
                 save_three_way_pane(&window, &mut s, 2);
             } else {
                 save_file(&window, &mut s, false);
@@ -1535,9 +1543,9 @@ fn main() {
                     let mut s = state.borrow_mut();
                     let tab = s.current_tab_mut();
                     tab.left_path = Some(path_buf);
-                    if tab.view_mode == 7 {
-                        tab.view_mode = 0;
-                        window.set_view_mode(0);
+                    if tab.view_mode == ViewMode::Blank {
+                        tab.view_mode = ViewMode::FileDiff;
+                        window.set_view_mode(ViewMode::FileDiff.as_i32());
                     }
                 }
                 2 => {
@@ -1546,9 +1554,9 @@ fn main() {
                     let mut s = state.borrow_mut();
                     let tab = s.current_tab_mut();
                     tab.right_path = Some(path_buf);
-                    if tab.view_mode == 7 {
-                        tab.view_mode = 0;
-                        window.set_view_mode(0);
+                    if tab.view_mode == ViewMode::Blank {
+                        tab.view_mode = ViewMode::FileDiff;
+                        window.set_view_mode(ViewMode::FileDiff.as_i32());
                     }
                 }
                 3 => {
@@ -1565,17 +1573,17 @@ fn main() {
                 11 => {
                     let mut s = state.borrow_mut();
                     s.current_tab_mut().left_path = Some(path_buf);
-                    s.current_tab_mut().view_mode = 0;
+                    s.current_tab_mut().view_mode = ViewMode::FileDiff;
                     drop(s);
-                    window.set_view_mode(0);
+                    window.set_view_mode(ViewMode::FileDiff.as_i32());
                     run_diff(&window, &mut state.borrow_mut());
                 }
                 12 => {
                     let mut s = state.borrow_mut();
                     s.current_tab_mut().right_path = Some(path_buf);
-                    s.current_tab_mut().view_mode = 0;
+                    s.current_tab_mut().view_mode = ViewMode::FileDiff;
                     drop(s);
-                    window.set_view_mode(0);
+                    window.set_view_mode(ViewMode::FileDiff.as_i32());
                     run_diff(&window, &mut state.borrow_mut());
                 }
                 13 => {
@@ -1786,9 +1794,9 @@ fn main() {
                                         Some(std::path::PathBuf::from(&finder_paths[0]));
                                     tab.right_path =
                                         Some(std::path::PathBuf::from(&finder_paths[1]));
-                                    tab.view_mode = 0;
+                                    tab.view_mode = ViewMode::FileDiff;
                                 }
-                                window.set_view_mode(0);
+                                window.set_view_mode(ViewMode::FileDiff.as_i32());
                                 run_diff(&window, &mut s);
                             }
                             app::sync_tab_list(&window, &s);
@@ -1841,9 +1849,9 @@ fn main() {
                                                 Some(std::path::PathBuf::from(temp_left));
                                             tab.right_path =
                                                 Some(std::path::PathBuf::from(temp_right));
-                                            tab.view_mode = 0;
+                                            tab.view_mode = ViewMode::FileDiff;
                                         }
-                                        window.set_view_mode(0);
+                                        window.set_view_mode(ViewMode::FileDiff.as_i32());
                                         run_diff(&window, &mut s);
                                         app::sync_tab_list(&window, &s);
                                     } else {
@@ -2165,10 +2173,10 @@ fn main() {
             s.session = app
                 .tabs
                 .iter()
-                .filter(|tab| tab.view_mode != 7)
+                .filter(|tab| tab.view_mode != ViewMode::Blank)
                 .filter_map(|tab| {
                     let left = match tab.view_mode {
-                        1 => tab
+                        ViewMode::FolderCompare => tab
                             .left_folder
                             .as_ref()
                             .map(|p| p.to_string_lossy().to_string()),
@@ -2178,7 +2186,7 @@ fn main() {
                             .map(|p| p.to_string_lossy().to_string()),
                     }?;
                     let right = match tab.view_mode {
-                        1 => tab
+                        ViewMode::FolderCompare => tab
                             .right_folder
                             .as_ref()
                             .map(|p| p.to_string_lossy().to_string()),
@@ -2338,27 +2346,36 @@ fn main() {
                     b.first().cloned()
                 } {
                     let bytes = encode_text(&text, &enc);
-                    if fs::write(&path, bytes).is_ok() {
-                        let mut s = state.borrow_mut();
-                        match pane {
-                            0 => s.tabs[tab_idx].left_path = Some(path),
-                            2 => s.tabs[tab_idx].base_path = Some(path),
-                            _ => s.tabs[tab_idx].right_path = Some(path),
+                    match fs::write(&path, &bytes) {
+                        Ok(()) => {
+                            let mut s = state.borrow_mut();
+                            match pane {
+                                0 => s.tabs[tab_idx].left_path = Some(path),
+                                2 => s.tabs[tab_idx].base_path = Some(path),
+                                _ => s.tabs[tab_idx].right_path = Some(path),
+                            }
+                            // Check if this tab is now fully saved (all sides have paths)
+                            let all_saved = if s.tabs[tab_idx].view_mode == ViewMode::ThreeWayText {
+                                s.tabs[tab_idx].left_path.is_some()
+                                    && s.tabs[tab_idx].base_path.is_some()
+                                    && s.tabs[tab_idx].right_path.is_some()
+                            } else {
+                                s.tabs[tab_idx].left_path.is_some()
+                                    && s.tabs[tab_idx].right_path.is_some()
+                            };
+                            if all_saved {
+                                s.tabs[tab_idx].has_unsaved_changes = false;
+                            }
+                            let still_unsaved = s.tabs.iter().any(|t| t.has_unsaved_changes);
+                            window.set_has_unsaved_changes(still_unsaved);
                         }
-                        // Check if this tab is now fully saved (all sides have paths)
-                        let all_saved = if s.tabs[tab_idx].view_mode == 3 {
-                            s.tabs[tab_idx].left_path.is_some()
-                                && s.tabs[tab_idx].base_path.is_some()
-                                && s.tabs[tab_idx].right_path.is_some()
-                        } else {
-                            s.tabs[tab_idx].left_path.is_some()
-                                && s.tabs[tab_idx].right_path.is_some()
-                        };
-                        if all_saved {
-                            s.tabs[tab_idx].has_unsaved_changes = false;
+                        Err(e) => {
+                            window.set_status_text(slint::SharedString::from(format!(
+                                "Error saving {}: {}",
+                                path.display(),
+                                e
+                            )));
                         }
-                        let still_unsaved = s.tabs.iter().any(|t| t.has_unsaved_changes);
-                        window.set_has_unsaved_changes(still_unsaved);
                     }
                 }
             }
