@@ -1,5 +1,5 @@
 import { Button, HorizontalBox, VerticalBox, Palette, CheckBox, LineEdit, ScrollView, ListView, Slider } from "std-widgets.slint";
-import { DiffView, DiffLineData, PaneLineData, WordSegment } from "widgets/diff-view.slint";
+import { DiffView, PaneLineData, WordSegment } from "widgets/diff-view.slint";
 import { DiffView3Way } from "widgets/diff-view-3way.slint";
 import { FolderView, FolderItemData } from "widgets/folder-view.slint";
 import { TabBar, TabData } from "widgets/tab-bar.slint";
@@ -26,7 +26,7 @@ export struct DetailLineData {
     status: int,  // 1=added, 2=removed, 3=modified, 4=moved
 }
 
-export { DiffLineData, PaneLineData, WordSegment, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThemeColors, FileEntryData, TableRowData, TableCellData, TableColumnInfo, TableDetailCellData }
+export { PaneLineData, WordSegment, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThemeColors, FileEntryData, TableRowData, TableCellData, TableColumnInfo, TableDetailCellData }
 
 // Toolbar icon button: fixed 32x32 with image icon + optional overlay text
 component ToolBtn inherits Rectangle {
@@ -156,9 +156,7 @@ export component MainWindow inherits Window {
     min-width: 600px;
     min-height: 400px;
 
-    // File diff properties
-    in-out property <[DiffLineData]> diff-lines;
-    // Per-pane independent buffer properties (Phase 0+)
+    // Per-pane independent buffer properties
     in-out property <[PaneLineData]> left-lines;
     in-out property <[PaneLineData]> right-lines;
     in-out property <[PaneLineData]> middle-lines;
@@ -1110,7 +1108,6 @@ export component MainWindow inherits Window {
         }
 
         if root.view-mode == 0 : DiffView {
-            diff-lines: root.diff-lines;
             left-lines: root.left-lines;
             right-lines: root.right-lines;
             current-diff-index: root.current-diff-index;

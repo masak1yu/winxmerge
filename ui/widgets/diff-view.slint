@@ -22,28 +22,6 @@ export struct PaneLineData {
     highlight: int,
 }
 
-export struct DiffLineData {
-    left-line-no: string,
-    right-line-no: string,
-    left-text: string,
-    right-text: string,
-    // 0=Equal, 1=Added, 2=Removed, 3=Modified, 4=Moved
-    status: int,
-    is-current-diff: bool,
-    diff-index: int, // -1 if not a diff, otherwise the diff block index
-    // Syntax highlight: -1=none, 0=keyword, 1=string, 2=comment, 3=number, 4=function, etc.
-    left-highlight: int,
-    right-highlight: int,
-    // Word-level diff: text with changed portions marked (for Modified lines)
-    // Format: "unchanged|CHANGED|unchanged|CHANGED" where CHANGED segments are the differing parts
-    left-word-diff: string,
-    right-word-diff: string,
-    // True when this row matches the current search query
-    is-search-match: bool,
-    // True when this row is part of a multi-line selection
-    is-selected: bool,
-}
-
 component DiffLineRow inherits Rectangle {
     in property <string> line-no;
     in-out property <string> text;
@@ -230,7 +208,6 @@ component LocationPane inherits Rectangle {
 export component DiffView inherits Rectangle {
     in property <string> left-title: "Left";
     in property <string> right-title: "Right";
-    in property <[DiffLineData]> diff-lines;  // legacy (kept for bridge; unused by ListViews)
     in property <[PaneLineData]> left-lines;
     in property <[PaneLineData]> right-lines;
     in property <int> current-diff-index: -1;

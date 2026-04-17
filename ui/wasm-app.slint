@@ -1,5 +1,5 @@
 import { Button, TextEdit, Palette, ScrollView } from "std-widgets.slint";
-import { DiffView, DiffLineData } from "widgets/diff-view.slint";
+import { DiffView, PaneLineData } from "widgets/diff-view.slint";
 import { ThemeColors } from "theme.slint";
 
 export component WasmApp inherits Window {
@@ -13,7 +13,8 @@ export component WasmApp inherits Window {
     in-out property <string> right-text: "";
     in-out property <string> left-title: "Left";
     in-out property <string> right-title: "Right";
-    in-out property <[DiffLineData]> diff-lines;
+    in-out property <[PaneLineData]> left-lines;
+    in-out property <[PaneLineData]> right-lines;
     in-out property <int> diff-count: 0;
     in-out property <int> opt-font-size: 13;
     in-out property <int> current-diff-index: -1;
@@ -70,7 +71,7 @@ export component WasmApp inherits Window {
                     spacing: 8px;
                     alignment: end;
 
-                    if root.diff-lines.length == 0: Button {
+                    if root.left-lines.length == 0: Button {
                         text: "Compare";
                         clicked => { root.compare(); }
                     }
@@ -84,7 +85,7 @@ export component WasmApp inherits Window {
             background: #2a2a3e;
         }
 
-        if diff-lines.length == 0: HorizontalLayout {
+        if left-lines.length == 0: HorizontalLayout {
             vertical-stretch: 1;
             spacing: 0px;
             padding: 0px;
@@ -208,7 +209,7 @@ export component WasmApp inherits Window {
             }
         }
 
-        if diff-lines.length > 0: VerticalLayout {
+        if left-lines.length > 0: VerticalLayout {
             vertical-stretch: 1;
 
             // Navigation bar
@@ -236,7 +237,8 @@ export component WasmApp inherits Window {
                             TouchArea {
                                 mouse-cursor: pointer;
                                 clicked => {
-                                    root.diff-lines = [];
+                                    root.left-lines = [];
+                                    root.right-lines = [];
                                     root.current-diff-index = -1;
                                     root.diff-scroll-y = 0px;
                                 }
@@ -312,7 +314,8 @@ export component WasmApp inherits Window {
 
             diff-view := DiffView {
                 vertical-stretch: 1;
-                diff-lines: root.diff-lines;
+                left-lines: root.left-lines;
+                right-lines: root.right-lines;
                 current-diff-index: root.current-diff-index;
                 left-title: root.left-title;
                 right-title: root.right-title;
