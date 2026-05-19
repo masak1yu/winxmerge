@@ -142,7 +142,7 @@ component DiffLineRow inherits Rectangle {
                 font-size: root.text-font-size * 1px;
                 font-family: "monospace";
                 vertical-alignment: center;
-                overflow: root.word-wrap-mode ? clip : elide;
+                overflow: clip;
                 wrap: root.word-wrap-mode ? word-wrap : no-wrap;
                 color: parent.text-color;
             }
@@ -220,6 +220,7 @@ export component DiffView inherits Rectangle {
     in property <bool> show-location-pane: true;
     in property <bool> show-word-diff: true;
     in property <bool> word-wrap-mode: false;
+    in property <length> max-content-width: 3000px;
     in property <bool> diff-only-mode: false;
     // 0=All, 1=Added, 2=Removed, 3=Modified, 4=Moved
     in property <int> diff-status-filter: 0;
@@ -249,6 +250,20 @@ export component DiffView inherits Rectangle {
     changed right-scroll-y => {
         if left-list.viewport-y != right-scroll-y {
             left-list.viewport-y = right-scroll-y;
+        }
+    }
+
+    // Horizontal scroll sync
+    in-out property <length> scroll-x <=> left-list.viewport-x;
+    in-out property <length> right-scroll-x <=> right-list.viewport-x;
+    changed scroll-x => {
+        if right-list.viewport-x != scroll-x {
+            right-list.viewport-x = scroll-x;
+        }
+    }
+    changed right-scroll-x => {
+        if left-list.viewport-x != right-scroll-x {
+            left-list.viewport-x = right-scroll-x;
         }
     }
 
@@ -355,6 +370,7 @@ export component DiffView inherits Rectangle {
                 }
 
                 left-list := ListView {
+                    viewport-width: root.word-wrap-mode ? self.width : Math.max(self.width, root.max-content-width);
                     for line[idx] in left-lines: DiffLineRow {
                         height: (root.diff-only-mode || root.diff-status-filter != 0) && line.status == 0 ? 0px
                               : root.diff-status-filter != 0 && line.status != 0 && line.status != root.diff-status-filter ? 0px
@@ -409,6 +425,7 @@ export component DiffView inherits Rectangle {
                 }
 
                 right-list := ListView {
+                    viewport-width: root.word-wrap-mode ? self.width : Math.max(self.width, root.max-content-width);
                     for line[idx] in right-lines: DiffLineRow {
                         height: (root.diff-only-mode || root.diff-status-filter != 0) && line.status == 0 ? 0px
                               : root.diff-status-filter != 0 && line.status != 0 && line.status != root.diff-status-filter ? 0px

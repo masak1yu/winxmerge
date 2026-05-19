@@ -135,6 +135,22 @@ fn restore_tab_common(window: &MainWindow, tab: &TabState) {
     } else {
         window.set_right_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
     }
+    // Compute max content width for horizontal scrolling
+    {
+        let font_size = window.get_opt_font_size();
+        let mut models: Vec<std::rc::Rc<slint::VecModel<PaneLineData>>> = Vec::new();
+        if let Some(ref buf) = tab.left_buffer {
+            models.push(buf.model.clone());
+        }
+        if let Some(ref buf) = tab.middle_buffer {
+            models.push(buf.model.clone());
+        }
+        if let Some(ref buf) = tab.right_buffer {
+            models.push(buf.model.clone());
+        }
+        window.set_diff_max_content_width_px(max_content_width_px(&models, font_size));
+    }
+
     window.set_diff_count(tab.diff_positions.len() as i32);
     window.set_current_diff_index(tab.current_diff);
     window.set_has_unsaved_changes(tab.has_unsaved_changes);

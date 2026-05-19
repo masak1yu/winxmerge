@@ -163,6 +163,15 @@ pub fn run_three_way_diff(window: &MainWindow, state: &mut AppState) {
     window.set_left_lines(ModelRc::from(left_buf.model.clone()));
     window.set_middle_lines(ModelRc::from(middle_buf.model.clone()));
     window.set_right_lines(ModelRc::from(right_buf.model.clone()));
+    let font_size = window.get_opt_font_size();
+    window.set_diff_max_content_width_px(max_content_width_px(
+        &[
+            left_buf.model.clone(),
+            middle_buf.model.clone(),
+            right_buf.model.clone(),
+        ],
+        font_size,
+    ));
     tab.left_buffer = Some(left_buf);
     tab.middle_buffer = Some(middle_buf);
     tab.right_buffer = Some(right_buf);
@@ -207,6 +216,15 @@ pub fn recompute_three_way_from_text(
     window.set_left_lines(ModelRc::from(left_buf.model.clone()));
     window.set_middle_lines(ModelRc::from(middle_buf.model.clone()));
     window.set_right_lines(ModelRc::from(right_buf.model.clone()));
+    let font_size = window.get_opt_font_size();
+    window.set_diff_max_content_width_px(max_content_width_px(
+        &[
+            left_buf.model.clone(),
+            middle_buf.model.clone(),
+            right_buf.model.clone(),
+        ],
+        font_size,
+    ));
     tab.left_buffer = Some(left_buf);
     tab.middle_buffer = Some(middle_buf);
     tab.right_buffer = Some(right_buf);

@@ -473,6 +473,9 @@ export component MainWindow inherits Window {
     in property <[string]> excel-sheet-names;
     in-out property <string> excel-active-sheet: "";
 
+    // Max content width for horizontal scrolling in text diff views
+    in-out property <int> diff-max-content-width-px: 3000;
+
     // Table grid comparison (view_mode == 4 and 6)
     in-out property <[TableRowData]> table-rows;
     in-out property <[TableColumnInfo]> table-columns;
@@ -1126,6 +1129,7 @@ export component MainWindow inherits Window {
             diff-status-filter: (root.left-path != "" || root.right-path != "") ? root.diff-status-filter : 0;
             editor-font-size: root.opt-font-size;
             editor-tab-width: root.opt-tab-width;
+            max-content-width: root.diff-max-content-width-px * 1px;
             copy-to-right(idx) => { root.copy-to-right(idx); }
             copy-to-left(idx) => { root.copy-to-left(idx); }
             select-diff(idx) => { root.select-diff(idx); }
@@ -1234,6 +1238,7 @@ export component MainWindow inherits Window {
             show-location-pane: root.show-location-pane;
             editor-font-size: root.opt-font-size;
             inline-edit-enabled: root.opt-inline-edit;
+            max-content-width: root.diff-max-content-width-px * 1px;
             edit-focus-left-row <=> root.three-way-edit-focus-left-row;
             edit-focus-base-row <=> root.three-way-edit-focus-base-row;
             edit-focus-right-row <=> root.three-way-edit-focus-right-row;
