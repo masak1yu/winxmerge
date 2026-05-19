@@ -258,6 +258,12 @@ pub(super) fn apply_diff_result(
         build_pane_buffers_2way(&result, left_highlights, right_highlights, tab_width);
     window.set_left_lines(ModelRc::from(left_buf.model.clone()));
     window.set_right_lines(ModelRc::from(right_buf.model.clone()));
+    let font_size = window.get_opt_font_size();
+    let max_w = max_content_width_px(
+        &[left_buf.model.clone(), right_buf.model.clone()],
+        font_size,
+    );
+    window.set_diff_max_content_width_px(max_w);
     tab.left_buffer = Some(left_buf);
     tab.right_buffer = Some(right_buf);
     tab.middle_buffer = None;

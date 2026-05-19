@@ -84,7 +84,7 @@ component ThreeWayLineRow inherits Rectangle {
                 font-size: root.text-font-size * 1px;
                 font-family: "monospace";
                 vertical-alignment: center;
-                overflow: elide;
+                overflow: clip;
                 color: root.text-color;
             }
         }
@@ -217,6 +217,7 @@ export component DiffView3Way inherits Rectangle {
     in property <int> editor-font-size: 13;
     in property <bool> inline-edit-enabled: false;
     in property <bool> show-location-pane: true;
+    in property <length> max-content-width: 3000px;
 
     // Row index to focus for each pane (-1 = none)
     in-out property <int> edit-focus-left-row: -1;
@@ -318,6 +319,7 @@ export component DiffView3Way inherits Rectangle {
                 border-color: Palette.border;
                 border-width: 1px;
                 left-list := ListView {
+                    viewport-width: Math.max(self.width, root.max-content-width);
                     for line[idx] in left-lines: ThreeWayLineRow {
                         height: (root.editor-font-size + 2) * 1px;
                         line-no: line.line-no;
@@ -347,8 +349,10 @@ export component DiffView3Way inherits Rectangle {
                 min-width: 80px;
                 border-color: Palette.border;
                 border-width: 1px;
-                ListView {
+                base-list := ListView {
                     viewport-y: left-list.viewport-y;
+                    viewport-x: left-list.viewport-x;
+                    viewport-width: Math.max(self.width, root.max-content-width);
                     for line[idx] in middle-lines: ThreeWayLineRow {
                         height: (root.editor-font-size + 2) * 1px;
                         line-no: line.line-no;
@@ -378,8 +382,10 @@ export component DiffView3Way inherits Rectangle {
                 min-width: 80px;
                 border-color: Palette.border;
                 border-width: 1px;
-                ListView {
+                right-list := ListView {
                     viewport-y: left-list.viewport-y;
+                    viewport-x: left-list.viewport-x;
+                    viewport-width: Math.max(self.width, root.max-content-width);
                     for line[idx] in right-lines: ThreeWayLineRow {
                         height: (root.editor-font-size + 2) * 1px;
                         line-no: line.line-no;

@@ -465,3 +465,22 @@ pub fn renumber_pane_buffer(buffer: &mut PaneBuffer) {
         }
     }
 }
+
+/// Estimate the pixel width needed to display the longest line across all given models.
+/// Used to set `viewport-width` on diff pane ListViews for horizontal scrolling.
+pub fn max_content_width_px(models: &[Rc<VecModel<PaneLineData>>], font_size: i32) -> i32 {
+    let max_len = models
+        .iter()
+        .flat_map(|m| {
+            let count = m.row_count();
+            let m = m.clone();
+            (0..count).map(move |i| m.row_data(i).map(|d| d.text.len()).unwrap_or(0))
+        })
+        .max()
+        .unwrap_or(0);
+    if max_len == 0 {
+        return 0;
+    }
+    // Approximate monospace char width: font_size * 0.62 + line-number column + padding
+    ((max_len as f32) * (font_size as f32) * 0.62) as i32 + 100
+}
