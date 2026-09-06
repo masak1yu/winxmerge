@@ -1,5 +1,7 @@
 use similar::TextDiff;
 
+use crate::diff::engine::{DiffOptions, normalize_text};
+
 /// OP_TYPE equivalent from WinMerge
 #[derive(Debug, Clone, PartialEq)]
 pub enum ThreeWayStatus {
@@ -88,32 +90,64 @@ fn extract_hunks(diff: &TextDiff<'_, '_, '_, str>) -> Vec<Hunk> {
 ///
 /// Runs base↔left and base↔right 2-way diffs, then merges the hunk lists
 /// by walking them in base line-number space, grouping overlapping hunks.
-pub fn compute_three_way_diff(
+/// `options` applies ignore-whitespace / ignore-case / ignore-eol and the
+/// substitution filters to the comparison.
+///
+/// `ignore_blank_lines` and the line filters are forced off before normalizing:
+/// they drop lines, which would desync the base/left/right line-index
+/// correspondence that `merge_hunks` and `build_result_lines` rely on for their
+/// lockstep walk. Supporting them here would need the same net-count
+/// re-mapping described in Gotcha 4 of CLAUDE.md. Only 1:1 per-line
+/// normalization (whitespace/case/eol/substitution) is applied.
+pub fn compute_three_way_diff_with_options(
     base_text: &str,
     left_text: &str,
     right_text: &str,
+    options: &DiffOptions,
 ) -> ThreeWayResult {
+    // Original lines, used for display so the panes always show unmodified text.
     let base_lines: Vec<&str> = base_text.lines().collect();
     let left_lines: Vec<&str> = left_text.lines().collect();
     let right_lines: Vec<&str> = right_text.lines().collect();
 
-    // Step 1: Two pairwise 2-way diffs (base is "old" in both)
-    let left_diff = TextDiff::from_lines(base_text, left_text);
-    let right_diff = TextDiff::from_lines(base_text, right_text);
+    // ponytail: ignore_blank_lines and line filters are not supported in 3-way —
+    // dropping lines would break the base/left/right line correspondence that
+    // merge_hunks and build_result_lines depend on for their lockstep walk.
+    // Supporting them would need the same net-count re-mapping as Gotcha 4.
+    // Force them off so normalization is a pure 1:1 per-line transform.
+    let opts = DiffOptions {
+        ignore_blank_lines: false,
+        line_filters: Vec::new(),
+        ..options.clone()
+    };
+    let (base_norm, _) = normalize_text(base_text, &opts);
+    let (left_norm, _) = normalize_text(left_text, &opts);
+    let (right_norm, _) = normalize_text(right_text, &opts);
+    let base_norm_lines: Vec<&str> = base_norm.lines().collect();
+    let left_norm_lines: Vec<&str> = left_norm.lines().collect();
+    let right_norm_lines: Vec<&str> = right_norm.lines().collect();
+
+    // Step 1: Two pairwise 2-way diffs (base is "old" in both), run on the
+    // normalized text so ignore-whitespace/case/eol take effect.
+    let left_diff = TextDiff::from_lines(&base_norm, &left_norm);
+    let right_diff = TextDiff::from_lines(&base_norm, &right_norm);
 
     let left_hunks = extract_hunks(&left_diff);
     let right_hunks = extract_hunks(&right_diff);
 
-    // Step 2: Merge hunks using Make3wayDiff-style overlap detection
+    // Step 2: Merge hunks using Make3wayDiff-style overlap detection. Uses the
+    // normalized slices — merge_hunks only compares them for left==right
+    // equality and clamps against their length.
     let blocks = merge_hunks(
         &left_hunks,
         &right_hunks,
-        &base_lines,
-        &left_lines,
-        &right_lines,
+        &base_norm_lines,
+        &left_norm_lines,
+        &right_norm_lines,
     );
 
-    // Step 3: Build output lines with ghost-line alignment
+    // Step 3: Build output lines with ghost-line alignment, using the original
+    // (non-normalized) lines so the panes display unmodified text.
     build_result_lines(&blocks, &base_lines, &left_lines, &right_lines)
 }
 
@@ -405,6 +439,12 @@ fn build_result_lines(
 
 /// Rebuild text for one pane from ThreeWayResult lines, skipping ghost lines.
 /// pane: 0=left, 1=base, 2=right.
+/// Default-options shorthand, used by the tests below.
+#[cfg(test)]
+fn compute_three_way_diff(base_text: &str, left_text: &str, right_text: &str) -> ThreeWayResult {
+    compute_three_way_diff_with_options(base_text, left_text, right_text, &DiffOptions::default())
+}
+
 #[cfg(test)]
 fn rebuild_pane_text(lines: &[ThreeWayLine], pane: i32) -> String {
     let mut out = Vec::new();
@@ -1053,5 +1093,80 @@ mod tests {
             assert_eq!(rebuilt_base, *base, "case {}: base mismatch", i);
             assert_eq!(rebuilt_right, *right, "case {}: right mismatch", i);
         }
+    }
+
+    #[test]
+    fn test_ignore_whitespace_no_conflict() {
+        let base = "x\n";
+        let left = "x \n";
+        let right = " x\n";
+
+        let default_result =
+            compute_three_way_diff_with_options(base, left, right, &DiffOptions::default());
+        assert_eq!(default_result.lines[0].status, ThreeWayStatus::Conflict);
+
+        let ignore_ws_result = compute_three_way_diff_with_options(
+            base,
+            left,
+            right,
+            &DiffOptions {
+                ignore_whitespace: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(ignore_ws_result.lines[0].status, ThreeWayStatus::Equal);
+    }
+
+    #[test]
+    fn test_ignore_case_no_conflict() {
+        let base = "abc\n";
+        let left = "ABC\n";
+        let right = "Abc\n";
+
+        let default_result =
+            compute_three_way_diff_with_options(base, left, right, &DiffOptions::default());
+        assert_eq!(default_result.lines[0].status, ThreeWayStatus::Conflict);
+
+        let ignore_case_result = compute_three_way_diff_with_options(
+            base,
+            left,
+            right,
+            &DiffOptions {
+                ignore_case: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(ignore_case_result.lines[0].status, ThreeWayStatus::Equal);
+    }
+
+    #[test]
+    fn test_ignore_blank_lines_is_noop_in_three_way() {
+        // 3-way diff does not support ignore_blank_lines (dropping lines would
+        // desync base/left/right line correspondence — see Gotcha 4). Passing
+        // it must not change the result at all.
+        let base = "a\n\nb\n";
+        let left = "a\n\nb\n";
+        let right = "a\nb\n";
+
+        let default_result =
+            compute_three_way_diff_with_options(base, left, right, &DiffOptions::default());
+        let ignore_blank_result = compute_three_way_diff_with_options(
+            base,
+            left,
+            right,
+            &DiffOptions {
+                ignore_blank_lines: true,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(default_result.lines.len(), ignore_blank_result.lines.len());
+        let default_statuses: Vec<_> = default_result.lines.iter().map(|l| &l.status).collect();
+        let ignore_blank_statuses: Vec<_> = ignore_blank_result
+            .lines
+            .iter()
+            .map(|l| &l.status)
+            .collect();
+        assert_eq!(default_statuses, ignore_blank_statuses);
     }
 }

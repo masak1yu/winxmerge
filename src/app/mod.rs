@@ -10,7 +10,7 @@ use crate::archive::{compare_zip_archives, is_zip_bytes, is_zip_path};
 use crate::csv::{compare_csv_full, compare_csv_full_3way, is_csv_path};
 use crate::diff::engine::{DiffOptions, compute_diff_with_options};
 use crate::diff::folder::{FolderCompareOptions, compare_folders_with_options};
-use crate::diff::three_way::compute_three_way_diff;
+use crate::diff::three_way::compute_three_way_diff_with_options;
 use crate::encoding::{decode_file, detect_eol, encode_text, is_binary};
 use crate::excel::{compare_excel_full, is_excel_path};
 use crate::highlight::{detect_file_type, highlight_lines};

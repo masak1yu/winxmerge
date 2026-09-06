@@ -306,7 +306,7 @@ fn compile_substitution_filters(filters: &[(String, String)]) -> Vec<(Regex, Str
 /// 0-based line index it came from in `text`.  `ignore_blank_lines` and the line
 /// filters drop lines, so the two numbering schemes diverge and every lookup into
 /// the original text has to go through this map — see `orig_line`.
-fn normalize_text(text: &str, options: &DiffOptions) -> (String, Vec<usize>) {
+pub(super) fn normalize_text(text: &str, options: &DiffOptions) -> (String, Vec<usize>) {
     let line_filters = compile_line_filters(&options.line_filters);
     let sub_filters = compile_substitution_filters(&options.substitution_filters);
 
