@@ -198,27 +198,63 @@ pub fn compute_diff_with_options(
     }
 }
 
+/// Split `s` into identifier / whitespace / punctuation tokens.
+///
+/// Diffing per-token (instead of per-char) keeps a change like `foo` -> `foobar`
+/// from being reported as a split in the middle of the identifier.
+fn tokenize_words(s: &str) -> Vec<&str> {
+    let mut tokens = Vec::new();
+    let mut chars = s.char_indices().peekable();
+    while let Some((start, c)) = chars.next() {
+        let is_word = c.is_alphanumeric() || c == '_';
+        let is_space = c.is_whitespace();
+        let mut end = start + c.len_utf8();
+        if is_word || is_space {
+            while let Some(&(next_idx, next_c)) = chars.peek() {
+                let next_matches = if is_word {
+                    next_c.is_alphanumeric() || next_c == '_'
+                } else {
+                    next_c.is_whitespace()
+                };
+                if !next_matches {
+                    break;
+                }
+                end = next_idx + next_c.len_utf8();
+                chars.next();
+            }
+        }
+        tokens.push(&s[start..end]);
+    }
+    tokens
+}
+
 /// Compute word-level diff between two strings, returning segments for left and right.
 fn compute_word_diff(left: &str, right: &str) -> (Vec<WordDiffSegment>, Vec<WordDiffSegment>) {
+    let left_tokens = tokenize_words(left);
+    let right_tokens = tokenize_words(right);
+
+    // `similar`'s built-in diff_words() doesn't split on punctuation the way we need
+    // (e.g. `foo(bar)` doesn't break at the parens), which is coarser than the plain
+    // char diff this replaces — so we diff our own identifier/whitespace/punct tokens.
     let diff = TextDiff::configure()
         .algorithm(Algorithm::Myers)
-        .diff_chars(left, right);
+        .diff_slices(&left_tokens, &right_tokens);
 
     let mut left_segs: Vec<WordDiffSegment> = Vec::new();
     let mut right_segs: Vec<WordDiffSegment> = Vec::new();
 
     for change in diff.iter_all_changes() {
-        let text = change.value().to_string();
+        let text: &str = change.value();
         match change.tag() {
             ChangeTag::Equal => {
-                push_segment(&mut left_segs, &text, false);
-                push_segment(&mut right_segs, &text, false);
+                push_segment(&mut left_segs, text, false);
+                push_segment(&mut right_segs, text, false);
             }
             ChangeTag::Delete => {
-                push_segment(&mut left_segs, &text, true);
+                push_segment(&mut left_segs, text, true);
             }
             ChangeTag::Insert => {
-                push_segment(&mut right_segs, &text, true);
+                push_segment(&mut right_segs, text, true);
             }
         }
     }
@@ -605,5 +641,24 @@ mod tests {
         assert_eq!(modified.left_line_no, Some(3));
         assert_eq!(modified.right_text, "c");
         assert_eq!(modified.right_line_no, Some(2));
+    }
+
+    #[test]
+    fn test_word_diff_tokenizes_at_word_boundaries() {
+        let (left_segs, right_segs) = compute_word_diff("let foo = 1;", "let foobar = 1;");
+
+        let left_changed: Vec<&str> = left_segs
+            .iter()
+            .filter(|s| s.changed)
+            .map(|s| s.text.as_str())
+            .collect();
+        let right_changed: Vec<&str> = right_segs
+            .iter()
+            .filter(|s| s.changed)
+            .map(|s| s.text.as_str())
+            .collect();
+
+        assert_eq!(left_changed, vec!["foo"]);
+        assert_eq!(right_changed, vec!["foobar"]);
     }
 }
