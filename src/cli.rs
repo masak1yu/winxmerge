@@ -212,9 +212,15 @@ mod tests {
     #[test]
     fn existing_paths_win_over_option_syntax() {
         // Unix absolute paths start with '/', so an existing path must never be
-        // mistaken for an option.
-        let cli = parse_args(&["/etc/hosts"]);
-        assert_eq!(cli.paths, vec!["/etc/hosts"]);
+        // mistaken for an option.  A freshly created temp file rather than a
+        // well-known one: /etc/hosts does not exist on Windows, where the parser
+        // then reads "/etc/hosts" as an option and is right to.
+        let path = std::env::temp_dir().join("winxmerge_cli_existing_path.txt");
+        std::fs::write(&path, b"").unwrap();
+        let arg = path.to_string_lossy().into_owned();
+        let cli = parse_args(&[&arg]);
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(cli.paths, vec![arg]);
     }
 
     #[test]
