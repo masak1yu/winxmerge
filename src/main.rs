@@ -231,6 +231,16 @@ fn main() {
         if let Some(v) = cli.ignore_eol {
             tab.diff_options.ignore_eol = v;
         }
+        // Pane header overrides (/dl /dm /dr) live on the tab so switching tabs drops them
+        if let Some(ref t) = cli.left_title {
+            tab.left_title_override = t.clone();
+        }
+        if let Some(ref t) = cli.base_title {
+            tab.base_title_override = t.clone();
+        }
+        if let Some(ref t) = cli.right_title {
+            tab.right_title_override = t.clone();
+        }
         // Sync UI toggles so the options dialog shows what the CLI asked for
         drop(s);
         if let Some(v) = cli.ignore_whitespace {
@@ -244,6 +254,15 @@ fn main() {
         }
         if let Some(v) = cli.ignore_eol {
             window.set_opt_ignore_eol(v);
+        }
+        if let Some(ref t) = cli.left_title {
+            window.set_left_title_override(SharedString::from(t));
+        }
+        if let Some(ref t) = cli.base_title {
+            window.set_base_title_override(SharedString::from(t));
+        }
+        if let Some(ref t) = cli.right_title {
+            window.set_right_title_override(SharedString::from(t));
         }
     }
 

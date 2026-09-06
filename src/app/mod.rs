@@ -147,6 +147,10 @@ pub struct TabState {
     pub view_mode: ViewMode,
     pub folder_item_data: Vec<FolderItemData>,
     pub title: String,
+    /// Pane header overrides from the CLI (/dl /dm /dr); empty = show the path.
+    pub left_title_override: String,
+    pub base_title_override: String,
+    pub right_title_override: String,
     pub bookmarks: Vec<usize>,
     pub current_bookmark: i32,
     /// File modification times for auto-rescan
@@ -231,6 +235,9 @@ impl TabState {
             view_mode: ViewMode::Blank,
             folder_item_data: Vec::new(),
             title: "New".to_string(),
+            left_title_override: String::new(),
+            base_title_override: String::new(),
+            right_title_override: String::new(),
             bookmarks: Vec::new(),
             current_bookmark: -1,
             left_mtime: None,

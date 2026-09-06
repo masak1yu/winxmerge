@@ -176,6 +176,10 @@ fn restore_tab_common(window: &MainWindow, tab: &TabState) {
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default(),
     ));
+
+    window.set_left_title_override(SharedString::from(&tab.left_title_override));
+    window.set_base_title_override(SharedString::from(&tab.base_title_override));
+    window.set_right_title_override(SharedString::from(&tab.right_title_override));
 }
 
 fn restore_tab_diff_options(window: &MainWindow, tab: &TabState) {
