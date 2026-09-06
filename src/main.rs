@@ -125,6 +125,7 @@ fn main() {
     {
         let s = settings.borrow();
         window.set_ignore_whitespace(s.ignore_whitespace);
+        window.set_opt_ignore_whitespace_all(s.ignore_whitespace_all);
         window.set_ignore_case(s.ignore_case);
         window.set_show_toolbar(s.show_toolbar);
         window.set_opt_ignore_blank_lines(s.ignore_blank_lines);
@@ -191,6 +192,7 @@ fn main() {
         let mut app = state.borrow_mut();
         let tab = app.current_tab_mut();
         tab.diff_options.ignore_whitespace = s.ignore_whitespace;
+        tab.diff_options.ignore_whitespace_all = s.ignore_whitespace_all;
         tab.diff_options.ignore_case = s.ignore_case;
         tab.diff_options.ignore_blank_lines = s.ignore_blank_lines;
         tab.diff_options.ignore_eol = s.ignore_eol;
@@ -222,6 +224,9 @@ fn main() {
         if let Some(v) = cli.ignore_whitespace {
             tab.diff_options.ignore_whitespace = v;
         }
+        if let Some(v) = cli.ignore_whitespace_all {
+            tab.diff_options.ignore_whitespace_all = v;
+        }
         if let Some(v) = cli.ignore_case {
             tab.diff_options.ignore_case = v;
         }
@@ -245,6 +250,9 @@ fn main() {
         drop(s);
         if let Some(v) = cli.ignore_whitespace {
             window.set_ignore_whitespace(v);
+        }
+        if let Some(v) = cli.ignore_whitespace_all {
+            window.set_opt_ignore_whitespace_all(v);
         }
         if let Some(v) = cli.ignore_case {
             window.set_ignore_case(v);

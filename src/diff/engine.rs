@@ -15,6 +15,11 @@ const WORD_DIFF_LINE_LIMIT: usize = 20_000;
 #[derive(Debug, Clone)]
 pub struct DiffOptions {
     pub ignore_whitespace: bool,
+    /// Upgrade `ignore_whitespace` from "ignore whitespace change" to "ignore all
+    /// whitespace" (WinMerge's /ignorews:2).  No effect on its own.
+    // ponytail: two bools instead of a three-state enum — the toolbar toggle, the
+    // settings file and the Slint property all stay plain bools that way.
+    pub ignore_whitespace_all: bool,
     pub ignore_case: bool,
     pub ignore_blank_lines: bool,
     pub ignore_eol: bool,
@@ -29,6 +34,7 @@ impl Default for DiffOptions {
     fn default() -> Self {
         Self {
             ignore_whitespace: false,
+            ignore_whitespace_all: false,
             ignore_case: false,
             ignore_blank_lines: false,
             ignore_eol: false,
@@ -323,7 +329,9 @@ fn normalize_text(text: &str, options: &DiffOptions) -> (String, Vec<usize>) {
         for (re, replacement) in &sub_filters {
             l = re.replace_all(&l, replacement.as_str()).to_string();
         }
-        if options.ignore_whitespace {
+        if options.ignore_whitespace && options.ignore_whitespace_all {
+            l.retain(|c| !c.is_whitespace());
+        } else if options.ignore_whitespace {
             l = l.split_whitespace().collect::<Vec<&str>>().join(" ");
         }
         if options.ignore_case {
@@ -386,6 +394,31 @@ mod tests {
             ..Default::default()
         };
         let result = compute_diff_with_options("hello   world\n", "hello world\n", &opts);
+        assert_eq!(result.diff_count, 0);
+    }
+
+    #[test]
+    fn test_ignore_whitespace_change_only() {
+        let opts = DiffOptions {
+            ignore_whitespace: true,
+            ..Default::default()
+        };
+        // Leading/trailing whitespace and run-length differences collapse.
+        let result = compute_diff_with_options("  a  b\n", "a b\n", &opts);
+        assert_eq!(result.diff_count, 0);
+        // But removing the inner whitespace entirely is still a difference.
+        let result = compute_diff_with_options("a b\n", "ab\n", &opts);
+        assert_eq!(result.diff_count, 1);
+    }
+
+    #[test]
+    fn test_ignore_whitespace_all() {
+        let opts = DiffOptions {
+            ignore_whitespace: true,
+            ignore_whitespace_all: true,
+            ..Default::default()
+        };
+        let result = compute_diff_with_options("a b\n", "ab\n", &opts);
         assert_eq!(result.diff_count, 0);
     }
 

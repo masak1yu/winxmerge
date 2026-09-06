@@ -5,6 +5,7 @@ export component OptionsDialog inherits Rectangle {
 
     // Compare options
     in-out property <bool> opt-ignore-whitespace: false;
+    in-out property <bool> opt-ignore-whitespace-all: false;
     in-out property <bool> opt-ignore-case: false;
     in-out property <bool> opt-ignore-blank-lines: false;
     in-out property <bool> opt-ignore-eol: false;
@@ -146,6 +147,12 @@ export component OptionsDialog inherits Rectangle {
                     text: @tr("Ignore whitespace differences");
                     checked: root.opt-ignore-whitespace;
                     toggled => { root.opt-ignore-whitespace = self.checked; }
+                }
+                CheckBox {
+                    text: @tr("Ignore all whitespace (not just changes in amount)");
+                    enabled: root.opt-ignore-whitespace;
+                    checked: root.opt-ignore-whitespace-all;
+                    toggled => { root.opt-ignore-whitespace-all = self.checked; }
                 }
                 CheckBox {
                     text: @tr("Ignore case differences");

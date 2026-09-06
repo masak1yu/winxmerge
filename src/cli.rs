@@ -12,7 +12,8 @@ Usage:
   winxmerge [options] <base> <left> <right>   3-way merge
 
 Compare options:
-  /ignorews[:N]          Ignore whitespace differences (:0 disables)
+  /ignorews[:N]          Ignore whitespace differences
+                         (:0 disables, :1 ignores whitespace changes, :2 ignores all whitespace)
   /ignorecase[:N]        Ignore letter case differences
   /ignoreblanklines[:N]  Ignore blank line differences
   /ignoreeol[:N]         Ignore line ending differences
@@ -45,6 +46,7 @@ pub struct CliArgs {
     pub clear_history: bool,
     // None = not specified on the command line (keep the saved setting).
     pub ignore_whitespace: Option<bool>,
+    pub ignore_whitespace_all: Option<bool>,
     pub ignore_case: Option<bool>,
     pub ignore_blank_lines: Option<bool>,
     pub ignore_eol: Option<bool>,
@@ -79,7 +81,8 @@ fn split_option(token: &str) -> Option<(String, Option<&str>)> {
 }
 
 /// WinMerge treats `:0` as "off" and any other value (`:1`, `:2`) as "on".
-/// The engine has a single whitespace mode, so `:1` and `:2` both enable it.
+/// `/ignorews` is the exception — see its match arm below, which distinguishes
+/// `:1` (ignore whitespace change) from `:2` (ignore all whitespace).
 fn flag_value(value: Option<&str>) -> bool {
     value != Some("0")
 }
@@ -110,7 +113,10 @@ pub fn parse(args: &[String]) -> CliArgs {
             "server" => cli.server = true,
             "clear-history" => cli.clear_history = true,
             "ignorews" | "ignore-whitespace" | "w" => {
-                cli.ignore_whitespace = Some(flag_value(value))
+                // WinMerge: :0 = compare, :1 (and bare) = ignore change, :2 = ignore all.
+                let on = value != Some("0");
+                cli.ignore_whitespace = Some(on);
+                cli.ignore_whitespace_all = Some(on && value == Some("2"));
             }
             "ignorecase" | "ignore-case" | "i" => cli.ignore_case = Some(flag_value(value)),
             "ignoreblanklines" | "ignore-blank-lines" | "b" => {
@@ -161,6 +167,26 @@ mod tests {
         let cli = parse_args(&["/ignorews:0", "/ignoreeol:2"]);
         assert_eq!(cli.ignore_whitespace, Some(false));
         assert_eq!(cli.ignore_eol, Some(true));
+    }
+
+    #[test]
+    fn ignorews_levels() {
+        // WinMerge: :0 = off, :1 (and bare) = ignore whitespace change, :2 = ignore all.
+        let cli = parse_args(&["/ignorews"]);
+        assert_eq!(cli.ignore_whitespace, Some(true));
+        assert_eq!(cli.ignore_whitespace_all, Some(false));
+
+        let cli = parse_args(&["/ignorews:1"]);
+        assert_eq!(cli.ignore_whitespace, Some(true));
+        assert_eq!(cli.ignore_whitespace_all, Some(false));
+
+        let cli = parse_args(&["/ignorews:2"]);
+        assert_eq!(cli.ignore_whitespace, Some(true));
+        assert_eq!(cli.ignore_whitespace_all, Some(true));
+
+        let cli = parse_args(&["/ignorews:0"]);
+        assert_eq!(cli.ignore_whitespace, Some(false));
+        assert_eq!(cli.ignore_whitespace_all, Some(false));
     }
 
     #[test]
