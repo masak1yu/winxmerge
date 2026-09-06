@@ -164,6 +164,14 @@ export component MainWindow inherits Window {
     in-out property <int> current-diff-index: -1;
     in-out property <string> left-path: "";
     in-out property <string> right-path: "";
+    // Pane header labels. Empty override = show the path (CLI /dl /dm /dr set these).
+    // Not @tr(): the fallbacks are literals, see CLAUDE.md gotcha 7.
+    in-out property <string> left-title-override: "";
+    in-out property <string> base-title-override: "";
+    in-out property <string> right-title-override: "";
+    property <string> left-display-title: root.left-title-override != "" ? root.left-title-override : (root.left-path != "" ? root.left-path : "Left");
+    property <string> base-display-title: root.base-title-override != "" ? root.base-title-override : (root.base-path != "" ? root.base-path : "Middle");
+    property <string> right-display-title: root.right-title-override != "" ? root.right-title-override : (root.right-path != "" ? root.right-path : "Right");
     in-out property <string> status-text: @tr("Select files or folders to compare");
     in-out property <bool> has-unsaved-changes: false;
     in-out property <bool> show-toolbar: true;
@@ -347,6 +355,11 @@ export component MainWindow inherits Window {
 
     // Rescan files
     callback rescan();
+    // /e — let Esc close the window. Off unless the CLI asked for it.
+    // ponytail: handled by the shortcut FocusScope below, so Esc does nothing while a
+    // pane TextInput holds focus — same limitation the existing Cmd+S / F5 shortcuts have.
+    in-out property <bool> esc-closes: false;
+    callback request-close();
 
     // Auto-rescan timer callback
     callback check-auto-rescan();
@@ -1117,8 +1130,8 @@ export component MainWindow inherits Window {
             scroll-y <=> root.diff-scroll-y;
             edit-focus-row <=> root.diff-edit-focus-row;
             edit-focus-right-row <=> root.diff-edit-focus-right-row;
-            left-title: root.left-path != "" ? root.left-path : "Left";
-            right-title: root.right-path != "" ? root.right-path : "Right";
+            left-title: root.left-display-title;
+            right-title: root.right-display-title;
             context-menu-enabled: root.opt-enable-context-menu;
             show-line-numbers: root.opt-show-line-numbers;
             show-location-pane: root.show-location-pane;
@@ -1231,9 +1244,9 @@ export component MainWindow inherits Window {
             middle-lines: root.middle-lines;
             right-lines: root.right-lines;
             current-conflict-index: root.current-conflict-index;
-            left-title: root.left-path != "" ? root.left-path : "Left";
-            base-title: root.base-path != "" ? root.base-path : "Middle";
-            right-title: root.right-path != "" ? root.right-path : "Right";
+            left-title: root.left-display-title;
+            base-title: root.base-display-title;
+            right-title: root.right-display-title;
             show-line-numbers: root.opt-show-line-numbers;
             show-location-pane: root.show-location-pane;
             editor-font-size: root.opt-font-size;
@@ -1255,8 +1268,8 @@ export component MainWindow inherits Window {
 
         // Excel compare view (side-by-side grid)
         if root.view-mode == 4 : TableGridView {
-            left-title: root.left-path;
-            right-title: root.right-path;
+            left-title: root.left-display-title;
+            right-title: root.right-display-title;
             rows: root.table-rows;
             columns: root.table-columns;
             content-width-px: root.table-content-width-px;
@@ -1275,8 +1288,8 @@ export component MainWindow inherits Window {
 
         // CSV/TSV compare view (side-by-side grid)
         if root.view-mode == 6 : TableGridView {
-            left-title: root.left-path;
-            right-title: root.right-path;
+            left-title: root.left-display-title;
+            right-title: root.right-display-title;
             rows: root.table-rows;
             columns: root.table-columns;
             content-width-px: root.table-content-width-px;
@@ -1292,9 +1305,9 @@ export component MainWindow inherits Window {
 
         // 3-way CSV/TSV table comparison
         if root.view-mode == 8 : TableGridView {
-            left-title: root.left-path;
-            right-title: root.right-path;
-            base-title: root.base-path;
+            left-title: root.left-display-title;
+            right-title: root.right-display-title;
+            base-title: root.base-display-title;
             has-base: true;
             rows: root.table-rows;
             columns: root.table-columns;
@@ -1316,8 +1329,8 @@ export component MainWindow inherits Window {
             diff-image: root.diff-image;
             overlay-image: root.overlay-image;
             stats: root.image-stats;
-            left-title: root.left-path != "" ? root.left-path : "Left";
-            right-title: root.right-path != "" ? root.right-path : "Right";
+            left-title: root.left-display-title;
+            right-title: root.right-display-title;
             left-image-width: root.image-left-width;
             left-image-height: root.image-left-height;
             right-image-width: root.image-right-width;
@@ -2067,6 +2080,10 @@ export component MainWindow inherits Window {
             // F5 for rescan
             if event.text == Key.F5 {
                 root.rescan();
+                return accept;
+            }
+            if event.text == Key.Escape && root.esc-closes {
+                root.request-close();
                 return accept;
             }
             return reject;

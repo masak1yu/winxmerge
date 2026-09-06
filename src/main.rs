@@ -3,6 +3,8 @@ mod app;
 #[cfg(not(target_arch = "wasm32"))]
 mod archive;
 #[cfg(not(target_arch = "wasm32"))]
+mod cli;
+#[cfg(not(target_arch = "wasm32"))]
 mod csv;
 mod diff;
 #[cfg(not(target_arch = "wasm32"))]
@@ -59,12 +61,19 @@ use slint::{Model, ModelRc, SharedString, VecModel};
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    // Parse CLI arguments early (before creating any UI) so --help, --clear-history
+    // and IPC client mode can exit without creating a MainWindow.
+    let mut cli = cli::parse(&std::env::args().collect::<Vec<String>>());
 
-    let is_server_mode = args.iter().any(|a| a == "--server");
+    if cli.help {
+        println!("{}", cli::USAGE);
+        return;
+    }
+
+    let is_server_mode = cli.server;
 
     // --clear-history: wipe session + recent files and exit
-    if args.iter().any(|a| a == "--clear-history") {
+    if cli.clear_history {
         let mut s = settings::AppSettings::load();
         s.session = Vec::new();
         s.recent_files = Vec::new();
@@ -73,25 +82,7 @@ fn main() {
         return;
     }
 
-    // Parse CLI flags and positional arguments early (before creating any UI)
-    // so IPC client mode can exit without creating a MainWindow.
-    let mut positional: Vec<String> = Vec::new();
-    let mut cli_ignore_whitespace = false;
-    let mut cli_ignore_case = false;
-    let mut cli_ignore_blank_lines = false;
-    {
-        let mut i = 1;
-        while i < args.len() {
-            match args[i].as_str() {
-                "--ignore-whitespace" | "-w" => cli_ignore_whitespace = true,
-                "--ignore-case" | "-i" => cli_ignore_case = true,
-                "--ignore-blank-lines" | "-B" => cli_ignore_blank_lines = true,
-                "--server" | "--clear-history" => {}
-                _ => positional.push(args[i].clone()),
-            }
-            i += 1;
-        }
-    }
+    let mut positional: Vec<String> = std::mem::take(&mut cli.paths);
 
     // Check for pending Finder Sync request (shared App Group container file).
     // If no CLI positional args, pick up paths from Finder extension.
@@ -201,6 +192,9 @@ fn main() {
         let tab = app.current_tab_mut();
         tab.diff_options.ignore_whitespace = s.ignore_whitespace;
         tab.diff_options.ignore_case = s.ignore_case;
+        tab.diff_options.ignore_blank_lines = s.ignore_blank_lines;
+        tab.diff_options.ignore_eol = s.ignore_eol;
+        tab.diff_options.detect_moved_lines = s.detect_moved_lines;
         tab.diff_options.line_filters = s.line_filters.clone();
         tab.diff_options.substitution_filters = s
             .substitution_filters
@@ -221,27 +215,71 @@ fn main() {
     // Initialize tab list
     app::sync_tab_list(&window, &state.borrow());
 
-    // Apply CLI flags to initial tab's diff options
-    if cli_ignore_whitespace || cli_ignore_case || cli_ignore_blank_lines {
+    // Apply CLI compare options to the initial tab, overriding the saved settings
+    {
         let mut s = state.borrow_mut();
         let tab = s.current_tab_mut();
-        if cli_ignore_whitespace {
-            tab.diff_options.ignore_whitespace = true;
+        if let Some(v) = cli.ignore_whitespace {
+            tab.diff_options.ignore_whitespace = v;
         }
-        if cli_ignore_case {
-            tab.diff_options.ignore_case = true;
+        if let Some(v) = cli.ignore_case {
+            tab.diff_options.ignore_case = v;
         }
-        if cli_ignore_blank_lines {
-            tab.diff_options.ignore_blank_lines = true;
+        if let Some(v) = cli.ignore_blank_lines {
+            tab.diff_options.ignore_blank_lines = v;
         }
-        // Sync UI toggles
+        if let Some(v) = cli.ignore_eol {
+            tab.diff_options.ignore_eol = v;
+        }
+        // Pane header overrides (/dl /dm /dr) live on the tab so switching tabs drops them
+        if let Some(ref t) = cli.left_title {
+            tab.left_title_override = t.clone();
+        }
+        if let Some(ref t) = cli.base_title {
+            tab.base_title_override = t.clone();
+        }
+        if let Some(ref t) = cli.right_title {
+            tab.right_title_override = t.clone();
+        }
+        // Sync UI toggles so the options dialog shows what the CLI asked for
         drop(s);
-        if cli_ignore_whitespace {
-            window.set_ignore_whitespace(true);
+        if let Some(v) = cli.ignore_whitespace {
+            window.set_ignore_whitespace(v);
         }
-        if cli_ignore_case {
-            window.set_ignore_case(true);
+        if let Some(v) = cli.ignore_case {
+            window.set_ignore_case(v);
         }
+        if let Some(v) = cli.ignore_blank_lines {
+            window.set_opt_ignore_blank_lines(v);
+        }
+        if let Some(v) = cli.ignore_eol {
+            window.set_opt_ignore_eol(v);
+        }
+        if let Some(ref t) = cli.left_title {
+            window.set_left_title_override(SharedString::from(t));
+        }
+        if let Some(ref t) = cli.base_title {
+            window.set_base_title_override(SharedString::from(t));
+        }
+        if let Some(ref t) = cli.right_title {
+            window.set_right_title_override(SharedString::from(t));
+        }
+    }
+
+    // CLI automation (/l /x /xq /enableexitcode). The verdict is only known once the
+    // compare finishes, and large files take the async path, so both the line jump and
+    // the auto-close run from the polling timer instead of here.
+    // ponytail: /x therefore flashes the window before closing. A second, run()-time
+    // path for small files would double the logic to save one frame — not worth it.
+    // /xq only differs from /x by suppressing a message box we never show.
+    let cli_exit_code = Rc::new(Cell::new(0i32));
+    let cli_startup_done = Rc::new(Cell::new(false));
+    window.set_esc_closes(cli.esc_closes);
+    let cli_goto_line = cli.goto_line;
+    let cli_auto_close = cli.auto_close_identical;
+    if positional.iter().any(|p| !std::path::Path::new(p).exists()) {
+        cli_exit_code.set(2);
+        cli_startup_done.set(true);
     }
 
     // Server mode (--server) or no-args launch: start IPC listener (Unix only)
@@ -1744,6 +1782,8 @@ fn main() {
         let window_weak = window.as_weak();
         let state = state.clone();
         let settings = settings.clone();
+        let cli_exit_code = cli_exit_code.clone();
+        let cli_startup_done = cli_startup_done.clone();
 
         // IPC accumulation buffer: (orig_left, temp_left, orig_right, temp_right)
         #[cfg(unix)]
@@ -1763,6 +1803,30 @@ fn main() {
             move || {
                 if let Some(window) = window_weak.upgrade() {
                     apply_pending_diff_if_ready(&window, &mut state.borrow_mut());
+
+                    // One-shot CLI startup action, once the initial compare has a verdict.
+                    if !cli_startup_done.get() {
+                        let verdict = {
+                            let s = state.borrow();
+                            let tab = s.current_tab();
+                            if tab.is_computing {
+                                None
+                            } else {
+                                tab.compare_identical
+                            }
+                        };
+                        if let Some(identical) = verdict {
+                            cli_startup_done.set(true);
+                            cli_exit_code.set(if identical { 0 } else { 1 });
+                            // PaneBuffers only exist now, so this is the earliest /l can work.
+                            if let Some(n) = cli_goto_line {
+                                goto_line(&window, &state.borrow(), n);
+                            }
+                            if cli_auto_close && identical {
+                                let _ = slint::quit_event_loop();
+                            }
+                        }
+                    }
 
                     // IPC: accumulate file pairs, then flush as virtual folder or single diff
                     #[cfg(unix)]
@@ -2236,6 +2300,22 @@ fn main() {
         });
     }
 
+    // /e — Esc close. Mirrors on_close_requested; hide() would bypass the unsaved check.
+    {
+        let state = state.clone();
+        let window_weak = window.as_weak();
+        let do_save = do_save_settings.clone();
+        window.on_request_close(move || {
+            let window = window_weak.unwrap();
+            if state.borrow().tabs.iter().any(|t| t.has_unsaved_changes) {
+                window.set_show_quit_confirm(true);
+                return;
+            }
+            do_save(&window);
+            let _ = slint::quit_event_loop();
+        });
+    }
+
     // Pending save-as queue: each item is (tab_index, pane: 0=left 1=right 2=base, text, encoding)
     let pending_saves: Rc<RefCell<Vec<(usize, i32, String, String)>>> =
         Rc::new(RefCell::new(Vec::new()));
@@ -2433,6 +2513,9 @@ fn main() {
     window.run().unwrap();
     #[cfg(unix)]
     ipc::cleanup();
+    if cli.enable_exit_code {
+        std::process::exit(cli_exit_code.get());
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
