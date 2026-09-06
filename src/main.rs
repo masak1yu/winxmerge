@@ -274,6 +274,7 @@ fn main() {
     // /xq only differs from /x by suppressing a message box we never show.
     let cli_exit_code = Rc::new(Cell::new(0i32));
     let cli_startup_done = Rc::new(Cell::new(false));
+    window.set_esc_closes(cli.esc_closes);
     let cli_goto_line = cli.goto_line;
     let cli_auto_close = cli.auto_close_identical;
     if positional.iter().any(|p| !std::path::Path::new(p).exists()) {
@@ -2296,6 +2297,22 @@ fn main() {
             }
             do_save(&window);
             slint::CloseRequestResponse::HideWindow
+        });
+    }
+
+    // /e — Esc close. Mirrors on_close_requested; hide() would bypass the unsaved check.
+    {
+        let state = state.clone();
+        let window_weak = window.as_weak();
+        let do_save = do_save_settings.clone();
+        window.on_request_close(move || {
+            let window = window_weak.unwrap();
+            if state.borrow().tabs.iter().any(|t| t.has_unsaved_changes) {
+                window.set_show_quit_confirm(true);
+                return;
+            }
+            do_save(&window);
+            let _ = slint::quit_event_loop();
         });
     }
 

@@ -355,6 +355,11 @@ export component MainWindow inherits Window {
 
     // Rescan files
     callback rescan();
+    // /e — let Esc close the window. Off unless the CLI asked for it.
+    // ponytail: handled by the shortcut FocusScope below, so Esc does nothing while a
+    // pane TextInput holds focus — same limitation the existing Cmd+S / F5 shortcuts have.
+    in-out property <bool> esc-closes: false;
+    callback request-close();
 
     // Auto-rescan timer callback
     callback check-auto-rescan();
@@ -2075,6 +2080,10 @@ export component MainWindow inherits Window {
             // F5 for rescan
             if event.text == Key.F5 {
                 root.rescan();
+                return accept;
+            }
+            if event.text == Key.Escape && root.esc-closes {
+                root.request-close();
                 return accept;
             }
             return reject;
