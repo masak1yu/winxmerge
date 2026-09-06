@@ -44,8 +44,8 @@ pub fn compute_diff_with_options(
     right_text: &str,
     options: &DiffOptions,
 ) -> DiffResult {
-    let left_normalized = normalize_text(left_text, options);
-    let right_normalized = normalize_text(right_text, options);
+    let (left_normalized, left_map) = normalize_text(left_text, options);
+    let (right_normalized, right_map) = normalize_text(right_text, options);
 
     // Use original lines for display, normalized for comparison
     let left_orig_lines: Vec<&str> = left_text.lines().collect();
@@ -74,19 +74,14 @@ pub fn compute_diff_with_options(
     while i < changes.len() {
         match changes[i].tag() {
             ChangeTag::Equal => {
-                let left_display = left_orig_lines
-                    .get(left_line_no as usize)
-                    .unwrap_or(&"")
-                    .to_string();
-                let right_display = right_orig_lines
-                    .get(right_line_no as usize)
-                    .unwrap_or(&"")
-                    .to_string();
+                let (left_display, left_no) = orig_line(&left_orig_lines, &left_map, left_line_no);
+                let (right_display, right_no) =
+                    orig_line(&right_orig_lines, &right_map, right_line_no);
                 left_line_no += 1;
                 right_line_no += 1;
                 lines.push(DiffLine {
-                    left_line_no: Some(left_line_no),
-                    right_line_no: Some(right_line_no),
+                    left_line_no: Some(left_no),
+                    right_line_no: Some(right_no),
                     left_text: left_display,
                     right_text: right_display,
                     status: LineStatus::Equal,
@@ -118,22 +113,18 @@ pub fn compute_diff_with_options(
                 let word_diff_enabled = line_count <= WORD_DIFF_LINE_LIMIT;
                 let n_pairs = del_indices.len().min(ins_indices.len());
                 for j in 0..n_pairs {
-                    let left_display = left_orig_lines
-                        .get(del_indices[j] as usize)
-                        .unwrap_or(&"")
-                        .to_string();
-                    let right_display = right_orig_lines
-                        .get(ins_indices[j] as usize)
-                        .unwrap_or(&"")
-                        .to_string();
+                    let (left_display, left_no) =
+                        orig_line(&left_orig_lines, &left_map, del_indices[j]);
+                    let (right_display, right_no) =
+                        orig_line(&right_orig_lines, &right_map, ins_indices[j]);
                     let (left_segs, right_segs) = if word_diff_enabled {
                         compute_word_diff(&left_display, &right_display)
                     } else {
                         (Vec::new(), Vec::new())
                     };
                     lines.push(DiffLine {
-                        left_line_no: Some(del_indices[j] + 1),
-                        right_line_no: Some(ins_indices[j] + 1),
+                        left_line_no: Some(left_no),
+                        right_line_no: Some(right_no),
                         left_text: left_display,
                         right_text: right_display,
                         status: LineStatus::Modified,
@@ -143,12 +134,10 @@ pub fn compute_diff_with_options(
                 }
                 // Extra deletions → Removed
                 for j in n_pairs..del_indices.len() {
-                    let left_display = left_orig_lines
-                        .get(del_indices[j] as usize)
-                        .unwrap_or(&"")
-                        .to_string();
+                    let (left_display, left_no) =
+                        orig_line(&left_orig_lines, &left_map, del_indices[j]);
                     lines.push(DiffLine {
-                        left_line_no: Some(del_indices[j] + 1),
+                        left_line_no: Some(left_no),
                         right_line_no: None,
                         left_text: left_display,
                         right_text: String::new(),
@@ -159,13 +148,11 @@ pub fn compute_diff_with_options(
                 }
                 // Extra insertions → Added
                 for j in n_pairs..ins_indices.len() {
-                    let right_display = right_orig_lines
-                        .get(ins_indices[j] as usize)
-                        .unwrap_or(&"")
-                        .to_string();
+                    let (right_display, right_no) =
+                        orig_line(&right_orig_lines, &right_map, ins_indices[j]);
                     lines.push(DiffLine {
                         left_line_no: None,
-                        right_line_no: Some(ins_indices[j] + 1),
+                        right_line_no: Some(right_no),
                         left_text: String::new(),
                         right_text: right_display,
                         status: LineStatus::Added,
@@ -307,12 +294,19 @@ fn compile_substitution_filters(filters: &[(String, String)]) -> Vec<(Regex, Str
         .collect()
 }
 
-fn normalize_text(text: &str, options: &DiffOptions) -> String {
+/// Normalize `text` for comparison.
+///
+/// Returns the normalized text plus a map from each normalized line index to the
+/// 0-based line index it came from in `text`.  `ignore_blank_lines` and the line
+/// filters drop lines, so the two numbering schemes diverge and every lookup into
+/// the original text has to go through this map — see `orig_line`.
+fn normalize_text(text: &str, options: &DiffOptions) -> (String, Vec<usize>) {
     let line_filters = compile_line_filters(&options.line_filters);
     let sub_filters = compile_substitution_filters(&options.substitution_filters);
 
     let mut result = String::with_capacity(text.len());
-    for line in text.lines() {
+    let mut map: Vec<usize> = Vec::new();
+    for (orig_idx, line) in text.lines().enumerate() {
         let mut l = if options.ignore_eol {
             line.trim_end_matches(['\r', '\n']).to_string()
         } else {
@@ -337,8 +331,17 @@ fn normalize_text(text: &str, options: &DiffOptions) -> String {
         }
         result.push_str(&l);
         result.push('\n');
+        map.push(orig_idx);
     }
-    result
+    (result, map)
+}
+
+/// Resolve a normalized line index back to (original text, original 1-based line number).
+fn orig_line(orig_lines: &[&str], map: &[usize], norm_idx: u32) -> (String, u32) {
+    match map.get(norm_idx as usize) {
+        Some(&i) => (orig_lines.get(i).unwrap_or(&"").to_string(), i as u32 + 1),
+        None => (String::new(), norm_idx + 1),
+    }
 }
 
 #[cfg(test)]
@@ -519,5 +522,55 @@ mod tests {
         };
         let result = compute_diff_with_options("hello\n", "hello\n", &opts);
         assert_eq!(result.diff_count, 0, "Invalid regex should be skipped");
+    }
+
+    #[test]
+    fn test_ignore_blank_lines_keeps_original_text_and_line_numbers() {
+        let opts = DiffOptions {
+            ignore_blank_lines: true,
+            ..Default::default()
+        };
+        // The blank line is dropped from the comparison, so the left side's
+        // normalized line 2 is the original line 3.
+        let result = compute_diff_with_options("hello\n\nworld\n", "hello\nworld\n", &opts);
+        assert_eq!(result.diff_count, 0);
+        assert_eq!(result.lines.len(), 2);
+        assert_eq!(result.lines[1].left_text, "world");
+        assert_eq!(result.lines[1].right_text, "world");
+        assert_eq!(result.lines[1].left_line_no, Some(3));
+        assert_eq!(result.lines[1].right_line_no, Some(2));
+    }
+
+    #[test]
+    fn test_line_filter_keeps_original_text_and_line_numbers() {
+        let opts = DiffOptions {
+            line_filters: vec!["^#".to_string()],
+            ..Default::default()
+        };
+        let result = compute_diff_with_options("# note\nkeep\n", "keep\n", &opts);
+        assert_eq!(result.diff_count, 0);
+        assert_eq!(result.lines.len(), 1);
+        assert_eq!(result.lines[0].left_text, "keep");
+        assert_eq!(result.lines[0].left_line_no, Some(2));
+        assert_eq!(result.lines[0].right_line_no, Some(1));
+    }
+
+    #[test]
+    fn test_ignore_blank_lines_with_a_real_difference() {
+        let opts = DiffOptions {
+            ignore_blank_lines: true,
+            ..Default::default()
+        };
+        let result = compute_diff_with_options("a\n\nb\n", "a\nc\n", &opts);
+        assert_eq!(result.diff_count, 1);
+        let modified = result
+            .lines
+            .iter()
+            .find(|l| l.status == LineStatus::Modified)
+            .expect("expected a modified line");
+        assert_eq!(modified.left_text, "b");
+        assert_eq!(modified.left_line_no, Some(3));
+        assert_eq!(modified.right_text, "c");
+        assert_eq!(modified.right_line_no, Some(2));
     }
 }
