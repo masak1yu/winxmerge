@@ -156,6 +156,9 @@ pub struct TabState {
     /// File modification times for auto-rescan
     pub left_mtime: Option<SystemTime>,
     pub right_mtime: Option<SystemTime>,
+    /// Comparison outcome for CLI automation (/x, /enableexitcode).
+    /// None while the compare has not finished — the async path returns before the result exists.
+    pub compare_identical: Option<bool>,
     /// Pre-computed diff stats string "+A -R ~M"
     pub diff_stats: String,
     /// True while a background diff computation is in progress for this tab
@@ -242,6 +245,7 @@ impl TabState {
             current_bookmark: -1,
             left_mtime: None,
             right_mtime: None,
+            compare_identical: None,
             diff_stats: String::new(),
             is_computing: false,
             selection_start: -1,

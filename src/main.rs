@@ -266,6 +266,21 @@ fn main() {
         }
     }
 
+    // CLI automation (/l /x /xq /enableexitcode). The verdict is only known once the
+    // compare finishes, and large files take the async path, so both the line jump and
+    // the auto-close run from the polling timer instead of here.
+    // ponytail: /x therefore flashes the window before closing. A second, run()-time
+    // path for small files would double the logic to save one frame — not worth it.
+    // /xq only differs from /x by suppressing a message box we never show.
+    let cli_exit_code = Rc::new(Cell::new(0i32));
+    let cli_startup_done = Rc::new(Cell::new(false));
+    let cli_goto_line = cli.goto_line;
+    let cli_auto_close = cli.auto_close_identical;
+    if positional.iter().any(|p| !std::path::Path::new(p).exists()) {
+        cli_exit_code.set(2);
+        cli_startup_done.set(true);
+    }
+
     // Server mode (--server) or no-args launch: start IPC listener (Unix only)
     #[cfg(unix)]
     let (ipc_tx, ipc_rx) = std::sync::mpsc::channel::<Vec<(String, String)>>();
@@ -1766,6 +1781,8 @@ fn main() {
         let window_weak = window.as_weak();
         let state = state.clone();
         let settings = settings.clone();
+        let cli_exit_code = cli_exit_code.clone();
+        let cli_startup_done = cli_startup_done.clone();
 
         // IPC accumulation buffer: (orig_left, temp_left, orig_right, temp_right)
         #[cfg(unix)]
@@ -1785,6 +1802,30 @@ fn main() {
             move || {
                 if let Some(window) = window_weak.upgrade() {
                     apply_pending_diff_if_ready(&window, &mut state.borrow_mut());
+
+                    // One-shot CLI startup action, once the initial compare has a verdict.
+                    if !cli_startup_done.get() {
+                        let verdict = {
+                            let s = state.borrow();
+                            let tab = s.current_tab();
+                            if tab.is_computing {
+                                None
+                            } else {
+                                tab.compare_identical
+                            }
+                        };
+                        if let Some(identical) = verdict {
+                            cli_startup_done.set(true);
+                            cli_exit_code.set(if identical { 0 } else { 1 });
+                            // PaneBuffers only exist now, so this is the earliest /l can work.
+                            if let Some(n) = cli_goto_line {
+                                goto_line(&window, &state.borrow(), n);
+                            }
+                            if cli_auto_close && identical {
+                                let _ = slint::quit_event_loop();
+                            }
+                        }
+                    }
 
                     // IPC: accumulate file pairs, then flush as virtual folder or single diff
                     #[cfg(unix)]
@@ -2455,6 +2496,9 @@ fn main() {
     window.run().unwrap();
     #[cfg(unix)]
     ipc::cleanup();
+    if cli.enable_exit_code {
+        std::process::exit(cli_exit_code.get());
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

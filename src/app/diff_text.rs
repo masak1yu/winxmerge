@@ -87,6 +87,8 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
         window.set_diff_count(0);
         window.set_current_diff_index(-1);
         window.set_status_text(SharedString::from(msg));
+        // Binary compares leave diff_count at 0 either way, so record the verdict here.
+        state.current_tab_mut().compare_identical = Some(left_bytes == right_bytes);
         sync_tab_list(window, state);
         return;
     }
@@ -287,6 +289,7 @@ pub(super) fn apply_diff_result(
 
     let tab = state.current_tab_mut();
     tab.diff_stats = stats.clone();
+    tab.compare_identical = Some(result.diff_count == 0);
     sync_diff_stats(window, &stats);
 
     let status = if result.diff_count == 0 {

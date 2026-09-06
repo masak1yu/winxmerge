@@ -175,6 +175,7 @@ pub fn run_three_way_diff(window: &MainWindow, state: &mut AppState) {
     tab.left_buffer = Some(left_buf);
     tab.middle_buffer = Some(middle_buf);
     tab.right_buffer = Some(right_buf);
+    tab.compare_identical = Some(result.conflict_positions.is_empty());
 
     window.set_conflict_count(result.conflict_positions.len() as i32);
     window.set_current_conflict_index(tab.current_conflict);
@@ -233,6 +234,7 @@ pub fn recompute_three_way_from_text(
     window.set_three_way_edit_focus_left_row(-1);
     window.set_three_way_edit_focus_base_row(-1);
     window.set_three_way_edit_focus_right_row(-1);
+    tab.compare_identical = Some(result.conflict_positions.is_empty());
     window.set_conflict_count(result.conflict_positions.len() as i32);
     window.set_current_conflict_index(tab.current_conflict);
 
