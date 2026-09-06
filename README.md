@@ -459,7 +459,7 @@ winxmerge [options] <base> <left> <right>   3-way merge
 
 | Option | Effect |
 | --- | --- |
-| `/ignorews[:N]` | Ignore whitespace differences (`:0` disables) |
+| `/ignorews[:N]` | Ignore whitespace differences (`:0` disables, `:1` ignores whitespace changes, `:2` ignores all whitespace) |
 | `/ignorecase[:N]` | Ignore letter case differences |
 | `/ignoreblanklines[:N]` | Ignore blank line differences |
 | `/ignoreeol[:N]` | Ignore line ending differences |

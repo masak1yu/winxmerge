@@ -140,7 +140,9 @@ pub fn run_three_way_diff(window: &MainWindow, state: &mut AppState) {
     let (left_text, left_enc) = decode_file(&left_bytes);
     let (right_text, right_enc) = decode_file(&right_bytes);
 
-    let result = compute_three_way_diff(&base_text, &left_text, &right_text);
+    let diff_options = state.current_tab().diff_options.clone();
+    let result =
+        compute_three_way_diff_with_options(&base_text, &left_text, &right_text, &diff_options);
 
     let left_name = path_file_name(&left_path);
     let right_name = path_file_name(&right_path);
@@ -201,7 +203,9 @@ pub fn recompute_three_way_from_text(
     left_text: &str,
     right_text: &str,
 ) {
-    let result = compute_three_way_diff(base_text, left_text, right_text);
+    let diff_options = state.current_tab().diff_options.clone();
+    let result =
+        compute_three_way_diff_with_options(base_text, left_text, right_text, &diff_options);
 
     let tab = state.current_tab_mut();
     tab.three_way_conflict_positions = result.conflict_positions.clone();

@@ -3,6 +3,7 @@ use super::*;
 pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut AppSettings) {
     // Read options from window
     settings.ignore_whitespace = window.get_ignore_whitespace();
+    settings.ignore_whitespace_all = window.get_opt_ignore_whitespace_all();
     settings.ignore_case = window.get_ignore_case();
     settings.ignore_blank_lines = window.get_opt_ignore_blank_lines();
     settings.ignore_eol = window.get_opt_ignore_eol();
@@ -98,6 +99,7 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
     // Apply diff options to current tab and re-run
     let tab = state.current_tab_mut();
     tab.diff_options.ignore_whitespace = settings.ignore_whitespace;
+    tab.diff_options.ignore_whitespace_all = settings.ignore_whitespace_all;
     tab.diff_options.ignore_case = settings.ignore_case;
     tab.diff_options.ignore_blank_lines = settings.ignore_blank_lines;
     tab.diff_options.ignore_eol = settings.ignore_eol;

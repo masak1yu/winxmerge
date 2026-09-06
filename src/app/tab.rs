@@ -53,6 +53,7 @@ pub(super) fn save_current_tab_from_window(window: &MainWindow, state: &mut AppS
     // PaneBuffers are Rc<VecModel> owned by TabState — no snapshot needed.
     // Save per-tab diff options from window state
     tab.diff_options.ignore_whitespace = window.get_ignore_whitespace();
+    tab.diff_options.ignore_whitespace_all = window.get_opt_ignore_whitespace_all();
     tab.diff_options.ignore_case = window.get_ignore_case();
     tab.diff_options.ignore_blank_lines = window.get_opt_ignore_blank_lines();
     tab.diff_options.ignore_eol = window.get_opt_ignore_eol();
@@ -184,6 +185,7 @@ fn restore_tab_common(window: &MainWindow, tab: &TabState) {
 
 fn restore_tab_diff_options(window: &MainWindow, tab: &TabState) {
     window.set_ignore_whitespace(tab.diff_options.ignore_whitespace);
+    window.set_opt_ignore_whitespace_all(tab.diff_options.ignore_whitespace_all);
     window.set_ignore_case(tab.diff_options.ignore_case);
     window.set_opt_ignore_blank_lines(tab.diff_options.ignore_blank_lines);
     window.set_opt_ignore_eol(tab.diff_options.ignore_eol);

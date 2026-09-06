@@ -435,6 +435,7 @@ export component MainWindow inherits Window {
     // Options dialog state
     in-out property <bool> show-options-dialog: false;
     in-out property <bool> opt-ignore-blank-lines: false;
+    in-out property <bool> opt-ignore-whitespace-all: false;
     in-out property <bool> opt-ignore-eol: false;
     in-out property <bool> opt-detect-moved-lines: true;
     in-out property <bool> opt-show-line-numbers: true;
@@ -2096,6 +2097,7 @@ export component MainWindow inherits Window {
         height: 100%;
         visible-flag: root.show-options-dialog;
         opt-ignore-whitespace <=> root.ignore-whitespace;
+        opt-ignore-whitespace-all <=> root.opt-ignore-whitespace-all;
         opt-ignore-case <=> root.ignore-case;
         opt-ignore-blank-lines <=> root.opt-ignore-blank-lines;
         opt-ignore-eol <=> root.opt-ignore-eol;

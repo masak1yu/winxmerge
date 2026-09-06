@@ -15,6 +15,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub ignore_whitespace: bool,
     #[serde(default)]
+    pub ignore_whitespace_all: bool,
+    #[serde(default)]
     pub ignore_case: bool,
     #[serde(default)]
     pub ignore_blank_lines: bool,
@@ -181,6 +183,7 @@ impl Default for AppSettings {
             window_width: default_width(),
             window_height: default_height(),
             ignore_whitespace: false,
+            ignore_whitespace_all: false,
             ignore_case: false,
             ignore_blank_lines: false,
             ignore_eol: false,
