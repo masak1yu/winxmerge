@@ -446,6 +446,43 @@ winxmerge/
 8. **Tabs:** Cmd+T for a new tab, manage multiple comparisons in parallel
 9. **Options:** Edit → Options... to configure settings
 
+## Command Line Options
+
+WinMerge-compatible slash syntax, so existing scripts and `git difftool`
+wrappers work unchanged. Option names are case-insensitive and `-`/`--` are
+accepted in place of `/`.
+
+```
+winxmerge [options] <left> <right>          2-way compare
+winxmerge [options] <base> <left> <right>   3-way merge
+```
+
+| Option | Effect |
+| --- | --- |
+| `/ignorews[:N]` | Ignore whitespace differences (`:0` disables) |
+| `/ignorecase[:N]` | Ignore letter case differences |
+| `/ignoreblanklines[:N]` | Ignore blank line differences |
+| `/ignoreeol[:N]` | Ignore line ending differences |
+| `/dl <desc>` `/dm <desc>` `/dr <desc>` | Pane header text for left / middle / right |
+| `/l <n>` | Jump to line `<n>` after the initial compare |
+| `/e` | Close the window with the Esc key |
+| `/x`, `/xq` | Close automatically when the files are identical |
+| `/enableexitcode` | Exit with 0 (identical), 1 (different) or 2 (error) |
+| `/?` | Show the option list and exit |
+
+Compare options given on the command line override the saved settings for the
+initial comparison only; they are not written back to `settings.json`.
+
+Scripted use:
+
+```bash
+# Fail a CI check when a generated file drifts
+winxmerge /x /enableexitcode expected.json actual.json || echo "output changed"
+
+# Readable pane headers instead of git's temp file paths
+git difftool -x 'winxmerge /dl Original /dr Modified'
+```
+
 ## License
 
 This project is distributed under the [Slint Royalty-Free Desktop, Mobile, and Web Applications License v2.0](https://slint.dev/terms-and-conditions#royalty-free).
