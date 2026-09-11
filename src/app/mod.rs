@@ -335,10 +335,9 @@ pub use diff_navigation::*;
 pub use diff_text::*;
 pub use folder::*;
 pub use helpers::*;
-// hex.rs items are all `pub(super)` (crate::app-only by design, unlike other
-// submodules which mix in fully `pub` entry points) — a `pub use` here would
-// warn that the reexport can't be more visible than the items themselves.
-use hex::*;
+// recompare_as is `pub` (main.rs's callback wiring calls it directly); the
+// rest of hex.rs stays `pub(super)`, same mixed-visibility pattern as helpers.rs.
+pub use hex::*;
 pub use options::*;
 pub use pane_buffer::*;
 pub use save_export::*;

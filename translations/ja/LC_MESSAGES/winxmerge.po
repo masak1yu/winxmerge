@@ -908,3 +908,13 @@ msgstr "ファイル名.txt"
 msgid "Offset"
 msgstr "オフセット"
 
+# Recompare As menu
+msgid "Recompare As"
+msgstr "別形式で再比較"
+
+msgid "Hex"
+msgstr "Hex"
+
+msgid "Normal"
+msgstr "通常"
+

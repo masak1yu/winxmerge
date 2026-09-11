@@ -20,6 +20,14 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
         None => return,
     };
 
+    // A tab already forced into Hex (Recompare As / folder "Compare as Hex" /
+    // CLI /t Binary) stays Hex on rescan/reload, skipping the ZIP/Excel/CSV/
+    // image/binary auto-detection below entirely.
+    if state.current_tab().view_mode == ViewMode::HexCompare {
+        run_hex_compare(window, state, left_bytes, right_bytes);
+        return;
+    }
+
     // ZIP archive comparison
     if (is_zip_bytes(&left_bytes) || is_zip_path(&left_path))
         && (is_zip_bytes(&right_bytes) || is_zip_path(&right_path))

@@ -356,6 +356,8 @@ export component MainWindow inherits Window {
 
     // Rescan files
     callback rescan();
+    // File > Recompare As > Hex/Normal (true = Hex, false = Normal/auto-detect)
+    callback recompare-as(bool);
     // /e — let Esc close the window. Off unless the CLI asked for it.
     // ponytail: handled by the shortcut FocusScope below, so Esc does nothing while a
     // pane TextInput holds focus — same limitation the existing Cmd+S / F5 shortcuts have.
@@ -645,6 +647,11 @@ export component MainWindow inherits Window {
             MenuItem { title: @tr("Open Right in Editor"); enabled: root.right-path != ""; activated => { root.open-right-in-editor(); } }
             MenuSeparator {}
             MenuItem { title: @tr("Rescan (F5)"); activated => { root.rescan(); } }
+            Menu {
+                title: @tr("Recompare As");
+                MenuItem { title: @tr("Hex"); enabled: (root.view-mode == 0 || root.view-mode == 4 || root.view-mode == 5 || root.view-mode == 6) && !root.has-unsaved-changes; activated => { root.recompare-as(true); } }
+                MenuItem { title: @tr("Normal"); enabled: root.view-mode == 9; activated => { root.recompare-as(false); } }
+            }
             MenuSeparator {}
             MenuItem { title: @tr("Print..."); enabled: root.diff-count > 0 && root.view-mode != 9; activated => { root.print-diff(); } }
             MenuSeparator {}

@@ -46,8 +46,8 @@ use app::{
     navigate_bookmark, navigate_conflict, navigate_diff, navigate_diff_by_status, navigate_search,
     new_blank_table, new_blank_table_3way, new_blank_text, new_blank_text_3way, open_file_dialog,
     open_folder_dialog, open_folder_item, open_in_editor, paste_clipboard_path_base,
-    paste_clipboard_path_left, paste_clipboard_path_right, preview_folder_item, print_diff, redo,
-    reorder_tab, replace_all_text, replace_text, rescan, resolve_all_use_left,
+    paste_clipboard_path_left, paste_clipboard_path_right, preview_folder_item, print_diff,
+    recompare_as, redo, reorder_tab, replace_all_text, replace_text, rescan, resolve_all_use_left,
     resolve_all_use_right, resolve_conflict_use_left, resolve_conflict_use_right,
     resolve_use_left_and_next, resolve_use_right_and_next, run_diff, run_folder_compare,
     run_plugin, save_file, save_table_file, save_three_way_pane, search_text, select_diff,
@@ -1748,6 +1748,16 @@ fn main() {
         window.on_rescan(move || {
             let window = window_weak.unwrap();
             rescan(&window, &mut state.borrow_mut());
+        });
+    }
+
+    // Recompare As Hex/Normal
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_recompare_as(move |hex| {
+            let window = window_weak.unwrap();
+            recompare_as(&window, &mut state.borrow_mut(), hex);
         });
     }
 

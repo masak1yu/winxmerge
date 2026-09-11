@@ -173,6 +173,30 @@ pub(super) fn run_hex_compare(
     sync_tab_list(window, state);
 }
 
+/// File > Recompare As > Hex/Normal. `pub` (not `pub(super)`) — this is the
+/// one hex.rs entry point main.rs's callback wiring needs to reach directly.
+pub fn recompare_as(window: &MainWindow, state: &mut AppState, hex: bool) {
+    let tab = state.current_tab();
+    if tab.has_unsaved_changes || tab.editing_dirty {
+        return;
+    }
+    if tab.left_path.is_none() || tab.right_path.is_none() {
+        return;
+    }
+
+    let tab = state.current_tab_mut();
+    tab.view_mode = if hex {
+        ViewMode::HexCompare
+    } else {
+        ViewMode::FileDiff
+    };
+    tab.hex_rows = ModelRc::default();
+    tab.diff_positions.clear();
+    tab.current_diff = -1;
+
+    run_diff(window, state);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
