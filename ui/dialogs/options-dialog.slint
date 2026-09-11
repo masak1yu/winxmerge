@@ -37,6 +37,7 @@ export component OptionsDialog inherits Rectangle {
     in-out property <string> opt-folder-exclude-patterns: "";
     // Folder max recursion depth (0 = unlimited)
     in-out property <int> opt-folder-max-depth: 0;
+    in-out property <int> opt-folder-compare-method: 0;
 
     // Folder size/date filters
     in-out property <int> opt-folder-min-size: 0;
@@ -234,6 +235,21 @@ export component OptionsDialog inherits Rectangle {
                 LineEdit {
                     text <=> root.opt-folder-exclude-patterns;
                     placeholder-text: @tr("e.g. *.log;build/;node_modules");
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: start;
+                    Text {
+                        text: @tr("Folder compare method:");
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+                    ComboBox {
+                        width: 180px;
+                        model: [@tr("Full Contents"), @tr("Quick Contents"), @tr("Binary Contents"), @tr("Modified Date"), @tr("Modified Date and Size"), @tr("File Size"), @tr("Existence")];
+                        current-index: root.opt-folder-compare-method;
+                        selected(val) => { root.opt-folder-compare-method = self.current-index; }
+                    }
                 }
                 Text {
                     text: @tr("Folder max depth (0 = unlimited):");

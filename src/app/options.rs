@@ -44,6 +44,7 @@ pub fn apply_options(window: &MainWindow, state: &mut AppState, settings: &mut A
     settings.folder_max_size = window.get_opt_folder_max_size() as u64;
     settings.folder_modified_after = window.get_opt_folder_modified_after().to_string();
     settings.folder_modified_before = window.get_opt_folder_modified_before().to_string();
+    settings.folder_compare_method = window.get_opt_folder_compare_method();
 
     // Read filter settings
     let line_filters_str = window.get_opt_line_filters().to_string();

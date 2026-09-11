@@ -1,9 +1,54 @@
 use std::collections::BTreeSet;
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 use std::time::SystemTime;
 
 use crate::models::folder_item::{FileCompareStatus, FolderItem};
+
+/// Folder-compare method, selectable via the Options dialog or the `/m` CLI
+/// option. Declaration order matches the Options dialog ComboBox index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CompareMethod {
+    #[default]
+    Full,
+    Quick,
+    Binary,
+    Date,
+    SizeDate,
+    Size,
+    Existence,
+}
+
+impl CompareMethod {
+    /// Parses a `/m` CLI value (WinMerge-style keyword, case-insensitive).
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "full" => Some(Self::Full),
+            "quick" => Some(Self::Quick),
+            "binary" => Some(Self::Binary),
+            "date" => Some(Self::Date),
+            "sizedate" => Some(Self::SizeDate),
+            "size" => Some(Self::Size),
+            "existence" => Some(Self::Existence),
+            _ => None,
+        }
+    }
+
+    /// Maps an Options dialog ComboBox index to a method; out-of-range falls back to Full.
+    pub fn from_index(index: i32) -> Self {
+        match index {
+            0 => Self::Full,
+            1 => Self::Quick,
+            2 => Self::Binary,
+            3 => Self::Date,
+            4 => Self::SizeDate,
+            5 => Self::Size,
+            6 => Self::Existence,
+            _ => Self::Full,
+        }
+    }
+}
 
 /// Options for folder comparison
 #[derive(Debug, Clone, Default)]
@@ -24,6 +69,8 @@ pub struct FolderCompareOptions {
     pub modified_after: String,
     /// Only include files modified before this date (format "YYYY-MM-DD", empty = no filter)
     pub modified_before: String,
+    /// How to decide whether two files are identical
+    pub compare_method: CompareMethod,
 }
 
 pub fn compare_folders_with_options(
@@ -68,7 +115,7 @@ pub fn compare_folders_with_options(
                 } else if le.is_dir || re.is_dir {
                     FileCompareStatus::Different
                 } else {
-                    compare_file_contents(&le.full_path, &re.full_path)
+                    compare_entries(le, re, options.compare_method)
                 };
                 FolderItem {
                     relative_path: rel_path.clone(),
@@ -117,6 +164,7 @@ struct EntryInfo {
     is_dir: bool,
     size: u64,
     modified: Option<String>,
+    mtime: Option<SystemTime>,
 }
 
 fn collect_entries(
@@ -154,11 +202,8 @@ fn collect_entries(
             let metadata = entry.metadata();
             let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
             let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
-            let modified = metadata
-                .as_ref()
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .map(format_time);
+            let mtime = metadata.as_ref().ok().and_then(|m| m.modified().ok());
+            let modified = mtime.map(format_time);
 
             // Extension filter (only for files)
             if !is_dir && !options.extension_filter.is_empty() {
@@ -207,6 +252,7 @@ fn collect_entries(
                     is_dir,
                     size,
                     modified,
+                    mtime,
                 },
             ));
 
@@ -228,18 +274,71 @@ fn collect_entries(
     entries
 }
 
+/// Compares two files byte-for-byte.
+// Reads fixed-size chunks instead of fs::read so large files are never held in memory whole.
 pub fn compare_file_contents(left: &Path, right: &Path) -> FileCompareStatus {
-    let left_content = fs::read(left);
-    let right_content = fs::read(right);
-    match (left_content, right_content) {
-        (Ok(l), Ok(r)) => {
-            if l == r {
+    const CHUNK_SIZE: usize = 64 * 1024;
+
+    let (left_len, right_len) = match (fs::metadata(left), fs::metadata(right)) {
+        (Ok(l), Ok(r)) => (l.len(), r.len()),
+        _ => return FileCompareStatus::Different,
+    };
+    if left_len != right_len {
+        return FileCompareStatus::Different;
+    }
+
+    let (mut left_file, mut right_file) = match (fs::File::open(left), fs::File::open(right)) {
+        (Ok(l), Ok(r)) => (l, r),
+        _ => return FileCompareStatus::Different,
+    };
+
+    let mut left_buf = vec![0u8; CHUNK_SIZE];
+    let mut right_buf = vec![0u8; CHUNK_SIZE];
+    let mut remaining = left_len;
+    while remaining > 0 {
+        let take = remaining.min(CHUNK_SIZE as u64) as usize;
+        if left_file.read_exact(&mut left_buf[..take]).is_err()
+            || right_file.read_exact(&mut right_buf[..take]).is_err()
+        {
+            return FileCompareStatus::Different;
+        }
+        if left_buf[..take] != right_buf[..take] {
+            return FileCompareStatus::Different;
+        }
+        remaining -= take as u64;
+    }
+    FileCompareStatus::Identical
+}
+
+/// Decides whether two (non-directory) entries are identical under `method`.
+fn compare_entries(
+    left: &EntryInfo,
+    right: &EntryInfo,
+    method: CompareMethod,
+) -> FileCompareStatus {
+    match method {
+        // ponytail: this implementation's Full doesn't normalize text (whitespace,
+        // case, ...) before comparing, so Full/Quick/Binary all reduce to the same
+        // byte-for-byte comparison here. Split Full out once it applies DiffOptions.
+        CompareMethod::Full | CompareMethod::Quick | CompareMethod::Binary => {
+            compare_file_contents(&left.full_path, &right.full_path)
+        }
+        CompareMethod::Date => match (left.mtime, right.mtime) {
+            (Some(l), Some(r)) if l == r => FileCompareStatus::Identical,
+            _ => FileCompareStatus::Different,
+        },
+        CompareMethod::SizeDate => match (left.mtime, right.mtime) {
+            (Some(l), Some(r)) if l == r && left.size == right.size => FileCompareStatus::Identical,
+            _ => FileCompareStatus::Different,
+        },
+        CompareMethod::Size => {
+            if left.size == right.size {
                 FileCompareStatus::Identical
             } else {
                 FileCompareStatus::Different
             }
         }
-        _ => FileCompareStatus::Different,
+        CompareMethod::Existence => FileCompareStatus::Identical,
     }
 }
 
@@ -341,4 +440,170 @@ fn format_time(time: SystemTime) -> String {
         "{:04}-{:02}-{:02} {:02}:{:02}",
         year, month, day, hours, minutes
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::time::Duration;
+
+    // Unique per-test dir: `cargo test` runs tests in parallel, so a shared
+    // fixed path would race between tests.
+    fn unique_temp_dir(label: &str) -> std::path::PathBuf {
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "winxmerge_folder_test_{}_{}_{}",
+            std::process::id(),
+            label,
+            n
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn entry_info(path: &Path) -> EntryInfo {
+        let metadata = fs::metadata(path).unwrap();
+        EntryInfo {
+            full_path: path.to_path_buf(),
+            is_dir: false,
+            size: metadata.len(),
+            modified: None,
+            mtime: metadata.modified().ok(),
+        }
+    }
+
+    #[test]
+    fn same_size_different_content_is_different_except_size_and_existence() {
+        let dir = unique_temp_dir("same_size_diff_content");
+        let left = dir.join("left.txt");
+        let right = dir.join("right.txt");
+        fs::write(&left, b"AAAA").unwrap();
+        fs::write(&right, b"BBBB").unwrap();
+        let le = entry_info(&left);
+        let re = entry_info(&right);
+
+        assert_eq!(
+            compare_entries(&le, &re, CompareMethod::Full),
+            FileCompareStatus::Different
+        );
+        assert_eq!(
+            compare_entries(&le, &re, CompareMethod::Quick),
+            FileCompareStatus::Different
+        );
+        assert_eq!(
+            compare_entries(&le, &re, CompareMethod::Binary),
+            FileCompareStatus::Different
+        );
+        assert_eq!(
+            compare_entries(&le, &re, CompareMethod::Size),
+            FileCompareStatus::Identical
+        );
+        assert_eq!(
+            compare_entries(&le, &re, CompareMethod::Existence),
+            FileCompareStatus::Identical
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn same_content_different_mtime_is_different_for_date_methods_only() {
+        let dir = unique_temp_dir("same_content_diff_mtime");
+        let left = dir.join("left.txt");
+        let right = dir.join("right.txt");
+        fs::write(&left, b"identical content").unwrap();
+        fs::write(&right, b"identical content").unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&left)
+            .unwrap()
+            .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000))
+            .unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&right)
+            .unwrap()
+            .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(2_000))
+            .unwrap();
+        let le = entry_info(&left);
+        let re = entry_info(&right);
+
+        assert_eq!(
+            compare_entries(&le, &re, CompareMethod::Date),
+            FileCompareStatus::Different
+        );
+        assert_eq!(
+            compare_entries(&le, &re, CompareMethod::SizeDate),
+            FileCompareStatus::Different
+        );
+        assert_eq!(
+            compare_entries(&le, &re, CompareMethod::Full),
+            FileCompareStatus::Identical
+        );
+        assert_eq!(
+            compare_entries(&le, &re, CompareMethod::Size),
+            FileCompareStatus::Identical
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn same_mtime_different_size_splits_date_from_sizedate() {
+        let dir = unique_temp_dir("same_mtime_diff_size");
+        let left = dir.join("left.txt");
+        let right = dir.join("right.txt");
+        fs::write(&left, b"a").unwrap();
+        fs::write(&right, b"ab").unwrap();
+        let same_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+        fs::File::options()
+            .write(true)
+            .open(&left)
+            .unwrap()
+            .set_modified(same_time)
+            .unwrap();
+        fs::File::options()
+            .write(true)
+            .open(&right)
+            .unwrap()
+            .set_modified(same_time)
+            .unwrap();
+        let le = entry_info(&left);
+        let re = entry_info(&right);
+
+        assert_eq!(
+            compare_entries(&le, &re, CompareMethod::Date),
+            FileCompareStatus::Identical
+        );
+        assert_eq!(
+            compare_entries(&le, &re, CompareMethod::SizeDate),
+            FileCompareStatus::Different
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn full_compares_past_the_first_64kb_chunk() {
+        let dir = unique_temp_dir("chunked_tail_diff");
+        let left = dir.join("left.bin");
+        let right = dir.join("right.bin");
+        // Larger than one 64KB chunk so a truncated comparison would miss the
+        // difference at the very end of the file.
+        let mut left_bytes = vec![0u8; 70_000];
+        let mut right_bytes = vec![0u8; 70_000];
+        left_bytes[69_999] = 1;
+        right_bytes[69_999] = 2;
+        fs::write(&left, &left_bytes).unwrap();
+        fs::write(&right, &right_bytes).unwrap();
+
+        assert_eq!(
+            compare_file_contents(&left, &right),
+            FileCompareStatus::Different
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

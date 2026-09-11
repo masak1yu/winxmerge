@@ -167,6 +167,7 @@ fn main() {
         window.set_opt_folder_max_size(s.folder_max_size as i32);
         window.set_opt_folder_modified_after(SharedString::from(&s.folder_modified_after));
         window.set_opt_folder_modified_before(SharedString::from(&s.folder_modified_before));
+        window.set_opt_folder_compare_method(s.folder_compare_method);
         window.set_show_location_pane(s.show_location_pane);
         window.set_show_word_diff(s.show_word_diff);
         window.set_show_detail_pane(s.show_detail_pane);
@@ -272,6 +273,9 @@ fn main() {
         if let Some(ref t) = cli.right_title {
             window.set_right_title_override(SharedString::from(t));
         }
+        if let Some(m) = cli.folder_compare_method {
+            window.set_opt_folder_compare_method(m as i32);
+        }
     }
 
     // CLI automation (/l /x /xq /enableexitcode). The verdict is only known once the
@@ -311,18 +315,11 @@ fn main() {
         );
         app::sync_tab_list(&window, &s);
     } else if positional.len() >= 2 {
-        // 2-way diff
-        let left = std::path::PathBuf::from(&positional[0]);
-        let right = std::path::PathBuf::from(&positional[1]);
+        // 2-way diff (folder compare when both paths are directories)
+        let is_folder = std::path::Path::new(&positional[0]).is_dir()
+            && std::path::Path::new(&positional[1]).is_dir();
         let mut s = state.borrow_mut();
-        {
-            let tab = s.current_tab_mut();
-            tab.left_path = Some(left);
-            tab.right_path = Some(right);
-            tab.view_mode = ViewMode::FileDiff;
-        }
-        window.set_view_mode(ViewMode::FileDiff.as_i32());
-        app::run_diff(&window, &mut s);
+        start_compare(&window, &mut s, &positional[0], &positional[1], is_folder);
         app::sync_tab_list(&window, &s);
     } else {
         // No CLI args / --server: start with blank screen, wait for IPC

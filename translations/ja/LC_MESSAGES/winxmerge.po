@@ -801,6 +801,30 @@ msgid "Toggle diff-only mode"
 msgstr "差分のみ表示を切替"
 
 # Options dialog - folder filters
+msgid "Folder compare method:"
+msgstr "フォルダ比較方式:"
+
+msgid "Full Contents"
+msgstr "内容（完全）"
+
+msgid "Quick Contents"
+msgstr "内容（高速）"
+
+msgid "Binary Contents"
+msgstr "内容（バイナリ）"
+
+msgid "Modified Date"
+msgstr "更新日時"
+
+msgid "Modified Date and Size"
+msgstr "更新日時とサイズ"
+
+msgid "File Size"
+msgstr "ファイルサイズ"
+
+msgid "Existence"
+msgstr "存在のみ"
+
 msgid "Folder max depth (0 = unlimited):"
 msgstr "フォルダ最大深度 (0 = 無制限):"
 

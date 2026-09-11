@@ -32,6 +32,19 @@ WinXMerge automatically loads `.gitignore` patterns and excludes matching files.
 
 Filter the comparison by specific file extensions.
 
+## Compare Method
+
+Choose how two files with the same relative path are judged identical, in the Options
+dialog or with the `/m` command line option:
+
+- **Full Contents**: byte-for-byte comparison (ignore whitespace/case options are not applied yet)
+- **Quick Contents**: currently the same as Full Contents
+- **Binary Contents**: currently the same as Full Contents
+- **Modified Date**: identical when both modification timestamps match exactly
+- **Modified Date and Size**: Modified Date, and the file sizes also match
+- **File Size**: identical when the file sizes match
+- **Existence**: files present on both sides always count as identical
+
 ## Column Sorting
 
 Click any column header to sort the file list:

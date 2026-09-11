@@ -34,6 +34,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 ### Folder Comparison
 - Recursive directory comparison with tree-style indentation
 - File status display (identical / different / one-side only)
+- **Compare method**: Full / Quick / Binary Contents, Modified Date, Modified Date and Size, File Size, or Existence only (Options dialog, or `/m` on the command line)
 - Left/right modification timestamps
 - Automatic .gitignore pattern loading (.git directories auto-excluded)
 - File extension filter
@@ -463,6 +464,7 @@ winxmerge [options] <base> <left> <right>   3-way merge
 | `/ignorecase[:N]` | Ignore letter case differences |
 | `/ignoreblanklines[:N]` | Ignore blank line differences |
 | `/ignoreeol[:N]` | Ignore line ending differences |
+| `/m <method>` | Folder compare method: `Full`, `Quick`, `Binary`, `Date`, `SizeDate`, `Size`, or `Existence` (also accepted as `/m:<method>`); opens folder compare when both paths are directories |
 | `/dl <desc>` `/dm <desc>` `/dr <desc>` | Pane header text for left / middle / right |
 | `/l <n>` | Jump to line `<n>` after the initial compare |
 | `/e` | Close the window with the Esc key |
