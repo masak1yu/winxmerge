@@ -14,6 +14,7 @@ import { ExcelView, ExcelCellData } from "widgets/excel-view.slint";
 import { CsvView } from "widgets/csv-view.slint";
 import { TableGridView, TableRowData, TableCellData, TableColumnInfo, TableDetailCellData } from "widgets/table-grid-view.slint";
 import { ImageView } from "widgets/image-view.slint";
+import { HexView, HexCell, HexRowData } from "widgets/hex-view.slint";
 
 export struct PluginEntryData {
     name: string,
@@ -26,7 +27,7 @@ export struct DetailLineData {
     status: int,  // 1=added, 2=removed, 3=modified, 4=moved
 }
 
-export { PaneLineData, WordSegment, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThemeColors, FileEntryData, TableRowData, TableCellData, TableColumnInfo, TableDetailCellData }
+export { PaneLineData, WordSegment, ExcelCellData, FolderItemData, TabData, RecentEntryData, ThemeColors, FileEntryData, TableRowData, TableCellData, TableColumnInfo, TableDetailCellData, HexCell, HexRowData }
 
 // Toolbar icon button: fixed 32x32 with image icon + optional overlay text
 component ToolBtn inherits Rectangle {
@@ -179,7 +180,7 @@ export component MainWindow inherits Window {
     // Folder comparison properties
     in-out property <[FolderItemData]> folder-items;
     in-out property <int> folder-selected-index: -1;
-    // 0=file diff, 1=folder compare, 3=3way, 4=excel, 5=image, 6=csv, 7=blank, 8=csv-3way
+    // 0=file diff, 1=folder compare, 3=3way, 4=excel, 5=image, 6=csv, 7=blank, 8=csv-3way, 9=hex
     in-out property <int> view-mode: 7;
 
     // Open dialog modal
@@ -557,6 +558,11 @@ export component MainWindow inherits Window {
     in-out property <float> image-tolerance: 0;
     callback image-tolerance-changed(float);
 
+    // Hex comparison (view_mode == 9)
+    in property <[HexRowData]> hex-rows;
+    in-out property <int> hex-current-row: -1;
+    in-out property <length> hex-scroll-y: 0px;
+
     // Inline editing
     in-out property <bool> opt-inline-edit: true;
 
@@ -584,6 +590,11 @@ export component MainWindow inherits Window {
     // Scroll table grid view to a specific row (22px per row, 3 rows context)
     public function scroll-table-to-row(row: int) {
         root.table-scroll-y = -((row > 3 ? row - 3 : 0) * 22px);
+    }
+
+    // Scroll hex view to a specific row (18px per row, 3 rows context)
+    public function scroll-hex-to-row(row: int) {
+        root.hex-scroll-y = -((row > 3 ? row - 3 : 0) * 18px);
     }
 
     // Helper: check unsaved before action
@@ -635,13 +646,13 @@ export component MainWindow inherits Window {
             MenuSeparator {}
             MenuItem { title: @tr("Rescan (F5)"); activated => { root.rescan(); } }
             MenuSeparator {}
-            MenuItem { title: @tr("Print..."); enabled: root.diff-count > 0; activated => { root.print-diff(); } }
+            MenuItem { title: @tr("Print..."); enabled: root.diff-count > 0 && root.view-mode != 9; activated => { root.print-diff(); } }
             MenuSeparator {}
-            MenuItem { title: @tr("Export HTML Report..."); enabled: root.diff-count > 0; activated => { root.export-html(); } }
-            MenuItem { title: @tr("Export Patch (Unified Diff)..."); enabled: root.diff-count > 0; activated => { root.export-patch(); } }
-            MenuItem { title: @tr("Export CSV..."); enabled: root.diff-count > 0; activated => { root.export-csv(); } }
-            MenuItem { title: @tr("Export TSV..."); enabled: root.diff-count > 0; activated => { root.export-tsv(); } }
-            MenuItem { title: @tr("Export Excel (.xlsx)..."); enabled: root.diff-count > 0; activated => { root.export-xlsx(); } }
+            MenuItem { title: @tr("Export HTML Report..."); enabled: root.diff-count > 0 && root.view-mode != 9; activated => { root.export-html(); } }
+            MenuItem { title: @tr("Export Patch (Unified Diff)..."); enabled: root.diff-count > 0 && root.view-mode != 9; activated => { root.export-patch(); } }
+            MenuItem { title: @tr("Export CSV..."); enabled: root.diff-count > 0 && root.view-mode != 9; activated => { root.export-csv(); } }
+            MenuItem { title: @tr("Export TSV..."); enabled: root.diff-count > 0 && root.view-mode != 9; activated => { root.export-tsv(); } }
+            MenuItem { title: @tr("Export Excel (.xlsx)..."); enabled: root.diff-count > 0 && root.view-mode != 9; activated => { root.export-xlsx(); } }
             MenuItem { title: @tr("Export Folder Report..."); enabled: root.view-mode == 1; activated => { root.export-folder-html(); } }
             MenuSeparator {}
             MenuItem { title: @tr("Export All Comments (CSV)..."); activated => { root.export-comments-csv(); } }
@@ -733,8 +744,8 @@ export component MainWindow inherits Window {
             MenuItem { title: @tr("Next Difference"); enabled: root.diff-count > 0; activated => { root.next-diff(); } }
             MenuItem { title: @tr("Last Difference"); enabled: root.diff-count > 0; activated => { root.last-diff(); } }
             MenuSeparator {}
-            MenuItem { title: @tr("Copy Left to Right"); enabled: root.current-diff-index >= 0; activated => { root.copy-to-right(root.current-diff-index); } }
-            MenuItem { title: @tr("Copy Right to Left"); enabled: root.current-diff-index >= 0; activated => { root.copy-to-left(root.current-diff-index); } }
+            MenuItem { title: @tr("Copy Left to Right"); enabled: root.current-diff-index >= 0 && root.view-mode != 9; activated => { root.copy-to-right(root.current-diff-index); } }
+            MenuItem { title: @tr("Copy Right to Left"); enabled: root.current-diff-index >= 0 && root.view-mode != 9; activated => { root.copy-to-left(root.current-diff-index); } }
         }
         Menu {
             title: @tr("Navigate");
@@ -875,7 +886,7 @@ export component MainWindow inherits Window {
                     }
                 }
 
-                tb-back := ToolBtn { icon: @image-url("icons/back.svg"); visible: root.view-mode == 0 && root.has-folder-context; clicked => { root.back-to-folder-view(); } }
+                tb-back := ToolBtn { icon: @image-url("icons/back.svg"); visible: (root.view-mode == 0 || root.view-mode == 9) && root.has-folder-context; clicked => { root.back-to-folder-view(); } }
 
                 tb-open-l := ToolBtn { icon: @image-url("icons/open.svg"); overlay: "L"; clicked => { root.request-action(1); } }
                 tb-open-r := ToolBtn { icon: @image-url("icons/open.svg"); overlay: "R"; clicked => { root.request-action(2); } }
@@ -955,12 +966,12 @@ export component MainWindow inherits Window {
 
                 ToolSep {}
 
-                tb-first := ToolBtn { icon: @image-url("icons/first.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { root.first-diff(); } }
-                tb-prev := ToolBtn { icon: @image-url("icons/prev.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.prev-conflict(); } else { root.prev-diff(); } } }
-                tb-next := ToolBtn { icon: @image-url("icons/next.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.next-conflict(); } else { root.next-diff(); } } }
-                tb-last := ToolBtn { icon: @image-url("icons/last.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { root.last-diff(); } }
+                tb-first := ToolBtn { icon: @image-url("icons/first.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8 || root.view-mode == 9; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { root.first-diff(); } }
+                tb-prev := ToolBtn { icon: @image-url("icons/prev.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8 || root.view-mode == 9; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.prev-conflict(); } else { root.prev-diff(); } } }
+                tb-next := ToolBtn { icon: @image-url("icons/next.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8 || root.view-mode == 9; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { if root.view-mode == 3 { root.next-conflict(); } else { root.next-diff(); } } }
+                tb-last := ToolBtn { icon: @image-url("icons/last.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8 || root.view-mode == 9; btn-enabled: root.view-mode == 3 ? root.conflict-count > 0 : root.diff-count > 0; clicked => { root.last-diff(); } }
 
-                sep-nav := ToolSep { visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; }
+                sep-nav := ToolSep { visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8 || root.view-mode == 9; }
 
                 tb-copy-r := ToolBtn { icon: @image-url("icons/copy-right.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 8 { root.table-use-left(root.current-diff-index); } else if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-to-right(root.current-diff-index); } else if root.view-mode == 3 { root.use-left(root.current-conflict-index); } else { root.copy-to-right(root.current-diff-index); } } }
                 tb-copy-l := ToolBtn { icon: @image-url("icons/copy-left.svg"); visible: root.view-mode == 0 || root.view-mode == 3 || root.view-mode == 4 || root.view-mode == 6 || root.view-mode == 8; btn-enabled: root.view-mode == 3 ? root.current-conflict-index >= 0 : root.current-diff-index >= 0; clicked => { if root.view-mode == 8 { root.table-use-right(root.current-diff-index); } else if root.view-mode == 4 || root.view-mode == 6 { root.table-copy-to-left(root.current-diff-index); } else if root.view-mode == 3 { root.use-right(root.current-conflict-index); } else { root.copy-to-left(root.current-diff-index); } } }
@@ -1341,6 +1352,16 @@ export component MainWindow inherits Window {
             right-image-height: root.image-right-height;
             tolerance <=> root.image-tolerance;
             tolerance-changed(v) => { root.image-tolerance-changed(v); }
+            vertical-stretch: 1;
+        }
+
+        // Hex compare view
+        if root.view-mode == 9 : HexView {
+            rows: root.hex-rows;
+            current-row: root.hex-current-row;
+            left-title: root.left-display-title;
+            right-title: root.right-display-title;
+            scroll-y <=> root.hex-scroll-y;
             vertical-stretch: 1;
         }
 

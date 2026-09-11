@@ -102,6 +102,11 @@ pub fn redo(window: &MainWindow, state: &mut AppState) {
 
 pub fn copy_to_right(window: &MainWindow, state: &mut AppState, diff_index: i32) {
     let tab = state.current_tab();
+    // Hex tabs are read-only — copying would rebuild the pane text buffers and
+    // could clobber the binary file on next save.
+    if tab.view_mode == ViewMode::HexCompare {
+        return;
+    }
     if diff_index < 0 || diff_index as usize >= tab.diff_positions.len() {
         return;
     }
@@ -162,6 +167,11 @@ pub fn copy_left_and_next(window: &MainWindow, state: &mut AppState) {
 
 pub fn copy_to_left(window: &MainWindow, state: &mut AppState, diff_index: i32) {
     let tab = state.current_tab();
+    // Hex tabs are read-only — copying would rebuild the pane text buffers and
+    // could clobber the binary file on next save.
+    if tab.view_mode == ViewMode::HexCompare {
+        return;
+    }
     if diff_index < 0 || diff_index as usize >= tab.diff_positions.len() {
         return;
     }

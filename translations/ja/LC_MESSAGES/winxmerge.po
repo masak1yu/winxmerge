@@ -904,3 +904,7 @@ msgstr "許容値:"
 msgid "filename.txt"
 msgstr "ファイル名.txt"
 
+# Hex view
+msgid "Offset"
+msgstr "オフセット"
+

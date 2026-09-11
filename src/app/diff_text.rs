@@ -6,6 +6,10 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
         (Some(l), Some(r)) => (l.clone(), r.clone()),
         _ => return,
     };
+    // Drop bytes from a previous Hex compare on this tab so a stale HexRows
+    // model isn't kept alive once the tab moves to a non-Hex view mode.
+    state.current_tab_mut().hex_rows = ModelRc::default();
+    window.set_hex_rows(ModelRc::default());
 
     let left_bytes = match read_file_or_report(window, &left_path) {
         Some(b) => b,
@@ -72,24 +76,7 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
 
     // Binary file detection
     if is_binary(&left_bytes) || is_binary(&right_bytes) {
-        let msg = format!(
-            "Binary files: Left {} bytes, Right {} bytes — {}",
-            left_bytes.len(),
-            right_bytes.len(),
-            if left_bytes == right_bytes {
-                "identical"
-            } else {
-                "different"
-            }
-        );
-        window.set_left_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
-        window.set_right_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
-        window.set_diff_count(0);
-        window.set_current_diff_index(-1);
-        window.set_status_text(SharedString::from(msg));
-        // Binary compares leave diff_count at 0 either way, so record the verdict here.
-        state.current_tab_mut().compare_identical = Some(left_bytes == right_bytes);
-        sync_tab_list(window, state);
+        run_hex_compare(window, state, left_bytes, right_bytes);
         return;
     }
 
@@ -426,7 +413,9 @@ pub fn check_files_changed(state: &AppState) -> bool {
 
 pub fn rescan(window: &MainWindow, state: &mut AppState) {
     let tab = state.current_tab();
-    if tab.view_mode == ViewMode::FileDiff
+    // Hex tabs are always read-only (never editing_dirty/has_unsaved_changes),
+    // so they only ever take this reload branch, never the rebuild branch below.
+    if matches!(tab.view_mode, ViewMode::FileDiff | ViewMode::HexCompare)
         && tab.left_path.is_some()
         && tab.right_path.is_some()
         && !tab.editing_dirty

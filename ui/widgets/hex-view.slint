@@ -1,0 +1,167 @@
+import { ListView, Palette } from "std-widgets.slint";
+import { ThemeColors } from "../theme.slint";
+
+export struct HexCell {
+    hex: string,
+    ch: string,
+    diff: bool,
+}
+
+export struct HexRowData {
+    offset: string,
+    left: [HexCell],
+    right: [HexCell],
+}
+
+export component HexView inherits Rectangle {
+    in property <[HexRowData]> rows;
+    // Row index to highlight as the current diff block (-1 = none)
+    in property <int> current-row: -1;
+    in property <string> left-title: "Left";
+    in property <string> right-title: "Right";
+    in-out property <length> scroll-y <=> list.viewport-y;
+
+    border-color: Palette.border;
+    border-width: 1px;
+
+    VerticalLayout {
+        // Header — shifted by the list's horizontal scroll so labels stay aligned with columns
+        Rectangle {
+            height: 24px;
+            clip: true;
+            background: Palette.background.darker(0.08);
+
+            Text {
+                x: 8px + list.viewport-x;
+                text: @tr("Offset");
+                font-size: 11px;
+                font-weight: 600;
+                vertical-alignment: center;
+                color: Palette.foreground.transparentize(0.3);
+            }
+
+            Rectangle {
+                x: 80px + list.viewport-x;
+                width: 520px;
+                height: 100%;
+                background: ThemeColors.removed-bg.transparentize(0.6);
+                Text {
+                    x: 4px;
+                    text: root.left-title;
+                    font-size: 11px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+
+            Rectangle {
+                x: 600px + list.viewport-x;
+                width: 520px;
+                height: 100%;
+                background: ThemeColors.added-bg.transparentize(0.6);
+                Text {
+                    x: 4px;
+                    text: root.right-title;
+                    font-size: 11px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+
+        list := ListView {
+            vertical-stretch: 1;
+            // ponytail: fixed 12px grid ignores View > Zoom; bind opt-font-size if asked
+            viewport-width: Math.max(self.width, 1120px);
+
+            for row[row-idx] in root.rows: Rectangle {
+                height: 18px;
+                clip: true;
+                border-color: row-idx == root.current-row ? ThemeColors.modified-fg : transparent;
+                border-width: row-idx == root.current-row ? 2px : 0;
+
+                // Offset column
+                Rectangle {
+                    x: 0;
+                    width: 80px;
+                    height: 100%;
+                    background: row-idx == root.current-row ? ThemeColors.modified-bg-current : transparent;
+                    Text {
+                        x: 4px;
+                        text: row.offset;
+                        font-size: 12px;
+                        font-family: "monospace";
+                        vertical-alignment: center;
+                        color: Palette.foreground.transparentize(0.3);
+                    }
+                }
+
+                // Left hex + ASCII
+                for cell[i] in row.left: Rectangle {
+                    x: 80px + i * 22px;
+                    width: 22px;
+                    height: 100%;
+                    background: cell.diff ? ThemeColors.modified-bg : transparent;
+                    Text {
+                        text: cell.hex;
+                        font-size: 12px;
+                        font-family: "monospace";
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                for cell[i] in row.left: Rectangle {
+                    x: 440px + i * 9px;
+                    width: 9px;
+                    height: 100%;
+                    background: cell.diff ? ThemeColors.modified-bg : transparent;
+                    Text {
+                        text: cell.ch;
+                        font-size: 12px;
+                        font-family: "monospace";
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Divider between left and right sides
+                Rectangle {
+                    x: 596px;
+                    width: 1px;
+                    height: 100%;
+                    background: Palette.border;
+                }
+
+                // Right hex + ASCII (shifted +520px)
+                for cell[i] in row.right: Rectangle {
+                    x: 600px + i * 22px;
+                    width: 22px;
+                    height: 100%;
+                    background: cell.diff ? ThemeColors.modified-bg : transparent;
+                    Text {
+                        text: cell.hex;
+                        font-size: 12px;
+                        font-family: "monospace";
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+                for cell[i] in row.right: Rectangle {
+                    x: 960px + i * 9px;
+                    width: 9px;
+                    height: 100%;
+                    background: cell.diff ? ThemeColors.modified-bg : transparent;
+                    Text {
+                        text: cell.ch;
+                        font-size: 12px;
+                        font-family: "monospace";
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}
