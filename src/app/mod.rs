@@ -20,8 +20,9 @@ use crate::models::diff_line::LineStatus;
 use crate::models::folder_item::FileCompareStatus;
 use crate::settings::AppSettings;
 use crate::{
-    DetailLineData, ExcelCellData, FolderItemData, MainWindow, PaneLineData, PluginEntryData,
-    TabData, TableCellData, TableColumnInfo, TableDetailCellData, TableRowData, WordSegment,
+    DetailLineData, ExcelCellData, FolderItemData, HexCell, HexRowData, MainWindow, PaneLineData,
+    PluginEntryData, TabData, TableCellData, TableColumnInfo, TableDetailCellData, TableRowData,
+    WordSegment,
 };
 
 /// Line count threshold above which diff is computed on a background thread
@@ -47,6 +48,7 @@ pub enum ViewMode {
     CsvCompare = 6,
     Blank = 7,
     CsvThreeWay = 8,
+    HexCompare = 9,
 }
 
 impl ViewMode {
@@ -74,6 +76,7 @@ impl From<i32> for ViewMode {
             5 => ViewMode::ImageCompare,
             6 => ViewMode::CsvCompare,
             8 => ViewMode::CsvThreeWay,
+            9 => ViewMode::HexCompare,
             _ => ViewMode::Blank,
         }
     }
@@ -207,6 +210,8 @@ pub struct TabState {
     /// Table undo/redo stacks
     pub table_undo_stack: Vec<TableSnapshot>,
     pub table_redo_stack: Vec<TableSnapshot>,
+    /// Hex view rows (ViewMode::HexCompare) — built on demand by HexRows::row_data.
+    pub hex_rows: ModelRc<HexRowData>,
 }
 
 impl TabState {
@@ -277,6 +282,7 @@ impl TabState {
             csv_delimiter: b',',
             table_undo_stack: Vec::new(),
             table_redo_stack: Vec::new(),
+            hex_rows: ModelRc::default(),
         }
     }
 }
@@ -315,6 +321,7 @@ mod diff_navigation;
 mod diff_text;
 mod folder;
 mod helpers;
+mod hex;
 mod options;
 pub mod pane_buffer;
 mod save_export;
@@ -328,6 +335,9 @@ pub use diff_navigation::*;
 pub use diff_text::*;
 pub use folder::*;
 pub use helpers::*;
+// recompare_as is `pub` (main.rs's callback wiring calls it directly); the
+// rest of hex.rs stays `pub(super)`, same mixed-visibility pattern as helpers.rs.
+pub use hex::*;
 pub use options::*;
 pub use pane_buffer::*;
 pub use save_export::*;

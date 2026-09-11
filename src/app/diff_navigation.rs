@@ -232,6 +232,19 @@ pub(super) fn update_current_diff(window: &MainWindow, state: &mut AppState, new
     // Update current diff index (Slint side handles highlighting reactively)
     window.set_current_diff_index(new_index);
 
+    if view_mode == ViewMode::HexCompare {
+        let row = (current_pos / ROW_BYTES) as i32;
+        window.set_hex_current_row(row);
+        window.invoke_scroll_hex_to_row(row);
+        window.set_status_text(SharedString::from(format!(
+            "Difference {} of {} (offset 0x{:08X})",
+            new_index + 1,
+            total,
+            current_pos
+        )));
+        return;
+    }
+
     if view_mode.is_table_mode() {
         // Table view: scroll table grid to row and highlight
         window.invoke_scroll_table_to_row(current_pos as i32);

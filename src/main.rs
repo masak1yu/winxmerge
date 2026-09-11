@@ -46,8 +46,8 @@ use app::{
     navigate_bookmark, navigate_conflict, navigate_diff, navigate_diff_by_status, navigate_search,
     new_blank_table, new_blank_table_3way, new_blank_text, new_blank_text_3way, open_file_dialog,
     open_folder_dialog, open_folder_item, open_in_editor, paste_clipboard_path_base,
-    paste_clipboard_path_left, paste_clipboard_path_right, preview_folder_item, print_diff, redo,
-    reorder_tab, replace_all_text, replace_text, rescan, resolve_all_use_left,
+    paste_clipboard_path_left, paste_clipboard_path_right, preview_folder_item, print_diff,
+    recompare_as, redo, reorder_tab, replace_all_text, replace_text, rescan, resolve_all_use_left,
     resolve_all_use_right, resolve_conflict_use_left, resolve_conflict_use_right,
     resolve_use_left_and_next, resolve_use_right_and_next, run_diff, run_folder_compare,
     run_plugin, save_file, save_table_file, save_three_way_pane, search_text, select_diff,
@@ -319,7 +319,14 @@ fn main() {
         let is_folder = std::path::Path::new(&positional[0]).is_dir()
             && std::path::Path::new(&positional[1]).is_dir();
         let mut s = state.borrow_mut();
-        start_compare(&window, &mut s, &positional[0], &positional[1], is_folder);
+        start_compare(
+            &window,
+            &mut s,
+            &positional[0],
+            &positional[1],
+            is_folder,
+            cli.force_hex,
+        );
         app::sync_tab_list(&window, &s);
     } else {
         // No CLI args / --server: start with blank screen, wait for IPC
@@ -714,7 +721,14 @@ fn main() {
                 let base = window.get_open_base_path_input().to_string();
                 start_three_way_compare(&window, &mut state.borrow_mut(), &base, &left, &right);
             } else {
-                start_compare(&window, &mut state.borrow_mut(), &left, &right, is_folder);
+                start_compare(
+                    &window,
+                    &mut state.borrow_mut(),
+                    &left,
+                    &right,
+                    is_folder,
+                    false,
+                );
             }
             let mut s = settings.borrow_mut();
             s.add_recent(&left, &right, is_folder);
@@ -746,7 +760,17 @@ fn main() {
         let state = state.clone();
         window.on_folder_item_double_clicked(move |idx| {
             let window = window_weak.unwrap();
-            open_folder_item(&window, &mut state.borrow_mut(), idx);
+            open_folder_item(&window, &mut state.borrow_mut(), idx, false);
+        });
+    }
+
+    // Folder context menu: Compare as Hex
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_folder_item_open_hex(move |idx| {
+            let window = window_weak.unwrap();
+            open_folder_item(&window, &mut state.borrow_mut(), idx, true);
         });
     }
 
@@ -1751,6 +1775,16 @@ fn main() {
         });
     }
 
+    // Recompare As Hex/Normal
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_recompare_as(move |hex| {
+            let window = window_weak.unwrap();
+            recompare_as(&window, &mut state.borrow_mut(), hex);
+        });
+    }
+
     // Auto-rescan timer
     {
         let window_weak = window.as_weak();
@@ -2015,7 +2049,14 @@ fn main() {
                 let right = entry.right_path.clone();
                 let is_folder = entry.is_folder;
                 drop(s);
-                start_compare(&window, &mut state.borrow_mut(), &left, &right, is_folder);
+                start_compare(
+                    &window,
+                    &mut state.borrow_mut(),
+                    &left,
+                    &right,
+                    is_folder,
+                    false,
+                );
             }
         });
     }

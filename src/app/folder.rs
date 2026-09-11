@@ -139,7 +139,7 @@ pub fn display_virtual_folder(
     sync_tab_list(window, state);
 }
 
-pub fn open_folder_item(window: &MainWindow, state: &mut AppState, index: i32) {
+pub fn open_folder_item(window: &MainWindow, state: &mut AppState, index: i32, hex: bool) {
     let tab = state.current_tab();
     if index < 0 || index as usize >= tab.folder_items.len() {
         return;
@@ -160,13 +160,18 @@ pub fn open_folder_item(window: &MainWindow, state: &mut AppState, index: i32) {
             add_tab(window, state);
         }
 
+        let view_mode = if hex {
+            ViewMode::HexCompare
+        } else {
+            ViewMode::FileDiff
+        };
         {
             let tab = state.current_tab_mut();
             tab.left_path = Some(left);
             tab.right_path = Some(right);
-            tab.view_mode = ViewMode::FileDiff;
+            tab.view_mode = view_mode;
         }
-        window.set_view_mode(ViewMode::FileDiff.as_i32());
+        window.set_view_mode(view_mode.as_i32());
         if !is_virtual {
             window.set_has_folder_context(true);
         }

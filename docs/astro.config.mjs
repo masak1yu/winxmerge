@@ -38,6 +38,7 @@ export default defineConfig({
 						{ slug: 'features/folder-comparison' },
 						{ slug: 'features/csv-excel' },
 						{ slug: 'features/image-comparison' },
+						{ slug: 'features/hex-comparison' },
 						{ slug: 'features/syntax-highlighting' },
 						{ slug: 'features/inline-editing' },
 						{ slug: 'features/search-replace' },

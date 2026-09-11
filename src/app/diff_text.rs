@@ -6,6 +6,10 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
         (Some(l), Some(r)) => (l.clone(), r.clone()),
         _ => return,
     };
+    // Drop bytes from a previous Hex compare on this tab so a stale HexRows
+    // model isn't kept alive once the tab moves to a non-Hex view mode.
+    state.current_tab_mut().hex_rows = ModelRc::default();
+    window.set_hex_rows(ModelRc::default());
 
     let left_bytes = match read_file_or_report(window, &left_path) {
         Some(b) => b,
@@ -15,6 +19,14 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
         Some(b) => b,
         None => return,
     };
+
+    // A tab already forced into Hex (Recompare As / folder "Compare as Hex" /
+    // CLI /t Binary) stays Hex on rescan/reload, skipping the ZIP/Excel/CSV/
+    // image/binary auto-detection below entirely.
+    if state.current_tab().view_mode == ViewMode::HexCompare {
+        run_hex_compare(window, state, left_bytes, right_bytes);
+        return;
+    }
 
     // ZIP archive comparison
     if (is_zip_bytes(&left_bytes) || is_zip_path(&left_path))
@@ -72,24 +84,7 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
 
     // Binary file detection
     if is_binary(&left_bytes) || is_binary(&right_bytes) {
-        let msg = format!(
-            "Binary files: Left {} bytes, Right {} bytes — {}",
-            left_bytes.len(),
-            right_bytes.len(),
-            if left_bytes == right_bytes {
-                "identical"
-            } else {
-                "different"
-            }
-        );
-        window.set_left_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
-        window.set_right_lines(ModelRc::new(VecModel::from(Vec::<PaneLineData>::new())));
-        window.set_diff_count(0);
-        window.set_current_diff_index(-1);
-        window.set_status_text(SharedString::from(msg));
-        // Binary compares leave diff_count at 0 either way, so record the verdict here.
-        state.current_tab_mut().compare_identical = Some(left_bytes == right_bytes);
-        sync_tab_list(window, state);
+        run_hex_compare(window, state, left_bytes, right_bytes);
         return;
     }
 
@@ -364,11 +359,14 @@ pub fn start_compare(
     left: &str,
     right: &str,
     is_folder: bool,
+    hex: bool,
 ) {
     let left_path = PathBuf::from(left);
     let right_path = PathBuf::from(right);
 
     if is_folder {
+        // CLI /t applies to a 2-way file compare only — folder compare has no
+        // single pair of bytes to force into Hex, so `hex` is ignored here.
         {
             let tab = state.current_tab_mut();
             tab.left_folder = Some(left_path);
@@ -376,13 +374,18 @@ pub fn start_compare(
         }
         run_folder_compare(window, state);
     } else {
+        let view_mode = if hex {
+            ViewMode::HexCompare
+        } else {
+            ViewMode::FileDiff
+        };
         {
             let tab = state.current_tab_mut();
             tab.left_path = Some(left_path);
             tab.right_path = Some(right_path);
-            tab.view_mode = ViewMode::FileDiff;
+            tab.view_mode = view_mode;
         }
-        window.set_view_mode(ViewMode::FileDiff.as_i32());
+        window.set_view_mode(view_mode.as_i32());
         run_diff(window, state);
     }
 }
@@ -426,7 +429,9 @@ pub fn check_files_changed(state: &AppState) -> bool {
 
 pub fn rescan(window: &MainWindow, state: &mut AppState) {
     let tab = state.current_tab();
-    if tab.view_mode == ViewMode::FileDiff
+    // Hex tabs are always read-only (never editing_dirty/has_unsaved_changes),
+    // so they only ever take this reload branch, never the rebuild branch below.
+    if matches!(tab.view_mode, ViewMode::FileDiff | ViewMode::HexCompare)
         && tab.left_path.is_some()
         && tab.right_path.is_some()
         && !tab.editing_dirty

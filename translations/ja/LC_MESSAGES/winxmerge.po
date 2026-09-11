@@ -246,6 +246,9 @@ msgstr "右 (相手)"
 msgid "Context"
 msgstr "コンテキスト"
 
+msgid "Compare as Hex"
+msgstr "Hexで比較"
+
 msgid "Copy to Right →"
 msgstr "右へコピー →"
 
@@ -903,4 +906,18 @@ msgstr "許容値:"
 # Save As dialog
 msgid "filename.txt"
 msgstr "ファイル名.txt"
+
+# Hex view
+msgid "Offset"
+msgstr "オフセット"
+
+# Recompare As menu
+msgid "Recompare As"
+msgstr "別形式で再比較"
+
+msgid "Hex"
+msgstr "Hex"
+
+msgid "Normal"
+msgstr "通常"
 

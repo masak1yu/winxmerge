@@ -97,6 +97,7 @@ pub(super) fn restore_tab(window: &MainWindow, state: &AppState) {
             window.set_folder_summary_text(SharedString::from(&tab.folder_summary));
         }
         ViewMode::ImageCompare => restore_tab_image(window, tab),
+        ViewMode::HexCompare => restore_tab_hex(window, tab),
         ViewMode::Blank => {
             window.set_status_text(SharedString::from(""));
         }
@@ -206,6 +207,20 @@ fn restore_tab_diff_options(window: &MainWindow, tab: &TabState) {
         .collect();
     window.set_opt_substitution_patterns(SharedString::from(sub_pats.join("|")));
     window.set_opt_substitution_replacements(SharedString::from(sub_reps.join("|")));
+}
+
+fn restore_tab_hex(window: &MainWindow, tab: &TabState) {
+    window.set_hex_rows(tab.hex_rows.clone());
+    let row = if tab.current_diff >= 0 {
+        tab.diff_positions
+            .get(tab.current_diff as usize)
+            .map(|&p| (p / ROW_BYTES) as i32)
+            .unwrap_or(-1)
+    } else {
+        -1
+    };
+    window.set_hex_current_row(row);
+    window.invoke_scroll_hex_to_row(row.max(0));
 }
 
 fn restore_tab_image(window: &MainWindow, tab: &TabState) {

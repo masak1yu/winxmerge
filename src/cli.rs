@@ -24,6 +24,10 @@ Folder compare options:
   /m <method>            Full|Quick|Binary|Date|SizeDate|Size|Existence
                          (also accepted as /m:<method>)
 
+Compare view:
+  /t <type>              Binary opens the 2-way compare in Hex view;
+                         Text keeps auto-detection (also accepted as /t:<type>)
+
 Window options:
   /dl <desc>             Description shown for the left pane
   /dm <desc>             Description shown for the middle pane (3-way)
@@ -64,6 +68,7 @@ pub struct CliArgs {
     pub auto_close_identical: bool,
     pub enable_exit_code: bool,
     pub folder_compare_method: Option<CompareMethod>,
+    pub force_hex: bool,
 }
 
 /// Splits an option token into its lowercased name and optional `:value` part.
@@ -139,6 +144,15 @@ pub fn parse(args: &[String]) -> CliArgs {
                     match CompareMethod::from_name(&v) {
                         Some(m) => cli.folder_compare_method = Some(m),
                         None => eprintln!("[winxmerge] unknown /m value ignored: {}", v),
+                    }
+                }
+            }
+            "t" => {
+                if let Some(v) = value.map(|s| s.to_string()).or_else(take_next) {
+                    if v.eq_ignore_ascii_case("binary") {
+                        cli.force_hex = true;
+                    } else if !v.eq_ignore_ascii_case("text") {
+                        eprintln!("[winxmerge] unknown /t value ignored: {}", v);
                     }
                 }
             }
@@ -289,5 +303,30 @@ mod tests {
         let cli = parse_args(&["/m", "Bogus", "a.txt"]);
         assert_eq!(cli.folder_compare_method, None);
         assert_eq!(cli.paths, vec!["a.txt"]);
+    }
+
+    #[test]
+    fn t_option_binary_forces_hex_and_is_case_insensitive() {
+        for form in [["/t", "Binary"], ["/t", "binary"]] {
+            let cli = parse_args(&[&form[0], &form[1], "a", "b"]);
+            assert!(cli.force_hex, "{:?} did not set force_hex", form);
+            assert_eq!(cli.paths, vec!["a", "b"]);
+        }
+    }
+
+    #[test]
+    fn t_option_accepts_colon_value() {
+        let cli = parse_args(&["/t:binary", "a", "b"]);
+        assert!(cli.force_hex);
+        assert_eq!(cli.paths, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn t_option_text_or_unknown_value_leaves_force_hex_false() {
+        for form in [["/t", "text"], ["/t", "image"]] {
+            let cli = parse_args(&[&form[0], &form[1], "a", "b"]);
+            assert!(!cli.force_hex, "{:?} unexpectedly set force_hex", form);
+            assert_eq!(cli.paths, vec!["a", "b"]);
+        }
     }
 }
