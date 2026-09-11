@@ -885,8 +885,8 @@ msgstr "シート:"
 msgid "Diff Panel"
 msgstr "差分パネル"
 
-msgid "Diff  (changed pixels in red, identical pixels in gray)"
-msgstr "差分 (変更ピクセル=赤、同一ピクセル=灰)"
+msgid "Diff  (changed pixels in red, within tolerance in yellow, identical pixels in gray)"
+msgstr "差分 (変更ピクセル=赤、許容範囲内=黄、同一ピクセル=灰)"
 
 msgid "Zoom:"
 msgstr "ズーム:"
@@ -896,6 +896,9 @@ msgstr "フィット"
 
 msgid "Blend:"
 msgstr "ブレンド:"
+
+msgid "Tolerance:"
+msgstr "許容値:"
 
 # Save As dialog
 msgid "filename.txt"
