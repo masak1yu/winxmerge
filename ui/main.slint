@@ -456,6 +456,7 @@ export component MainWindow inherits Window {
     // Folder exclude patterns
     in-out property <string> opt-folder-exclude-patterns: "";
     in-out property <int> opt-folder-max-depth: 0;
+    in-out property <int> opt-folder-compare-method: 0;
 
     // Folder size/date filters
     in-out property <int> opt-folder-min-size: 0;
@@ -2116,6 +2117,7 @@ export component MainWindow inherits Window {
         opt-auto-rescan <=> root.opt-auto-rescan;
         opt-folder-exclude-patterns <=> root.opt-folder-exclude-patterns;
         opt-folder-max-depth <=> root.opt-folder-max-depth;
+        opt-folder-compare-method <=> root.opt-folder-compare-method;
         opt-folder-min-size <=> root.opt-folder-min-size;
         opt-folder-max-size <=> root.opt-folder-max-size;
         opt-folder-modified-after <=> root.opt-folder-modified-after;

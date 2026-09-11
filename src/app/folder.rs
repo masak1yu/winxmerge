@@ -17,6 +17,7 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
         max_size: window.get_opt_folder_max_size() as u64,
         modified_after: window.get_opt_folder_modified_after().to_string(),
         modified_before: window.get_opt_folder_modified_before().to_string(),
+        compare_method: CompareMethod::from_index(window.get_opt_folder_compare_method()),
         ..Default::default()
     };
     let items = compare_folders_with_options(&left_folder, &right_folder, &options);

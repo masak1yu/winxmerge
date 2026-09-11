@@ -104,6 +104,9 @@ pub struct AppSettings {
     pub folder_modified_after: String,
     #[serde(default)]
     pub folder_modified_before: String,
+    // Folder compare method (CompareMethod as i32, see diff::folder)
+    #[serde(default)]
+    pub folder_compare_method: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -214,6 +217,7 @@ impl Default for AppSettings {
             folder_max_size: 0,
             folder_modified_after: String::new(),
             folder_modified_before: String::new(),
+            folder_compare_method: 0,
         }
     }
 }

@@ -167,6 +167,7 @@ fn main() {
         window.set_opt_folder_max_size(s.folder_max_size as i32);
         window.set_opt_folder_modified_after(SharedString::from(&s.folder_modified_after));
         window.set_opt_folder_modified_before(SharedString::from(&s.folder_modified_before));
+        window.set_opt_folder_compare_method(s.folder_compare_method);
         window.set_show_location_pane(s.show_location_pane);
         window.set_show_word_diff(s.show_word_diff);
         window.set_show_detail_pane(s.show_detail_pane);
