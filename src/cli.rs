@@ -4,6 +4,8 @@
 //! GNU-ish long/short forms this app shipped with (`--ignore-whitespace`, `-w`).
 //! Option names are matched case-insensitively, like WinMerge.
 
+use crate::diff::folder::CompareMethod;
+
 pub const USAGE: &str = "\
 WinXMerge — cross-platform file diff and merge tool
 
@@ -17,6 +19,10 @@ Compare options:
   /ignorecase[:N]        Ignore letter case differences
   /ignoreblanklines[:N]  Ignore blank line differences
   /ignoreeol[:N]         Ignore line ending differences
+
+Folder compare options:
+  /m <method>            Full|Quick|Binary|Date|SizeDate|Size|Existence
+                         (also accepted as /m:<method>)
 
 Window options:
   /dl <desc>             Description shown for the left pane
@@ -57,6 +63,7 @@ pub struct CliArgs {
     pub esc_closes: bool,
     pub auto_close_identical: bool,
     pub enable_exit_code: bool,
+    pub folder_compare_method: Option<CompareMethod>,
 }
 
 /// Splits an option token into its lowercased name and optional `:value` part.
@@ -127,6 +134,14 @@ pub fn parse(args: &[String]) -> CliArgs {
             "dm" => cli.base_title = take_next(),
             "dr" => cli.right_title = take_next(),
             "l" => cli.goto_line = take_next().and_then(|v| v.parse().ok()),
+            "m" => {
+                if let Some(v) = value.map(|s| s.to_string()).or_else(take_next) {
+                    match CompareMethod::from_name(&v) {
+                        Some(m) => cli.folder_compare_method = Some(m),
+                        None => eprintln!("[winxmerge] unknown /m value ignored: {}", v),
+                    }
+                }
+            }
             "e" => cli.esc_closes = true,
             "x" | "xq" => cli.auto_close_identical = true,
             "enableexitcode" => cli.enable_exit_code = true,
@@ -254,5 +269,25 @@ mod tests {
         for form in ["/?", "--help", "-h"] {
             assert!(parse_args(&[form]).help, "{} not recognised", form);
         }
+    }
+
+    #[test]
+    fn m_option_takes_next_argument() {
+        let cli = parse_args(&["/m", "Quick", "a.txt", "b.txt"]);
+        assert_eq!(cli.folder_compare_method, Some(CompareMethod::Quick));
+        assert_eq!(cli.paths, vec!["a.txt", "b.txt"]);
+    }
+
+    #[test]
+    fn m_option_accepts_colon_value_case_insensitively() {
+        let cli = parse_args(&["/m:size"]);
+        assert_eq!(cli.folder_compare_method, Some(CompareMethod::Size));
+    }
+
+    #[test]
+    fn m_option_with_unknown_value_stays_none_and_is_not_a_path() {
+        let cli = parse_args(&["/m", "Bogus", "a.txt"]);
+        assert_eq!(cli.folder_compare_method, None);
+        assert_eq!(cli.paths, vec!["a.txt"]);
     }
 }
