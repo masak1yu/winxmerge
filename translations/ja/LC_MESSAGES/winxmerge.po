@@ -246,6 +246,9 @@ msgstr "右 (相手)"
 msgid "Context"
 msgstr "コンテキスト"
 
+msgid "Compare as Hex"
+msgstr "Hexで比較"
+
 msgid "Copy to Right →"
 msgstr "右へコピー →"
 

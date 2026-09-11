@@ -128,6 +128,7 @@ export component FolderView inherits Rectangle {
     in property <bool> sort-ascending: true;
 
     callback item-double-clicked(int);
+    callback item-open-hex(int);
     callback copy-to-right(int);
     callback copy-to-left(int);
     callback delete-item(int);
@@ -311,6 +312,7 @@ export component FolderView inherits Rectangle {
                     Menu {
                         title: @tr("Context");
                         MenuItem { title: @tr("Open"); activated => { root.item-double-clicked(idx); } }
+                        MenuItem { title: @tr("Compare as Hex"); enabled: !item.is-directory && item.status < 2; activated => { root.item-open-hex(idx); } }
                         MenuSeparator {}
                         MenuItem { title: @tr("Copy to Right →"); enabled: item.status == 2 || item.status == 1; activated => { root.copy-to-right(idx); } }
                         MenuItem { title: @tr("← Copy to Left"); enabled: item.status == 3 || item.status == 1; activated => { root.copy-to-left(idx); } }

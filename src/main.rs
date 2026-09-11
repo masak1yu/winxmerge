@@ -746,7 +746,17 @@ fn main() {
         let state = state.clone();
         window.on_folder_item_double_clicked(move |idx| {
             let window = window_weak.unwrap();
-            open_folder_item(&window, &mut state.borrow_mut(), idx);
+            open_folder_item(&window, &mut state.borrow_mut(), idx, false);
+        });
+    }
+
+    // Folder context menu: Compare as Hex
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_folder_item_open_hex(move |idx| {
+            let window = window_weak.unwrap();
+            open_folder_item(&window, &mut state.borrow_mut(), idx, true);
         });
     }
 

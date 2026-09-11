@@ -275,6 +275,7 @@ export component MainWindow inherits Window {
     callback save-right();
     callback save-base();
     callback folder-item-double-clicked(int);
+    callback folder-item-open-hex(int);
     callback back-to-folder-view();
     callback toggle-ignore-whitespace();
     callback toggle-ignore-case();
@@ -1193,6 +1194,7 @@ export component MainWindow inherits Window {
             sort-column: root.folder-sort-column;
             sort-ascending: root.folder-sort-ascending;
             item-double-clicked(idx) => { root.folder-item-double-clicked(idx); }
+            item-open-hex(idx) => { root.folder-item-open-hex(idx); }
             copy-to-right(idx) => { root.folder-copy-to-right(idx); }
             copy-to-left(idx) => { root.folder-copy-to-left(idx); }
             delete-item(idx) => { root.folder-delete-item(idx); }
