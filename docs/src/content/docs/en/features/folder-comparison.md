@@ -37,9 +37,9 @@ Filter the comparison by specific file extensions.
 Choose how two files with the same relative path are judged identical, in the Options
 dialog or with the `/m` command line option:
 
-- **Full Contents**: byte-for-byte comparison
-- **Quick Contents**: same as Full for now (kept separate for a future faster path)
-- **Binary Contents**: same as Full for now (kept separate for a future binary-only path)
+- **Full Contents**: byte-for-byte comparison (ignore whitespace/case options are not applied yet)
+- **Quick Contents**: currently the same as Full Contents
+- **Binary Contents**: currently the same as Full Contents
 - **Modified Date**: identical when both modification timestamps match exactly
 - **Modified Date and Size**: Modified Date, and the file sizes also match
 - **File Size**: identical when the file sizes match
