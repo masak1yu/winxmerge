@@ -175,9 +175,10 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 
 ### Image Comparison
 - Pixel-level comparison for PNG, JPEG, GIF, BMP, WebP, TIFF, ICO
-- Side-by-side left/right panels + diff overlay (changed pixels in red, identical pixels in gray)
+- Side-by-side left/right panels + diff overlay (changed pixels in red, within tolerance in yellow, identical pixels in gray)
 - Continuous zoom slider (10–400%) with Fit mode and diff panel toggle
 - **Blend slider** (0–100%): overlay changed-pixel highlights directly on the left/right panels at adjustable opacity
+- **Tolerance slider** (0–255): treats small per-channel pixel differences as a match, shown in yellow in the diff panel
 
 ### Diff Detail Pane (WinMerge-style)
 - Shows only the currently selected diff block (not the whole file)

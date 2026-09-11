@@ -2200,6 +2200,20 @@ fn main() {
         });
     }
 
+    // Image compare tolerance slider
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_image_tolerance_changed(move |v| {
+            let window = window_weak.unwrap();
+            let mut s = state.borrow_mut();
+            s.current_tab_mut().image_tolerance = v.round().clamp(0.0, 255.0) as u8;
+            // ponytail: run_diff re-reads and re-decodes both images on every slider
+            // release; cache decoded RGBA in TabState if large images feel slow.
+            run_diff(&window, &mut s);
+        });
+    }
+
     // Keyboard shortcuts dialog close
     {
         let window_weak = window.as_weak();

@@ -322,8 +322,9 @@ pub(super) fn run_image_compare(
 ) {
     let left_name = path_file_name(left_path);
     let right_name = path_file_name(right_path);
+    let tolerance = state.current_tab().image_tolerance;
 
-    match compare_images(left_bytes, right_bytes) {
+    match compare_images(left_bytes, right_bytes, tolerance) {
         Err(e) => {
             window.set_status_text(SharedString::from(format!("Image error: {e}")));
             sync_tab_list(window, state);
@@ -334,7 +335,7 @@ pub(super) fn run_image_compare(
             } else {
                 0.0
             };
-            let stats = format!(
+            let mut stats = format!(
                 "Left: {}×{}  Right: {}×{}  Changed: {} / {} px ({:.2}%)",
                 result.left_width,
                 result.left_height,
@@ -344,6 +345,9 @@ pub(super) fn run_image_compare(
                 result.total_pixels,
                 diff_pct,
             );
+            if tolerance > 0 {
+                stats.push_str(&format!("  Tolerated: {} px", result.tolerated_pixels));
+            }
 
             let left_img =
                 rgba_to_slint_image(&result.left_rgba, result.left_width, result.left_height);
@@ -377,6 +381,7 @@ pub(super) fn run_image_compare(
             window.set_image_left_height(result.left_height as i32);
             window.set_image_right_width(result.right_width as i32);
             window.set_image_right_height(result.right_height as i32);
+            window.set_image_tolerance(tolerance as f32);
             window.set_left_path(SharedString::from(left_path.to_string_lossy().to_string()));
             window.set_right_path(SharedString::from(right_path.to_string_lossy().to_string()));
             window.set_status_text(SharedString::from(format!(

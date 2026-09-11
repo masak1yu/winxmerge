@@ -218,11 +218,15 @@ fn restore_tab_image(window: &MainWindow, tab: &TabState) {
     if let Some(img) = tab.diff_image.clone() {
         window.set_diff_image(img);
     }
+    if let Some(img) = tab.overlay_image.clone() {
+        window.set_overlay_image(img);
+    }
     window.set_image_stats(SharedString::from(&tab.image_stats));
     window.set_image_left_width(tab.image_left_w);
     window.set_image_left_height(tab.image_left_h);
     window.set_image_right_width(tab.image_right_w);
     window.set_image_right_height(tab.image_right_h);
+    window.set_image_tolerance(tab.image_tolerance as f32);
 }
 
 fn restore_tab_table(window: &MainWindow, tab: &TabState) {

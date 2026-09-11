@@ -178,6 +178,8 @@ pub struct TabState {
     pub diff_image: Option<slint::Image>,
     pub overlay_image: Option<slint::Image>,
     pub image_stats: String,
+    /// Pixel-diff tolerance (0-255) for image compare; per-tab, not persisted
+    pub image_tolerance: u8,
     /// Image dimensions for zoom support
     pub image_left_w: i32,
     pub image_left_h: i32,
@@ -258,6 +260,7 @@ impl TabState {
             diff_image: None,
             overlay_image: None,
             image_stats: String::new(),
+            image_tolerance: 0,
             image_left_w: 0,
             image_left_h: 0,
             image_right_w: 0,

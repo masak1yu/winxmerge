@@ -554,6 +554,8 @@ export component MainWindow inherits Window {
     in property <int> image-left-height: 0;
     in property <int> image-right-width: 0;
     in property <int> image-right-height: 0;
+    in-out property <float> image-tolerance: 0;
+    callback image-tolerance-changed(float);
 
     // Inline editing
     in-out property <bool> opt-inline-edit: true;
@@ -1337,6 +1339,8 @@ export component MainWindow inherits Window {
             left-image-height: root.image-left-height;
             right-image-width: root.image-right-width;
             right-image-height: root.image-right-height;
+            tolerance <=> root.image-tolerance;
+            tolerance-changed(v) => { root.image-tolerance-changed(v); }
             vertical-stretch: 1;
         }
 

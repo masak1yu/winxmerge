@@ -18,6 +18,9 @@ export component ImageView inherits Rectangle {
     in property <image> overlay-image;
     // 0 = no overlay, 100 = full overlay
     in-out property <float> overlay-opacity: 0;
+    // 0-255, max per-channel (R,G,B,A) difference still treated as a match
+    in-out property <float> tolerance: 0;
+    callback tolerance-changed(float);
 
     VerticalLayout {
         // Stats bar
@@ -91,6 +94,28 @@ export component ImageView inherits Rectangle {
                     text: round(root.overlay-opacity) + "%";
                     font-size: 10px;
                     width: 32px;
+                    vertical-alignment: center;
+                    color: Palette.foreground.transparentize(0.3);
+                }
+                // Tolerance slider (recompute only on release; dragging would re-decode both images every frame)
+                Text {
+                    text: @tr("Tolerance:");
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    color: Palette.foreground.transparentize(0.3);
+                }
+                Slider {
+                    minimum: 0;
+                    maximum: 255;
+                    value <=> root.tolerance;
+                    width: 80px;
+                    height: 20px;
+                    released(v) => { root.tolerance-changed(v); }
+                }
+                Text {
+                    text: round(root.tolerance);
+                    font-size: 10px;
+                    width: 28px;
                     vertical-alignment: center;
                     color: Palette.foreground.transparentize(0.3);
                 }
@@ -245,7 +270,7 @@ export component ImageView inherits Rectangle {
 
                     Text {
                         x: 8px;
-                        text: @tr("Diff  (changed pixels in red, identical pixels in gray)");
+                        text: @tr("Diff  (changed pixels in red, within tolerance in yellow, identical pixels in gray)");
                         font-size: 11px;
                         font-weight: 600;
                         vertical-alignment: center;
