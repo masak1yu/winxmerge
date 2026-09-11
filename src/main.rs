@@ -319,7 +319,14 @@ fn main() {
         let is_folder = std::path::Path::new(&positional[0]).is_dir()
             && std::path::Path::new(&positional[1]).is_dir();
         let mut s = state.borrow_mut();
-        start_compare(&window, &mut s, &positional[0], &positional[1], is_folder);
+        start_compare(
+            &window,
+            &mut s,
+            &positional[0],
+            &positional[1],
+            is_folder,
+            cli.force_hex,
+        );
         app::sync_tab_list(&window, &s);
     } else {
         // No CLI args / --server: start with blank screen, wait for IPC
@@ -714,7 +721,14 @@ fn main() {
                 let base = window.get_open_base_path_input().to_string();
                 start_three_way_compare(&window, &mut state.borrow_mut(), &base, &left, &right);
             } else {
-                start_compare(&window, &mut state.borrow_mut(), &left, &right, is_folder);
+                start_compare(
+                    &window,
+                    &mut state.borrow_mut(),
+                    &left,
+                    &right,
+                    is_folder,
+                    false,
+                );
             }
             let mut s = settings.borrow_mut();
             s.add_recent(&left, &right, is_folder);
@@ -2035,7 +2049,14 @@ fn main() {
                 let right = entry.right_path.clone();
                 let is_folder = entry.is_folder;
                 drop(s);
-                start_compare(&window, &mut state.borrow_mut(), &left, &right, is_folder);
+                start_compare(
+                    &window,
+                    &mut state.borrow_mut(),
+                    &left,
+                    &right,
+                    is_folder,
+                    false,
+                );
             }
         });
     }

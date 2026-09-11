@@ -359,11 +359,14 @@ pub fn start_compare(
     left: &str,
     right: &str,
     is_folder: bool,
+    hex: bool,
 ) {
     let left_path = PathBuf::from(left);
     let right_path = PathBuf::from(right);
 
     if is_folder {
+        // CLI /t applies to a 2-way file compare only — folder compare has no
+        // single pair of bytes to force into Hex, so `hex` is ignored here.
         {
             let tab = state.current_tab_mut();
             tab.left_folder = Some(left_path);
@@ -371,13 +374,18 @@ pub fn start_compare(
         }
         run_folder_compare(window, state);
     } else {
+        let view_mode = if hex {
+            ViewMode::HexCompare
+        } else {
+            ViewMode::FileDiff
+        };
         {
             let tab = state.current_tab_mut();
             tab.left_path = Some(left_path);
             tab.right_path = Some(right_path);
-            tab.view_mode = ViewMode::FileDiff;
+            tab.view_mode = view_mode;
         }
-        window.set_view_mode(ViewMode::FileDiff.as_i32());
+        window.set_view_mode(view_mode.as_i32());
         run_diff(window, state);
     }
 }
