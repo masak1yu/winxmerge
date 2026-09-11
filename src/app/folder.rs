@@ -322,8 +322,9 @@ pub(super) fn run_image_compare(
 ) {
     let left_name = path_file_name(left_path);
     let right_name = path_file_name(right_path);
+    let tolerance = state.current_tab().image_tolerance;
 
-    match compare_images(left_bytes, right_bytes) {
+    match compare_images(left_bytes, right_bytes, tolerance) {
         Err(e) => {
             window.set_status_text(SharedString::from(format!("Image error: {e}")));
             sync_tab_list(window, state);
