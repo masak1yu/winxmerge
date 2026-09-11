@@ -180,6 +180,12 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - **Blend slider** (0–100%): overlay changed-pixel highlights directly on the left/right panels at adjustable opacity
 - **Tolerance slider** (0–255): treats small per-channel pixel differences as a match, shown in yellow in the diff panel
 
+### Hex Comparison
+- Read-only byte-for-byte hex/ASCII view; binary files (a NUL byte in the first 8 KB) open in it automatically
+- 16 bytes/row: offset, left hex + ASCII, right hex + ASCII
+- Differing bytes highlighted (same-offset comparison, no realignment); block navigation with current-row highlight
+- Force it explicitly via File → Recompare As → Hex/Normal, folder compare's "Compare as Hex" context menu item, or `/t Binary` on the command line
+
 ### Diff Detail Pane (WinMerge-style)
 - Shows only the currently selected diff block (not the whole file)
 - Left panel for removed/modified lines, Right panel for added/modified lines
@@ -466,6 +472,7 @@ winxmerge [options] <base> <left> <right>   3-way merge
 | `/ignoreblanklines[:N]` | Ignore blank line differences |
 | `/ignoreeol[:N]` | Ignore line ending differences |
 | `/m <method>` | Folder compare method: `Full`, `Quick`, `Binary`, `Date`, `SizeDate`, `Size`, or `Existence` (also accepted as `/m:<method>`); opens folder compare when both paths are directories |
+| `/t <type>` | `Binary` forces the 2-way compare into Hex view; `Text` is a no-op (also accepted as `/t:<type>`) |
 | `/dl <desc>` `/dm <desc>` `/dr <desc>` | Pane header text for left / middle / right |
 | `/l <n>` | Jump to line `<n>` after the initial compare |
 | `/e` | Close the window with the Esc key |
