@@ -47,6 +47,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 calamine = "0.26"
 image = "0.25"
 rust_xlsxwriter = "0.80"
+roxmltree = "0.21"
 
 # WASM-only dependencies
 [target.'cfg(target_arch = "wasm32")'.dependencies]

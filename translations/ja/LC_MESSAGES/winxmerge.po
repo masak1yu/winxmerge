@@ -34,6 +34,9 @@ msgstr "新規タブ"
 msgid "New Compare..."
 msgstr "新規比較..."
 
+msgid "Open Project..."
+msgstr "プロジェクトを開く..."
+
 msgid "Open Left File..."
 msgstr "左ファイルを開く..."
 

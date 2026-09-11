@@ -261,6 +261,7 @@ export component MainWindow inherits Window {
     callback open-right-file();
     callback open-folder-left();
     callback open-folder-right();
+    callback open-project();
     callback browse-base();
     callback next-diff();
     callback prev-diff();
@@ -635,6 +636,7 @@ export component MainWindow inherits Window {
                 }
             }
             MenuSeparator {}
+            MenuItem { title: @tr("Open Project..."); activated => { root.open-project(); } }
             MenuItem { title: @tr("Open Left File..."); activated => { root.request-action(1); } }
             MenuItem { title: @tr("Open Right File..."); activated => { root.request-action(2); } }
             MenuItem { title: @tr("Open Left Folder..."); activated => { root.request-action(3); } }

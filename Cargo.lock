@@ -6369,6 +6369,7 @@ dependencies = [
  "open",
  "regex",
  "rfd",
+ "roxmltree",
  "rust_xlsxwriter",
  "serde",
  "serde_json",
