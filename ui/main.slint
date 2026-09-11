@@ -2023,7 +2023,9 @@ export component MainWindow inherits Window {
             // Cmd/Ctrl modifier
             if event.modifiers.meta || event.modifiers.control {
                 if event.text == "s" {
-                    root.save-left();
+                    if root.has-unsaved-changes {
+                        root.save-left();
+                    }
                     return accept;
                 }
                 if event.text == "f" {
