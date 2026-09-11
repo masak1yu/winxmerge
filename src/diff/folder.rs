@@ -274,9 +274,8 @@ fn collect_entries(
     entries
 }
 
-/// Compares two files by content, byte-for-byte. Signature is unchanged
-/// (also used by main.rs for virtual-folder/git-diff comparisons) — only the
-/// implementation was reworked to avoid reading whole files into memory.
+/// Compares two files byte-for-byte.
+// Reads fixed-size chunks instead of fs::read so large files are never held in memory whole.
 pub fn compare_file_contents(left: &Path, right: &Path) -> FileCompareStatus {
     const CHUNK_SIZE: usize = 64 * 1024;
 
@@ -516,11 +515,15 @@ mod tests {
         let right = dir.join("right.txt");
         fs::write(&left, b"identical content").unwrap();
         fs::write(&right, b"identical content").unwrap();
-        fs::File::open(&left)
+        fs::File::options()
+            .write(true)
+            .open(&left)
             .unwrap()
             .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000))
             .unwrap();
-        fs::File::open(&right)
+        fs::File::options()
+            .write(true)
+            .open(&right)
             .unwrap()
             .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(2_000))
             .unwrap();
@@ -555,11 +558,15 @@ mod tests {
         fs::write(&left, b"a").unwrap();
         fs::write(&right, b"ab").unwrap();
         let same_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
-        fs::File::open(&left)
+        fs::File::options()
+            .write(true)
+            .open(&left)
             .unwrap()
             .set_modified(same_time)
             .unwrap();
-        fs::File::open(&right)
+        fs::File::options()
+            .write(true)
+            .open(&right)
             .unwrap()
             .set_modified(same_time)
             .unwrap();
