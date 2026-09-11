@@ -22,6 +22,9 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
     };
     let items = compare_folders_with_options(&left_folder, &right_folder, &options);
     let (folder_item_data, summary) = build_folder_item_data(&items);
+    let all_identical = items
+        .iter()
+        .all(|item| item.status == FileCompareStatus::Identical);
 
     let left_name = path_file_name(&left_folder);
     let right_name = path_file_name(&right_folder);
@@ -29,6 +32,7 @@ pub fn run_folder_compare(window: &MainWindow, state: &mut AppState) {
     let tab = state.current_tab_mut();
     tab.folder_items = items;
     tab.folder_item_data = folder_item_data.clone();
+    tab.compare_identical = Some(all_identical);
     tab.view_mode = ViewMode::FolderCompare;
     tab.title = format!("{} ↔ {}", left_name, right_name);
     tab.folder_summary = summary.clone();
