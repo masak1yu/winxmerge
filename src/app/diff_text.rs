@@ -16,11 +16,9 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
         None => return,
     };
 
-    // ZIP archive comparison
-    if (is_zip_bytes(&left_bytes) || is_zip_path(&left_path))
-        && (is_zip_bytes(&right_bytes) || is_zip_path(&right_path))
-    {
-        run_zip_compare(
+    // Excel comparison (must be before zip detection; xlsx/xlsm/ods are zip containers)
+    if is_excel_path(&left_path) && is_excel_path(&right_path) {
+        run_excel_compare(
             window,
             state,
             &left_bytes,
@@ -31,9 +29,11 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
         return;
     }
 
-    // Excel comparison
-    if is_excel_path(&left_path) && is_excel_path(&right_path) {
-        run_excel_compare(
+    // ZIP archive comparison
+    if (is_zip_bytes(&left_bytes) || is_zip_path(&left_path))
+        && (is_zip_bytes(&right_bytes) || is_zip_path(&right_path))
+    {
+        run_zip_compare(
             window,
             state,
             &left_bytes,
