@@ -303,6 +303,7 @@ fn main() {
     // Handle positional arguments (direct launch without IPC):
     //   winxmerge <left> <right>           — 2-way diff
     //   winxmerge <base> <left> <right>    — 3-way merge
+    //   winxmerge <project.WinMerge>       — open a saved project file
     if positional.len() >= 3 {
         // 3-way merge
         let mut s = state.borrow_mut();
@@ -327,6 +328,12 @@ fn main() {
             is_folder,
             cli.force_hex,
         );
+        app::sync_tab_list(&window, &s);
+    } else if positional.len() == 1 && cli::is_project_path(&positional[0]) {
+        // Project file: the only way to reopen a saved comparison, since sessions
+        // are never restored across launches (see cli.rs USAGE / is_project_path).
+        let mut s = state.borrow_mut();
+        open_project(&window, &mut s, std::path::Path::new(&positional[0]));
         app::sync_tab_list(&window, &s);
     } else {
         // No CLI args / --server: start with blank screen, wait for IPC

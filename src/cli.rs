@@ -12,6 +12,7 @@ WinXMerge — cross-platform file diff and merge tool
 Usage:
   winxmerge [options] <left> <right>          2-way compare
   winxmerge [options] <base> <left> <right>   3-way merge
+  winxmerge [options] <project.WinMerge>      Open a project file
 
 Compare options:
   /ignorews[:N]          Ignore whitespace differences
@@ -69,6 +70,15 @@ pub struct CliArgs {
     pub enable_exit_code: bool,
     pub folder_compare_method: Option<CompareMethod>,
     pub force_hex: bool,
+}
+
+/// Returns true if the path has a .WinMerge (case-insensitive) project file extension.
+pub fn is_project_path(path: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("winmerge"))
+        .unwrap_or(false)
 }
 
 /// Splits an option token into its lowercased name and optional `:value` part.
@@ -327,6 +337,24 @@ mod tests {
             let cli = parse_args(&[&form[0], &form[1], "a", "b"]);
             assert!(!cli.force_hex, "{:?} unexpectedly set force_hex", form);
             assert_eq!(cli.paths, vec!["a", "b"]);
+        }
+    }
+
+    #[test]
+    fn winmerge_extension_is_recognised_case_insensitively_and_others_are_not() {
+        for path in ["a.WinMerge", "A.winmerge", "/dir/x.WINMERGE"] {
+            assert!(
+                is_project_path(path),
+                "{} not recognised as a project",
+                path
+            );
+        }
+        for path in ["a.txt", "a", ""] {
+            assert!(
+                !is_project_path(path),
+                "{} wrongly recognised as a project",
+                path
+            );
         }
     }
 }
