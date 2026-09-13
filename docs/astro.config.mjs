@@ -39,6 +39,7 @@ export default defineConfig({
 						{ slug: 'features/csv-excel' },
 						{ slug: 'features/image-comparison' },
 						{ slug: 'features/hex-comparison' },
+						{ slug: 'features/project-files' },
 						{ slug: 'features/syntax-highlighting' },
 						{ slug: 'features/inline-editing' },
 						{ slug: 'features/search-replace' },
