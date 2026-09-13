@@ -58,6 +58,9 @@ msgstr "中を保存"
 msgid "Save Right"
 msgstr "右を保存"
 
+msgid "Save Project..."
+msgstr "プロジェクトを保存..."
+
 msgid "Export HTML Report..."
 msgstr "HTMLレポートをエクスポート..."
 

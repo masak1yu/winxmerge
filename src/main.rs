@@ -50,8 +50,8 @@ use app::{
     recompare_as, redo, reorder_tab, replace_all_text, replace_text, rescan, resolve_all_use_left,
     resolve_all_use_right, resolve_conflict_use_left, resolve_conflict_use_right,
     resolve_use_left_and_next, resolve_use_right_and_next, run_diff, run_folder_compare,
-    run_plugin, save_file, save_table_file, save_three_way_pane, search_text, select_diff,
-    set_diff_comment, set_diff_filter, set_row_selection, sort_folder, start_compare,
+    run_plugin, save_file, save_project, save_table_file, save_three_way_pane, search_text,
+    select_diff, set_diff_comment, set_diff_filter, set_row_selection, sort_folder, start_compare,
     start_three_way_compare, switch_tab, three_way_delete_line, three_way_edit_line,
     three_way_insert_line_after, toggle_bookmark, toggle_ignore_case, toggle_ignore_whitespace,
     undo,
@@ -1560,6 +1560,16 @@ fn main() {
             } else if !has_native_file_dialog() {
                 show_file_browser(&window, &browse_ctx, 20, SharedString::from(""), false);
             }
+        });
+    }
+
+    // Save current tab as project file
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_save_project(move || {
+            let window = window_weak.unwrap();
+            save_project(&window, &mut state.borrow_mut());
         });
     }
 
