@@ -26,6 +26,5 @@ Bytes are compared at the same offset — there's no realignment for inserted or
 - No realignment: an insertion or deletion shifts the rest of the file out of alignment, unlike the text diff engine
 - External file changes aren't auto-detected in Hex view; use Rescan (F5) to reload
 - View > Zoom doesn't apply — hex view has no zoom control
-- The Hex view choice isn't remembered across sessions — a forced Hex tab reopens through normal auto-detection next time
 - `/t` is dropped when a path is forwarded to an already-running instance (e.g. via `git difftool`); only the file paths are passed along
 - Read-only: no editing, saving, copying, exporting, or printing from Hex view

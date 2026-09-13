@@ -261,6 +261,8 @@ export component MainWindow inherits Window {
     callback open-right-file();
     callback open-folder-left();
     callback open-folder-right();
+    callback open-project();
+    callback save-project();
     callback browse-base();
     callback next-diff();
     callback prev-diff();
@@ -635,6 +637,7 @@ export component MainWindow inherits Window {
                 }
             }
             MenuSeparator {}
+            MenuItem { title: @tr("Open Project..."); activated => { root.open-project(); } }
             MenuItem { title: @tr("Open Left File..."); activated => { root.request-action(1); } }
             MenuItem { title: @tr("Open Right File..."); activated => { root.request-action(2); } }
             MenuItem { title: @tr("Open Left Folder..."); activated => { root.request-action(3); } }
@@ -643,6 +646,7 @@ export component MainWindow inherits Window {
             MenuItem { title: @tr("Save Left"); enabled: root.has-unsaved-changes; activated => { root.save-left(); } }
             MenuItem { title: @tr("Save Middle"); enabled: root.has-unsaved-changes && root.view-mode == 3; activated => { root.save-base(); } }
             MenuItem { title: @tr("Save Right"); enabled: root.has-unsaved-changes; activated => { root.save-right(); } }
+            MenuItem { title: @tr("Save Project..."); activated => { root.save-project(); } }
             MenuSeparator {}
             MenuItem { title: @tr("Open Left in Editor"); enabled: root.left-path != ""; activated => { root.open-left-in-editor(); } }
             MenuItem { title: @tr("Open Right in Editor"); enabled: root.right-path != ""; activated => { root.open-right-in-editor(); } }

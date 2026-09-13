@@ -186,6 +186,11 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 - Differing bytes highlighted (same-offset comparison, no realignment); block navigation with current-row highlight
 - Force it explicitly via File → Recompare As → Hex/Normal, folder compare's "Compare as Hex" context menu item, or `/t Binary` on the command line
 
+### Project Files
+- Save the current tab's paths and compare options as a WinMerge-compatible `.WinMerge` project file, and reopen it later — since winxmerge doesn't restore sessions across launches, this is the only way to get back to a saved comparison
+- **File → Save Project...** saves the current tab; **File → Open Project...** opens one (one tab per `<paths>` entry in the file)
+- Also opens from the command line: `winxmerge project.WinMerge`
+
 ### Diff Detail Pane (WinMerge-style)
 - Shows only the currently selected diff block (not the whole file)
 - Left panel for removed/modified lines, Right panel for added/modified lines
@@ -463,6 +468,7 @@ accepted in place of `/`.
 ```
 winxmerge [options] <left> <right>          2-way compare
 winxmerge [options] <base> <left> <right>   3-way merge
+winxmerge [options] <project.WinMerge>      Open a project file
 ```
 
 | Option | Effect |

@@ -45,13 +45,13 @@ use app::{
     force_close_tab, goto_line, has_native_file_dialog, insert_line_after, last_diff,
     navigate_bookmark, navigate_conflict, navigate_diff, navigate_diff_by_status, navigate_search,
     new_blank_table, new_blank_table_3way, new_blank_text, new_blank_text_3way, open_file_dialog,
-    open_folder_dialog, open_folder_item, open_in_editor, paste_clipboard_path_base,
+    open_folder_dialog, open_folder_item, open_in_editor, open_project, paste_clipboard_path_base,
     paste_clipboard_path_left, paste_clipboard_path_right, preview_folder_item, print_diff,
     recompare_as, redo, reorder_tab, replace_all_text, replace_text, rescan, resolve_all_use_left,
     resolve_all_use_right, resolve_conflict_use_left, resolve_conflict_use_right,
     resolve_use_left_and_next, resolve_use_right_and_next, run_diff, run_folder_compare,
-    run_plugin, save_file, save_table_file, save_three_way_pane, search_text, select_diff,
-    set_diff_comment, set_diff_filter, set_row_selection, sort_folder, start_compare,
+    run_plugin, save_file, save_project, save_table_file, save_three_way_pane, search_text,
+    select_diff, set_diff_comment, set_diff_filter, set_row_selection, sort_folder, start_compare,
     start_three_way_compare, switch_tab, three_way_delete_line, three_way_edit_line,
     three_way_insert_line_after, toggle_bookmark, toggle_ignore_case, toggle_ignore_whitespace,
     undo,
@@ -303,6 +303,7 @@ fn main() {
     // Handle positional arguments (direct launch without IPC):
     //   winxmerge <left> <right>           — 2-way diff
     //   winxmerge <base> <left> <right>    — 3-way merge
+    //   winxmerge <project.WinMerge>       — open a saved project file
     if positional.len() >= 3 {
         // 3-way merge
         let mut s = state.borrow_mut();
@@ -327,6 +328,12 @@ fn main() {
             is_folder,
             cli.force_hex,
         );
+        app::sync_tab_list(&window, &s);
+    } else if positional.len() == 1 && cli::is_project_path(&positional[0]) {
+        // Project file: the only way to reopen a saved comparison, since sessions
+        // are never restored across launches (see cli.rs USAGE / is_project_path).
+        let mut s = state.borrow_mut();
+        open_project(&window, &mut s, std::path::Path::new(&positional[0]));
         app::sync_tab_list(&window, &s);
     } else {
         // No CLI args / --server: start with blank screen, wait for IPC
@@ -1548,6 +1555,31 @@ fn main() {
         });
     }
 
+    // Open project file
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        let browse_ctx = browse_ctx.clone();
+        window.on_open_project(move || {
+            let window = window_weak.unwrap();
+            if let Some(path) = open_file_dialog("Open Project") {
+                open_project(&window, &mut state.borrow_mut(), &path);
+            } else if !has_native_file_dialog() {
+                show_file_browser(&window, &browse_ctx, 20, SharedString::from(""), false);
+            }
+        });
+    }
+
+    // Save current tab as project file
+    {
+        let window_weak = window.as_weak();
+        let state = state.clone();
+        window.on_save_project(move || {
+            let window = window_weak.unwrap();
+            save_project(&window, &mut state.borrow_mut());
+        });
+    }
+
     // File browser dialog callbacks
     {
         let window_weak = window.as_weak();
@@ -1652,6 +1684,9 @@ fn main() {
                 14 => {
                     state.borrow_mut().current_tab_mut().right_folder = Some(path_buf);
                     run_folder_compare(&window, &mut state.borrow_mut());
+                }
+                20 => {
+                    open_project(&window, &mut state.borrow_mut(), &path_buf);
                 }
                 _ => {}
             }
