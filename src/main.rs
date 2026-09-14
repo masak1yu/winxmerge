@@ -107,6 +107,8 @@ fn main() {
     }
 
     let window = MainWindow::new().unwrap();
+    #[cfg(target_os = "macos")]
+    install_quit_guard(&window);
     let state = Rc::new(RefCell::new(AppState::new()));
     let settings = Rc::new(RefCell::new(settings::AppSettings::load()));
     // browse_ctx: tracks which Browse action is pending when path picker dialog is shown
@@ -2610,6 +2612,50 @@ fn main() {
     ipc::cleanup();
     if cli.enable_exit_code {
         std::process::exit(cli_exit_code.get());
+    }
+}
+
+/// App menu Quit and Cmd+Q send `terminate:` to NSApp, which never reaches winit's
+/// CloseRequested (winit's delegate has no `applicationShouldTerminate:`), so the
+/// unsaved-changes dialog was skipped. Route it through request_close instead.
+#[cfg(target_os = "macos")]
+fn install_quit_guard(window: &MainWindow) {
+    use objc2::runtime::{AnyClass, AnyObject, Sel};
+    use objc2::{class, ffi, msg_send, sel};
+
+    thread_local! {
+        static QUIT_WINDOW: std::cell::OnceCell<slint::Weak<MainWindow>> =
+            const { std::cell::OnceCell::new() };
+    }
+
+    // ponytail: always cancels, so a logout/shutdown stops once even with nothing unsaved;
+    // return NSTerminateLater and reply via replyToApplicationShouldTerminate: if that matters.
+    extern "C" fn should_terminate(_: *mut AnyObject, _: Sel, _: *mut AnyObject) -> usize {
+        QUIT_WINDOW.with(|w| {
+            if let Some(w) = w.get() {
+                let _ = w.upgrade_in_event_loop(|w| w.invoke_request_close());
+            }
+        });
+        0 // NSTerminateCancel
+    }
+
+    let _ = QUIT_WINDOW.with(|w| w.set(window.as_weak()));
+    unsafe {
+        let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+        let delegate: *mut AnyObject = msg_send![app, delegate];
+        let Some(delegate) = delegate.as_ref() else {
+            return;
+        };
+        let imp = std::mem::transmute::<
+            extern "C" fn(*mut AnyObject, Sel, *mut AnyObject) -> usize,
+            unsafe extern "C" fn(),
+        >(should_terminate);
+        ffi::class_addMethod(
+            delegate.class() as *const AnyClass as *mut ffi::objc_class,
+            sel!(applicationShouldTerminate:).as_ptr(),
+            Some(imp),
+            c"Q@:@".as_ptr(),
+        );
     }
 }
 

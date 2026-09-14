@@ -6366,6 +6366,7 @@ dependencies = [
  "encoding_rs",
  "image",
  "js-sys",
+ "objc2 0.5.2",
  "open",
  "regex",
  "rfd",
