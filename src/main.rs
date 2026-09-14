@@ -1217,9 +1217,9 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
-        window.on_insert_line_after(move |idx, is_left| {
+        window.on_insert_line_after(move |idx, is_left, off| {
             let window = window_weak.unwrap();
-            insert_line_after(&window, &mut state.borrow_mut(), idx, is_left);
+            insert_line_after(&window, &mut state.borrow_mut(), idx, is_left, off);
         });
     }
 
@@ -1306,9 +1306,9 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
-        window.on_three_way_insert_line_after(move |row, pane| {
+        window.on_three_way_insert_line_after(move |row, pane, off| {
             let window = window_weak.unwrap();
-            three_way_insert_line_after(&window, &mut state.borrow_mut(), row, pane);
+            three_way_insert_line_after(&window, &mut state.borrow_mut(), row, pane, off);
         });
     }
 

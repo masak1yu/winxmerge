@@ -310,13 +310,13 @@ export component MainWindow inherits Window {
     callback copy-all-right();
     callback edit-left-line(/* line-index */ int, /* new-text */ string);
     callback edit-right-line(/* line-index */ int, /* new-text */ string);
-    callback insert-line-after(/* line-index */ int, /* is-left */ bool);
+    callback insert-line-after(/* line-index */ int, /* is-left */ bool, /* byte-offset */ int);
     callback delete-line(/* line-index */ int, /* is-left */ bool);
     callback move-focus-up(/* line-index */ int, /* is-left */ bool);
     callback move-focus-down(/* line-index */ int, /* is-left */ bool);
     // 3-way pane editing (pane: 0=left, 1=base, 2=right)
     callback three-way-edit-line(/* row */ int, /* text */ string, /* pane */ int);
-    callback three-way-insert-line-after(/* row */ int, /* pane */ int);
+    callback three-way-insert-line-after(/* row */ int, /* pane */ int, /* byte-offset */ int);
     callback three-way-delete-line(/* row */ int, /* pane */ int);
     callback three-way-move-focus-up(/* row */ int, /* pane */ int);
     callback three-way-move-focus-down(/* row */ int, /* pane */ int);
@@ -1176,7 +1176,7 @@ export component MainWindow inherits Window {
             inline-edit-enabled: root.opt-inline-edit;
             edit-left-line(idx, text) => { root.edit-left-line(idx, text); }
             edit-right-line(idx, text) => { root.edit-right-line(idx, text); }
-            insert-line-after(idx, is-left) => { root.insert-line-after(idx, is-left); }
+            insert-line-after(idx, is-left, off) => { root.insert-line-after(idx, is-left, off); }
             delete-line(idx, is-left) => { root.delete-line(idx, is-left); }
             move-focus-up(idx, is-left) => { root.move-focus-up(idx, is-left); }
             move-focus-down(idx, is-left) => { root.move-focus-down(idx, is-left); }
@@ -1284,7 +1284,7 @@ export component MainWindow inherits Window {
             use-left(idx) => { root.use-left(idx); }
             use-right(idx) => { root.use-right(idx); }
             edit-text-changed(row, text, pane) => { root.three-way-edit-line(row, text, pane); }
-            insert-line-after(row, pane) => { root.three-way-insert-line-after(row, pane); }
+            insert-line-after(row, pane, off) => { root.three-way-insert-line-after(row, pane, off); }
             delete-line(row, pane) => { root.three-way-delete-line(row, pane); }
             move-focus-up(row, pane) => { root.three-way-move-focus-up(row, pane); }
             move-focus-down(row, pane) => { root.three-way-move-focus-down(row, pane); }

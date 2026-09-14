@@ -305,6 +305,7 @@ pub fn insert_line_after(
     state: &mut AppState,
     line_index: i32,
     is_left: bool,
+    byte_offset: i32,
 ) {
     {
         let tab = state.current_tab();
@@ -321,6 +322,23 @@ pub fn insert_line_after(
 
     push_undo_snapshot(state);
 
+    let tail = {
+        let tab = state.current_tab();
+        let buf = if is_left {
+            &tab.left_buffer
+        } else {
+            &tab.right_buffer
+        };
+        let text = buf
+            .as_ref()
+            .and_then(|b| b.model.row_data(line_index as usize))
+            .map(|r| r.text)
+            .unwrap_or_default();
+        let (head, tail) = split_at_cursor(&text, byte_offset);
+        sync_pane_row_text(buf, line_index as usize, head);
+        SharedString::from(tail)
+    };
+
     let insert_at = (line_index + 1) as usize;
 
     // Insert real row in target pane, ghost row in other pane
@@ -331,7 +349,7 @@ pub fn insert_line_after(
     };
     let real_row = PaneLineData {
         line_no: SharedString::from("?"),
-        text: SharedString::from(""),
+        text: tail,
         is_ghost: false,
         status,
         diff_index: -1,

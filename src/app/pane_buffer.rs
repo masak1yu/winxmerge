@@ -446,6 +446,12 @@ pub fn sync_pane_row_text(buffer: &Option<PaneBuffer>, row_idx: usize, new_text:
     }
 }
 
+/// Split `text` at a TextInput cursor byte offset, clamped to the text and
+/// moved back to a char boundary.
+pub fn split_at_cursor(text: &str, byte_offset: i32) -> (&str, &str) {
+    text.split_at(text.floor_char_boundary(byte_offset.max(0) as usize))
+}
+
 /// Turn the ghost row at `idx` into a real (saved) line. Returns false when
 /// the row is missing or already real.
 pub fn materialize_ghost(buffer: &mut PaneBuffer, idx: usize) -> bool {
@@ -870,5 +876,15 @@ mod tests {
             !materialize_ghost(&mut left_buf, 0),
             "row 0 was never a ghost"
         );
+    }
+
+    // What: Enter splits at line start, line end, inside a multi-byte char, and out-of-range cursors without panicking.
+    #[test]
+    fn split_at_cursor_clamps_to_char_boundary() {
+        assert_eq!(split_at_cursor("abc", 0), ("", "abc"));
+        assert_eq!(split_at_cursor("abc", 3), ("abc", ""));
+        assert_eq!(split_at_cursor("あいう", 4), ("あ", "いう"));
+        assert_eq!(split_at_cursor("abc", 99), ("abc", ""));
+        assert_eq!(split_at_cursor("abc", -1), ("", "abc"));
     }
 }

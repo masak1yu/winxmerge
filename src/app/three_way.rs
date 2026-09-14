@@ -581,12 +581,15 @@ pub fn three_way_edit_line(
     mark_dirty_editing(window, state);
 }
 
-/// Insert a blank row after `row_index` in the 3-way view. pane: 0=left, 1=base, 2=right.
+/// Insert a row after `row_index` in the 3-way view, splitting the target
+/// pane's row at `byte_offset`: the head stays on `row_index`, the tail moves
+/// into the new row. pane: 0=left, 1=base, 2=right.
 pub fn three_way_insert_line_after(
     window: &MainWindow,
     state: &mut AppState,
     row_index: i32,
     pane: i32,
+    byte_offset: i32,
 ) {
     if row_index < 0 {
         return;
@@ -600,6 +603,20 @@ pub fn three_way_insert_line_after(
     if insert_at > lb.model.row_count() {
         return;
     }
+
+    let target_buf = match pane {
+        0 => &tab.left_buffer,
+        1 => &tab.middle_buffer,
+        _ => &tab.right_buffer,
+    };
+    let text = target_buf
+        .as_ref()
+        .and_then(|b| b.model.row_data(row_index as usize))
+        .map(|r| r.text)
+        .unwrap_or_default();
+    let (head, tail) = split_at_cursor(&text, byte_offset);
+    sync_pane_row_text(target_buf, row_index as usize, head);
+    let tail = SharedString::from(tail);
 
     // 1=LeftChanged, 3=BothChanged(base), 2=RightChanged
     let status = match pane {
@@ -619,7 +636,11 @@ pub fn three_way_insert_line_after(
             } else {
                 SharedString::default()
             },
-            text: SharedString::default(),
+            text: if is_target {
+                tail.clone()
+            } else {
+                SharedString::default()
+            },
             is_ghost: !is_target,
             status,
             diff_index: -1,
