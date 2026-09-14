@@ -797,6 +797,8 @@ export component MainWindow inherits Window {
                 } else {
                     root.undo();
                 }
+                // F1: not left on the row — undo/redo swap in new row models, the focused TextInput is destroyed and Slint drops keys while nothing has focus.
+                shortcuts.focus();
                 return accept;
             }
             // Alt + arrow for diff navigation
@@ -862,6 +864,8 @@ export component MainWindow inherits Window {
             // F5 for rescan
             if event.text == Key.F5 {
                 root.rescan();
+                // F1: same as undo/redo above — rescan rebuilds the row models.
+                shortcuts.focus();
                 return accept;
             }
             if event.text == Key.Escape && root.esc-closes {
