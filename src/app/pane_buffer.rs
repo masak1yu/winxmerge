@@ -446,6 +446,70 @@ pub fn sync_pane_row_text(buffer: &Option<PaneBuffer>, row_idx: usize, new_text:
     }
 }
 
+/// What deleting the empty row at some index should do to its own pane and
+/// the aligned row in the sibling pane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineDeletion {
+    /// The sibling row is also a ghost: drop the row from both panes.
+    RemoveBoth,
+    /// The sibling row is a real line: only turn the target row into a
+    /// ghost, so the sibling's real line survives.
+    GhostTarget,
+}
+
+/// Decide what deleting the row at `idx` in `target` should do, given the
+/// aligned row in `other`. Returns `None` when nothing should happen: the
+/// row is out of range, already a ghost, not empty, or the pane's last real
+/// line (deleting it would leave the pane un-typeable, see
+/// `three_way_delete_line`'s equivalent guard).
+pub fn plan_line_deletion(
+    target: &PaneBuffer,
+    other: &PaneBuffer,
+    idx: usize,
+) -> Option<LineDeletion> {
+    let target_row = target.model.row_data(idx)?;
+    if target_row.is_ghost || !target_row.text.is_empty() {
+        return None;
+    }
+    if target.line_to_row.len() <= 1 {
+        return None;
+    }
+    let other_row = other.model.row_data(idx)?;
+    Some(if other_row.is_ghost {
+        LineDeletion::RemoveBoth
+    } else {
+        LineDeletion::GhostTarget
+    })
+}
+
+/// Apply a `LineDeletion` decided by `plan_line_deletion` and renumber both
+/// panes afterward.
+pub fn apply_line_deletion(
+    target: &mut PaneBuffer,
+    other: &mut PaneBuffer,
+    idx: usize,
+    deletion: LineDeletion,
+) {
+    match deletion {
+        LineDeletion::RemoveBoth => {
+            target.model.remove(idx);
+            other.model.remove(idx);
+        }
+        LineDeletion::GhostTarget => {
+            // Other pane keeps its real line untouched; only the target row
+            // is retired to a ghost so the row-index alignment survives.
+            let diff_index = target
+                .model
+                .row_data(idx)
+                .map(|r| r.diff_index)
+                .unwrap_or(-1);
+            target.model.set_row_data(idx, ghost_pane_line(diff_index));
+        }
+    }
+    renumber_pane_buffer(target);
+    renumber_pane_buffer(other);
+}
+
 /// Renumber real lines in a PaneBuffer after insert/delete operations.
 /// Rebuilds `row_to_line`, `line_to_row`, and `ghost_rows` from the model.
 pub fn renumber_pane_buffer(buffer: &mut PaneBuffer) {
@@ -499,6 +563,7 @@ pub fn max_content_width_px(models: &[Rc<VecModel<PaneLineData>>], font_size: i3
 mod tests {
     use super::*;
     use crate::diff::engine::{DiffOptions, compute_diff_with_options};
+    use crate::models::diff_line::DiffLine;
 
     // What: with `ignore_blank_lines` enabled, a blank line present in the
     // original left-side file vanishes from `extract_real_lines`' reconstructed
@@ -616,5 +681,138 @@ mod tests {
             found_moved_status,
             "at least one non-ghost row must show the Moved status (4)"
         );
+    }
+
+    // Helper for the delete_line planning tests: builds a DiffLine without
+    // repeating all six fields at every call site.
+    fn diff_line(
+        left_line_no: Option<u32>,
+        right_line_no: Option<u32>,
+        left_text: &str,
+        right_text: &str,
+        status: LineStatus,
+    ) -> DiffLine {
+        DiffLine {
+            left_line_no,
+            right_line_no,
+            left_text: left_text.to_string(),
+            right_text: right_text.to_string(),
+            status,
+            left_word_segments: vec![],
+            right_word_segments: vec![],
+        }
+    }
+
+    // What: a pane holding exactly one real line refuses to delete it, even
+    // when that line's text is empty — mirrors `three_way_delete_line`'s
+    // last-line guard so the pane never becomes un-typeable.
+    #[test]
+    fn plan_line_deletion_refuses_last_real_line() {
+        let result = DiffResult {
+            lines: vec![diff_line(Some(1), Some(1), "", "", LineStatus::Equal)],
+            diff_count: 0,
+            diff_positions: vec![],
+        };
+        let (left_buf, right_buf) = build_pane_buffers_2way(&result, &[], &[], 4);
+
+        assert_eq!(plan_line_deletion(&left_buf, &right_buf, 0), None);
+        // Buffers must be untouched since no deletion was planned.
+        assert_eq!(extract_real_lines(&left_buf), "\n");
+        assert_eq!(extract_real_lines(&right_buf), "\n");
+    }
+
+    // What: a ghost target row is refused outright, regardless of the
+    // counterpart or of how many real lines remain in the pane.
+    #[test]
+    fn plan_line_deletion_refuses_ghost_target() {
+        let result = DiffResult {
+            lines: vec![
+                diff_line(Some(1), Some(1), "keep1", "keep1", LineStatus::Equal),
+                // Added: left has no line here, so build_pane_buffers_2way
+                // places a ghost row on the left.
+                diff_line(None, Some(2), "", "added", LineStatus::Added),
+                diff_line(Some(2), Some(3), "keep2", "keep2", LineStatus::Equal),
+            ],
+            diff_count: 1,
+            diff_positions: vec![1],
+        };
+        let (left_buf, right_buf) = build_pane_buffers_2way(&result, &[], &[], 4);
+        assert!(left_buf.model.row_data(1).unwrap().is_ghost);
+
+        assert_eq!(plan_line_deletion(&left_buf, &right_buf, 1), None);
+    }
+
+    // What: deleting an empty row whose counterpart on the other side is a
+    // real (non-ghost) line must NOT remove that counterpart. Only the
+    // target row is turned into a ghost; the other pane's `extract_real_lines`
+    // is byte-for-byte unchanged, and the target loses exactly that one line.
+    // Under the old (pre-fix) `delete_line`, which removed the same row index
+    // from both PaneBuffers unconditionally, this would have deleted "b" from
+    // the right pane too — this test would fail against that behavior.
+    #[test]
+    fn plan_line_deletion_ghosts_target_when_other_side_is_real() {
+        let result = DiffResult {
+            lines: vec![
+                diff_line(Some(1), Some(1), "keep1", "keep1", LineStatus::Equal),
+                diff_line(Some(2), Some(2), "", "b", LineStatus::Modified),
+                diff_line(Some(3), Some(3), "keep2", "keep2", LineStatus::Equal),
+            ],
+            diff_count: 1,
+            diff_positions: vec![1],
+        };
+        let (mut left_buf, mut right_buf) = build_pane_buffers_2way(&result, &[], &[], 4);
+        assert!(!right_buf.model.row_data(1).unwrap().is_ghost);
+        assert_eq!(
+            extract_real_lines(&left_buf),
+            "keep1\n\nkeep2\n",
+            "sanity: target row starts out real with empty text"
+        );
+        let right_before = extract_real_lines(&right_buf);
+
+        let deletion = plan_line_deletion(&left_buf, &right_buf, 1);
+        assert_eq!(deletion, Some(LineDeletion::GhostTarget));
+        apply_line_deletion(&mut left_buf, &mut right_buf, 1, deletion.unwrap());
+
+        assert_eq!(
+            extract_real_lines(&right_buf),
+            right_before,
+            "other side must be untouched when its row is a real line"
+        );
+        let target_row = left_buf.model.row_data(1).unwrap();
+        assert!(target_row.is_ghost, "target row must become a ghost");
+        assert_eq!(
+            extract_real_lines(&left_buf),
+            "keep1\nkeep2\n",
+            "target must lose exactly the deleted line"
+        );
+    }
+
+    // What: deleting an empty row whose counterpart on the other side is
+    // already a ghost removes the row from both panes (the pre-existing,
+    // still-correct behavior for aligned ghost padding).
+    #[test]
+    fn plan_line_deletion_removes_both_when_other_side_is_ghost() {
+        let result = DiffResult {
+            lines: vec![
+                diff_line(Some(1), Some(1), "keep1", "keep1", LineStatus::Equal),
+                // Removed: right has no line here, so build_pane_buffers_2way
+                // places a ghost row on the right; left's text is empty.
+                diff_line(Some(2), None, "", "", LineStatus::Removed),
+                diff_line(Some(3), Some(2), "keep2", "keep2", LineStatus::Equal),
+            ],
+            diff_count: 1,
+            diff_positions: vec![1],
+        };
+        let (mut left_buf, mut right_buf) = build_pane_buffers_2way(&result, &[], &[], 4);
+        assert!(right_buf.model.row_data(1).unwrap().is_ghost);
+        let left_before = left_buf.model.row_count();
+        let right_before = right_buf.model.row_count();
+
+        let deletion = plan_line_deletion(&left_buf, &right_buf, 1);
+        assert_eq!(deletion, Some(LineDeletion::RemoveBoth));
+        apply_line_deletion(&mut left_buf, &mut right_buf, 1, deletion.unwrap());
+
+        assert_eq!(left_buf.model.row_count(), left_before - 1);
+        assert_eq!(right_buf.model.row_count(), right_before - 1);
     }
 }

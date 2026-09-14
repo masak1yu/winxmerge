@@ -390,44 +390,33 @@ pub fn delete_line(window: &MainWindow, state: &mut AppState, line_index: i32, i
     }
     let idx = line_index as usize;
 
-    let can_delete = {
+    let deletion = {
         let tab = state.current_tab();
-        let buf = if is_left {
-            &tab.left_buffer
+        let (target, other) = if is_left {
+            (&tab.left_buffer, &tab.right_buffer)
         } else {
-            &tab.right_buffer
+            (&tab.right_buffer, &tab.left_buffer)
         };
-        let Some(b) = buf else { return };
-        if idx >= b.model.row_count() {
+        let (Some(target), Some(other)) = (target, other) else {
+            return;
+        };
+        if idx >= target.model.row_count() {
             return;
         }
-        let Some(row) = b.model.row_data(idx) else {
-            return;
-        };
-        row.text.is_empty()
+        plan_line_deletion(target, other, idx)
     };
 
-    if can_delete {
+    if let Some(deletion) = deletion {
         push_undo_snapshot(state);
 
-        // Remove row from both PaneBuffers (aligned)
-        {
-            let tab = state.current_tab();
-            if let Some(lb) = &tab.left_buffer {
-                lb.model.remove(idx);
-            }
-            if let Some(rb) = &tab.right_buffer {
-                rb.model.remove(idx);
-            }
-        }
-
-        // Renumber line numbers in both PaneBuffers
         let tab = state.current_tab_mut();
-        if let Some(lb) = &mut tab.left_buffer {
-            renumber_pane_buffer(lb);
-        }
-        if let Some(rb) = &mut tab.right_buffer {
-            renumber_pane_buffer(rb);
+        let (target, other) = if is_left {
+            (tab.left_buffer.as_mut(), tab.right_buffer.as_mut())
+        } else {
+            (tab.right_buffer.as_mut(), tab.left_buffer.as_mut())
+        };
+        if let (Some(target), Some(other)) = (target, other) {
+            apply_line_deletion(target, other, idx, deletion);
         }
 
         mark_dirty_editing(window, state);
