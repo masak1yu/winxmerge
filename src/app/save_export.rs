@@ -3,12 +3,15 @@ use super::*;
 /// Save all tabs with unsaved changes.
 /// Tabs with file paths are auto-saved. Tabs without paths prompt for a filename via dialog.
 /// Sync VecModel, auto-save tabs with paths, and return a queue of
-/// (tab_index, is_left, text, encoding) for pathless sides needing a Save As dialog.
+/// (tab_index, is_left, text, encoding) for pathless sides needing a Save As dialog,
+/// plus whether any tab's save was blocked by `save_blocked_by_hidden_lines` (#63/F13) —
+/// the caller (on_quit_save_all in src/main.rs) must not proceed to quit when true.
 pub fn collect_pending_saves(
     window: &MainWindow,
     state: &mut AppState,
-) -> Vec<(usize, i32, String, String)> {
+) -> (Vec<(usize, i32, String, String)>, bool) {
     let mut queue = Vec::new();
+    let mut blocked_titles: Vec<String> = Vec::new();
     let n = state.tabs.len();
     for i in 0..n {
         if !state.tabs[i].has_unsaved_changes {
@@ -76,23 +79,15 @@ pub fn collect_pending_saves(
             // ponytail: same provisional guard as save_file (see its comment for
             // the full rationale) — this "Save All" path (used on quit) never
             // calls save_file, so it needs its own copy of the check, keyed off
-            // this tab's own TabState rather than state.current_tab(). The check
-            // itself lives in TabState::save_blocked_by_hidden_lines, which also
-            // covers the F9 case: options toggled off after an edit made while
-            // they were on still leaves hidden_lines_dropped set (Gotcha 3 —
-            // rescan-from-VecModel can't un-drop lines already missing from the
-            // buffers). Skipping here — without touching queue or
-            // has_unsaved_changes — leaves the tab's in-memory edits unsaved. If
-            // this runs from on_quit_save_all (src/main.rs), the app proceeds to
-            // exit anyway and those edits are lost. That's an accepted tradeoff:
-            // an unsaved in-app edit is recoverable in principle (redo the edit),
-            // a file silently truncated on disk is not. Stopping the quit itself
-            // would mean touching src/main.rs's quit flow, out of scope here.
+            // this tab's own TabState. TabState::save_blocked_by_hidden_lines
+            // also covers F9 (toggling the option off after an edit made while
+            // it was on still leaves hidden_lines_dropped set — Gotcha 3).
+            // Skipping here leaves this tab's edits unsaved; per F13,
+            // on_quit_save_all (src/main.rs) sees the blocked flag this
+            // function returns and cancels the quit instead of losing them —
+            // the other, unblocked tabs in this loop are still saved normally.
             if state.tabs[i].save_blocked_by_hidden_lines() {
-                window.set_status_text(SharedString::from(format!(
-                    "Save blocked for \"{}\": turn off \"Ignore blank lines\" and clear line filters first — saving now could permanently delete lines that were hidden from comparison (#63). If you edited while the option was on, close without saving and reopen the files instead.",
-                    state.tabs[i].title
-                )));
+                blocked_titles.push(state.tabs[i].title.clone());
                 continue;
             }
 
@@ -133,7 +128,20 @@ pub fn collect_pending_saves(
             }
         }
     }
-    queue
+
+    let any_blocked = !blocked_titles.is_empty();
+    if any_blocked {
+        let titles = blocked_titles
+            .iter()
+            .map(|t| format!("\"{}\"", t))
+            .collect::<Vec<_>>()
+            .join(", ");
+        window.set_status_text(SharedString::from(format!(
+            "Quit cancelled — save blocked for {}: turn off \"Ignore blank lines\" and clear line filters first — saving now could permanently delete lines that were hidden from comparison (#63). If you edited while the option was on, close without saving and reopen the files instead.",
+            titles
+        )));
+    }
+    (queue, any_blocked)
 }
 
 /// Save text to path if available, otherwise queue for Save-As dialog.

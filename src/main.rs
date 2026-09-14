@@ -2494,7 +2494,16 @@ fn main() {
         let advance = advance_pending.clone();
         window.on_quit_save_all(move || {
             let window = window_weak.unwrap();
-            let queue = collect_pending_saves(&window, &mut state.borrow_mut());
+            let (queue, blocked) = collect_pending_saves(&window, &mut state.borrow_mut());
+            if blocked {
+                // F13: not advance() — with an empty queue it quits and drops
+                // the blocked tab's edits (#63). Tabs already saved above stay saved.
+                window.set_show_quit_confirm(false);
+                let s = state.borrow();
+                window.set_has_unsaved_changes(s.current_tab().has_unsaved_changes);
+                app::sync_tab_list(&window, &s);
+                return;
+            }
             *pending_saves.borrow_mut() = queue;
             advance();
         });
