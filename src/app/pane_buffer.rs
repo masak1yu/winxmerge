@@ -484,3 +484,70 @@ pub fn max_content_width_px(models: &[Rc<VecModel<PaneLineData>>], font_size: i3
     // Approximate monospace char width: font_size * 0.62 + line-number column + padding
     ((max_len as f32) * (font_size as f32) * 0.62) as i32 + 100
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diff::engine::{DiffOptions, compute_diff_with_options};
+
+    // What: with `ignore_blank_lines` enabled, a blank line present in the
+    // original left-side file vanishes from `extract_real_lines`' reconstructed
+    // text after the full `compute_diff_with_options` → `build_pane_buffers_2way`
+    // → `extract_real_lines` round trip. `normalize_text` drops the blank line
+    // (and its position from the line-number map) before diffing, so it never
+    // reaches `DiffResult.lines`, `PaneBuffer.model`, or the saved file — this
+    // pins the round-trip data-loss behavior fixed provisionally by issue #63.
+    #[test]
+    fn ignore_blank_lines_drops_blank_line_after_full_roundtrip() {
+        let opts = DiffOptions {
+            ignore_blank_lines: true,
+            ..Default::default()
+        };
+        let left = "hello\n\nworld\n";
+        let right = "hello\nworld\n";
+        let result = compute_diff_with_options(left, right, &opts);
+        let (left_buf, right_buf) = build_pane_buffers_2way(&result, &[], &[], 4);
+
+        let left_out = extract_real_lines(&left_buf);
+        let right_out = extract_real_lines(&right_buf);
+
+        assert_eq!(
+            left_out, "hello\nworld\n",
+            "blank line silently dropped from the reconstructed left text"
+        );
+        assert_eq!(right_out, "hello\nworld\n");
+        assert_ne!(
+            left_out, left,
+            "round-tripped text no longer matches the original file contents"
+        );
+    }
+
+    // What: a line matching an active line filter vanishes from
+    // `extract_real_lines`' reconstructed text after the same round trip —
+    // same data-loss mechanism as `ignore_blank_lines`, just triggered by
+    // `line_filters` instead of the blank-line check in `normalize_text`.
+    #[test]
+    fn line_filter_drops_filtered_line_after_full_roundtrip() {
+        let opts = DiffOptions {
+            line_filters: vec!["^#".to_string()],
+            ..Default::default()
+        };
+        let left = "# note\nkeep\n";
+        let right = "keep\n";
+        let result = compute_diff_with_options(left, right, &opts);
+        let (left_buf, right_buf) = build_pane_buffers_2way(&result, &[], &[], 4);
+
+        let left_out = extract_real_lines(&left_buf);
+        let right_out = extract_real_lines(&right_buf);
+
+        assert_eq!(
+            left_out, "keep\n",
+            "filtered line silently dropped from the reconstructed left text"
+        );
+        assert_eq!(right_out, "keep\n");
+        assert_ne!(
+            left_out, left,
+            "round-tripped text no longer matches the original file contents"
+        );
+    }
+}
