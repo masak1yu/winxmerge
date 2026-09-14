@@ -1453,7 +1453,7 @@ export component MainWindow inherits Window {
                                     alignment: start;
                                     padding-left: 4px;
                                     for seg in line.segments: Rectangle {
-                                        background: seg.is-changed ? ThemeColors.removed-fg.transparentize(0.7) : transparent;
+                                        background: seg.is-changed && root.show-word-diff ? ThemeColors.removed-fg.transparentize(0.7) : transparent;
                                         border-radius: 2px;
                                         Text {
                                             text: seg.text;
@@ -1535,7 +1535,7 @@ export component MainWindow inherits Window {
                                     alignment: start;
                                     padding-left: 4px;
                                     for seg in line.segments: Rectangle {
-                                        background: seg.is-changed ? ThemeColors.added-fg.transparentize(0.7) : transparent;
+                                        background: seg.is-changed && root.show-word-diff ? ThemeColors.added-fg.transparentize(0.7) : transparent;
                                         border-radius: 2px;
                                         Text {
                                             text: seg.text;
