@@ -23,6 +23,8 @@ export struct PaneLineData {
 }
 
 component DiffLineRow inherits Rectangle {
+    // F3: rows collapsed to 0px by diff-only mode still draw their TextInput; not `visible: false`, which drops focus.
+    clip: true;
     in property <string> line-no;
     in-out property <string> text;
     in property <int> status;
