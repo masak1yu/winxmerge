@@ -2,9 +2,9 @@ use std::rc::Rc;
 
 use slint::{Model, SharedString, VecModel};
 
+use super::STATUS_EQUAL;
 use super::diff_navigation::build_word_diff_string;
 use super::helpers::expand_tabs;
-use super::{STATUS_ADDED, STATUS_EQUAL, STATUS_REMOVED};
 use crate::PaneLineData;
 use crate::diff::three_way::{ThreeWayResult, ThreeWayStatus};
 use crate::models::diff_line::{DiffResult, LineStatus};
@@ -113,9 +113,10 @@ pub fn build_pane_buffers_2way(
                 right_row_to_line.push(Some(right_line_to_row.len()));
                 right_line_to_row.push(row_idx);
             }
-            LineStatus::Added => {
-                // Right-only: left gets a ghost row
+            LineStatus::Added | LineStatus::Moved if line.left_line_no.is_none() => {
+                // Right-only (or the "added" half of a moved pair): left gets a ghost row
                 let right_ln = line.right_line_no.unwrap();
+                let status = line.status.as_i32();
                 left_rows.push(PaneLineData {
                     line_no: SharedString::default(),
                     text: SharedString::default(),
@@ -132,7 +133,7 @@ pub fn build_pane_buffers_2way(
                     line_no: SharedString::from(right_ln.to_string()),
                     text: SharedString::from(expand_tabs(&line.right_text, tab_width)),
                     is_ghost: false,
-                    status: STATUS_ADDED,
+                    status,
                     diff_index,
                     word_diff: SharedString::default(),
                     is_current_diff: false,
@@ -145,14 +146,15 @@ pub fn build_pane_buffers_2way(
                 right_row_to_line.push(Some(right_line_to_row.len()));
                 right_line_to_row.push(row_idx);
             }
-            LineStatus::Removed => {
-                // Left-only: right gets a ghost row
+            LineStatus::Removed | LineStatus::Moved if line.right_line_no.is_none() => {
+                // Left-only (or the "removed" half of a moved pair): right gets a ghost row
                 let left_ln = line.left_line_no.unwrap();
+                let status = line.status.as_i32();
                 left_rows.push(PaneLineData {
                     line_no: SharedString::from(left_ln.to_string()),
                     text: SharedString::from(expand_tabs(&line.left_text, tab_width)),
                     is_ghost: false,
-                    status: STATUS_REMOVED,
+                    status,
                     diff_index,
                     word_diff: SharedString::default(),
                     is_current_diff: false,
@@ -210,6 +212,14 @@ pub fn build_pane_buffers_2way(
                 left_line_to_row.push(row_idx);
                 right_row_to_line.push(Some(right_line_to_row.len()));
                 right_line_to_row.push(row_idx);
+            }
+            // Unreachable per diff engine invariants (Added always has left_line_no
+            // == None, Removed always has right_line_no == None), but the guarded
+            // arms above don't count toward exhaustiveness, so rustc needs this.
+            LineStatus::Added | LineStatus::Removed => {
+                unreachable!(
+                    "Added must have left_line_no == None and Removed must have right_line_no == None"
+                )
             }
         }
     }
@@ -548,6 +558,63 @@ mod tests {
         assert_ne!(
             left_out, left,
             "round-tripped text no longer matches the original file contents"
+        );
+    }
+
+    // What: with `detect_moved_lines` enabled, a block that moved position
+    // between left and right is reported by the diff engine as a `Moved` pair
+    // where one half keeps `left_line_no == None` (the former Added line) and
+    // the other keeps `right_line_no == None` (the former Removed line).
+    // `build_pane_buffers_2way` must place a ghost row on the side missing a
+    // line number instead of unwrapping it, must not panic, must preserve the
+    // real text on both sides through `extract_real_lines`, must render the
+    // moved half as status 4, and must keep every ghost row's text empty.
+    #[test]
+    fn detect_moved_lines_produces_ghost_rows_without_panicking() {
+        let opts = DiffOptions {
+            detect_moved_lines: true,
+            ..Default::default()
+        };
+        let left = "alpha\nbravo\ncharlie\ndelta\necho\nfoxtrot\ngolf\nhotel\n";
+        let right = "alpha\nbravo\nfoxtrot\ngolf\ncharlie\ndelta\necho\nhotel\n";
+        let result = compute_diff_with_options(left, right, &opts);
+
+        assert!(
+            result.lines.iter().any(|l| l.status == LineStatus::Moved),
+            "test input must produce at least one Moved line for this test to be meaningful"
+        );
+
+        let (left_buf, right_buf) = build_pane_buffers_2way(&result, &[], &[], 4);
+
+        assert_eq!(
+            extract_real_lines(&left_buf),
+            left,
+            "left buffer must reconstruct the original left text"
+        );
+        assert_eq!(
+            extract_real_lines(&right_buf),
+            right,
+            "right buffer must reconstruct the original right text"
+        );
+
+        let mut found_moved_status = false;
+        for buf in [&left_buf, &right_buf] {
+            for i in 0..buf.model.row_count() {
+                let row = buf.model.row_data(i).unwrap();
+                if row.is_ghost {
+                    assert_eq!(
+                        row.text.as_str(),
+                        "",
+                        "ghost rows must never carry the copied counterpart text"
+                    );
+                } else if row.status == 4 {
+                    found_moved_status = true;
+                }
+            }
+        }
+        assert!(
+            found_moved_status,
+            "at least one non-ghost row must show the Moved status (4)"
         );
     }
 }
