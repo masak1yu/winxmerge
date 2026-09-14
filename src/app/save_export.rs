@@ -76,19 +76,21 @@ pub fn collect_pending_saves(
             // ponytail: same provisional guard as save_file (see its comment for
             // the full rationale) — this "Save All" path (used on quit) never
             // calls save_file, so it needs its own copy of the check, keyed off
-            // this tab's own diff_options rather than state.current_tab().
-            // Skipping here — without touching queue or has_unsaved_changes —
-            // leaves the tab's in-memory edits unsaved. If this runs from
-            // on_quit_save_all (src/main.rs), the app proceeds to exit anyway and
-            // those edits are lost. That's an accepted tradeoff: an unsaved
-            // in-app edit is recoverable in principle (redo the edit), a file
-            // silently truncated on disk is not. Stopping the quit itself would
-            // mean touching src/main.rs's quit flow, out of scope here.
-            if state.tabs[i].diff_options.ignore_blank_lines
-                || !state.tabs[i].diff_options.line_filters.is_empty()
-            {
+            // this tab's own TabState rather than state.current_tab(). The check
+            // itself lives in TabState::save_blocked_by_hidden_lines, which also
+            // covers the F9 case: options toggled off after an edit made while
+            // they were on still leaves hidden_lines_dropped set (Gotcha 3 —
+            // rescan-from-VecModel can't un-drop lines already missing from the
+            // buffers). Skipping here — without touching queue or
+            // has_unsaved_changes — leaves the tab's in-memory edits unsaved. If
+            // this runs from on_quit_save_all (src/main.rs), the app proceeds to
+            // exit anyway and those edits are lost. That's an accepted tradeoff:
+            // an unsaved in-app edit is recoverable in principle (redo the edit),
+            // a file silently truncated on disk is not. Stopping the quit itself
+            // would mean touching src/main.rs's quit flow, out of scope here.
+            if state.tabs[i].save_blocked_by_hidden_lines() {
                 window.set_status_text(SharedString::from(format!(
-                    "Save blocked for \"{}\": turn off \"Ignore blank lines\" and clear line filters first — saving now could permanently delete lines that were hidden from comparison (#63)",
+                    "Save blocked for \"{}\": turn off \"Ignore blank lines\" and clear line filters first — saving now could permanently delete lines that were hidden from comparison (#63). If you edited while the option was on, close without saving and reopen the files instead.",
                     state.tabs[i].title
                 )));
                 continue;
@@ -525,14 +527,18 @@ pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
     // can't tell whether this compare actually dropped any lines — DiffResult
     // (src/models/diff_line.rs) keeps only lines/diff_count/diff_positions, and
     // normalize_text's line-number map is gone by the time compute_diff_with_options
-    // returns — so we block on the toggle alone, whether or not a line was
-    // actually lost. A false block just needs the toggle turned off to recover;
-    // a false save is unrecoverable, so we bias toward blocking. The real fix
-    // (carry dropped lines through via a new LineStatus variant instead of
-    // discarding them) is planned for v0.52.
-    if tab.diff_options.ignore_blank_lines || !tab.diff_options.line_filters.is_empty() {
+    // returns — so TabState::save_blocked_by_hidden_lines blocks on the toggle
+    // alone, whether or not a line was actually lost, OR on hidden_lines_dropped
+    // still being set from an earlier diff on these buffers (F9: toggling the
+    // option off doesn't undo a drop already baked into the PaneBuffers — see
+    // that method's doc comment). A false block just needs the toggle turned
+    // off (and, for F9, a close-and-reopen) to recover; a false save is
+    // unrecoverable, so we bias toward blocking. The real fix (carry dropped
+    // lines through via a new LineStatus variant instead of discarding them)
+    // is planned for v0.52.
+    if tab.save_blocked_by_hidden_lines() {
         window.set_status_text(SharedString::from(
-            "Save blocked: turn off \"Ignore blank lines\" and clear line filters first — saving now could permanently delete lines that were hidden from comparison (#63)",
+            "Save blocked: turn off \"Ignore blank lines\" and clear line filters first — saving now could permanently delete lines that were hidden from comparison (#63). If you edited while the option was on, close without saving and reopen the files instead.",
         ));
         return;
     }

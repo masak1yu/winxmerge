@@ -19,6 +19,10 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
         Some(b) => b,
         None => return,
     };
+    // Fresh bytes from disk — any lines previously dropped by ignore_blank_lines/
+    // line_filters (#63) are gone from that snapshot. apply_diff_result below
+    // will re-set this if the diff it runs (sync or async) still uses those options.
+    state.current_tab_mut().hidden_lines_dropped = false;
 
     // A tab already forced into Hex (Recompare As / folder "Compare as Hex" /
     // CLI /t Binary) stays Hex on rescan/reload, skipping the ZIP/Excel/CSV/
@@ -241,6 +245,13 @@ pub(super) fn apply_diff_result(
     let tab = state.current_tab_mut();
     tab.is_computing = false;
     tab.editing_dirty = false;
+    // ponytail: only ever sets true here, never clears — a rescan-from-VecModel
+    // (Gotcha 3) rebuilds these same already-reduced PaneBuffers even after the
+    // options are toggled off, so the drop from an earlier diff still applies.
+    // Only a fresh disk read (run_diff/new_blank_text) clears it.
+    if tab.diff_options.ignore_blank_lines || !tab.diff_options.line_filters.is_empty() {
+        tab.hidden_lines_dropped = true;
+    }
 
     let current_diff = if result.diff_positions.is_empty() {
         -1

@@ -14,10 +14,12 @@ pub(super) fn push_undo_snapshot(state: &mut AppState) {
         .as_ref()
         .map(|b| extract_real_lines(b))
         .unwrap_or_else(|| "\n".to_string());
+    let hidden_lines_dropped = tab.hidden_lines_dropped;
     let tab = state.current_tab_mut();
     tab.undo_stack.push(TextSnapshot {
         left_text,
         right_text,
+        hidden_lines_dropped,
     });
     tab.redo_stack.clear();
 }
@@ -45,15 +47,24 @@ pub fn undo(window: &MainWindow, state: &mut AppState) {
         .as_ref()
         .map(|b| extract_real_lines(b))
         .unwrap_or_else(|| "\n".to_string());
+    let current_hidden_lines_dropped = tab.hidden_lines_dropped;
     tab.redo_stack.push(TextSnapshot {
         left_text: current_left,
         right_text: current_right,
+        hidden_lines_dropped: current_hidden_lines_dropped,
     });
 
     let Some(snapshot) = tab.undo_stack.pop() else {
         return;
     };
     recompute_diff_from_text(window, state, &snapshot.left_text, &snapshot.right_text);
+
+    // OR (not assign): the restored snapshot may have been taken while lines
+    // were being dropped even though a later reload (run_diff) since cleared
+    // the tab's flag — a snapshot with the flag false must never clear a flag
+    // the tab already carries from elsewhere.
+    let tab = state.current_tab_mut();
+    tab.hidden_lines_dropped |= snapshot.hidden_lines_dropped;
 
     let tab = state.current_tab();
     window.set_can_undo(!tab.undo_stack.is_empty());
@@ -84,15 +95,22 @@ pub fn redo(window: &MainWindow, state: &mut AppState) {
         .as_ref()
         .map(|b| extract_real_lines(b))
         .unwrap_or_else(|| "\n".to_string());
+    let current_hidden_lines_dropped = tab.hidden_lines_dropped;
     tab.undo_stack.push(TextSnapshot {
         left_text: current_left,
         right_text: current_right,
+        hidden_lines_dropped: current_hidden_lines_dropped,
     });
 
     let Some(snapshot) = tab.redo_stack.pop() else {
         return;
     };
     recompute_diff_from_text(window, state, &snapshot.left_text, &snapshot.right_text);
+
+    // OR (not assign): same rationale as undo() above — don't let a
+    // false-flag snapshot clear a flag the tab already carries.
+    let tab = state.current_tab_mut();
+    tab.hidden_lines_dropped |= snapshot.hidden_lines_dropped;
 
     let tab = state.current_tab();
     window.set_can_undo(!tab.undo_stack.is_empty());
@@ -631,6 +649,7 @@ pub fn new_blank_text(window: &MainWindow, state: &mut AppState) {
         tab.diff_stats = String::new();
         tab.has_unsaved_changes = false;
         tab.editing_dirty = false;
+        tab.hidden_lines_dropped = false;
         tab.left_encoding = "UTF-8".to_string();
         tab.right_encoding = "UTF-8".to_string();
         tab.left_eol_type = "LF".to_string();
