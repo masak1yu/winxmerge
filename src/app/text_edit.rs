@@ -490,6 +490,19 @@ pub fn edit_line(
 
     push_undo_snapshot(state);
 
+    // F7: not just sync_pane_row_text — a row left as ghost is skipped on save.
+    {
+        let tab = state.current_tab_mut();
+        let buf = if is_left {
+            tab.left_buffer.as_mut()
+        } else {
+            tab.right_buffer.as_mut()
+        };
+        if let Some(b) = buf {
+            materialize_ghost(b, line_index as usize);
+        }
+    }
+
     // Update PaneBuffer row text (authoritative source)
     {
         let tab = state.current_tab();

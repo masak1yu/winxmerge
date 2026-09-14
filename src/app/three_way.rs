@@ -551,6 +551,18 @@ pub fn three_way_edit_line(
     if row_index < 0 {
         return;
     }
+    {
+        let tab = state.current_tab_mut();
+        let buf_opt = match pane {
+            0 => tab.left_buffer.as_mut(),
+            1 => tab.middle_buffer.as_mut(),
+            _ => tab.right_buffer.as_mut(),
+        };
+        // F7: not just sync_pane_row_text — a row left as ghost is skipped on save.
+        if let Some(buf) = buf_opt {
+            materialize_ghost(buf, row_index as usize);
+        }
+    }
     let tab = state.current_tab();
     let buf_opt = match pane {
         0 => &tab.left_buffer,

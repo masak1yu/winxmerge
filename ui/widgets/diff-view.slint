@@ -389,7 +389,7 @@ export component DiffView inherits Rectangle {
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
                         word-diff: root.show-word-diff ? line.word-diff : "";
-                        editable: root.inline-edit-enabled && !line.is-ghost;
+                        editable: root.inline-edit-enabled;
                         word-wrap-mode: root.word-wrap-mode;
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-row;
                         focus-at-end: root.focus-left-at-end;
@@ -444,7 +444,7 @@ export component DiffView inherits Rectangle {
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
                         word-diff: root.show-word-diff ? line.word-diff : "";
-                        editable: root.inline-edit-enabled && !line.is-ghost;
+                        editable: root.inline-edit-enabled;
                         word-wrap-mode: root.word-wrap-mode;
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-right-row;
                         focus-at-end: root.focus-right-at-end;

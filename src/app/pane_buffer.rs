@@ -446,6 +446,21 @@ pub fn sync_pane_row_text(buffer: &Option<PaneBuffer>, row_idx: usize, new_text:
     }
 }
 
+/// Turn the ghost row at `idx` into a real (saved) line. Returns false when
+/// the row is missing or already real.
+pub fn materialize_ghost(buffer: &mut PaneBuffer, idx: usize) -> bool {
+    let Some(mut row) = buffer.model.row_data(idx) else {
+        return false;
+    };
+    if !row.is_ghost {
+        return false;
+    }
+    row.is_ghost = false;
+    buffer.model.set_row_data(idx, row);
+    renumber_pane_buffer(buffer);
+    true
+}
+
 /// What deleting the empty row at some index should do to its own pane and
 /// the aligned row in the sibling pane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -814,5 +829,46 @@ mod tests {
 
         assert_eq!(left_buf.model.row_count(), left_before - 1);
         assert_eq!(right_buf.model.row_count(), right_before - 1);
+    }
+
+    // What: typing into a ghost row (F7) promotes it to a real line via
+    // `materialize_ghost`, after which syncing text into it makes the text
+    // show up in `extract_real_lines` and the row count `line_to_row`
+    // tracks. A second `materialize_ghost` on the now-real row, and one on
+    // a row that was always real, both report failure and change nothing.
+    #[test]
+    fn materialize_ghost_turns_ghost_row_into_saved_line() {
+        let result = DiffResult {
+            lines: vec![
+                diff_line(Some(1), Some(1), "keep1", "keep1", LineStatus::Equal),
+                // Added: left has no line here, so build_pane_buffers_2way
+                // places a ghost row on the left.
+                diff_line(None, Some(2), "", "added", LineStatus::Added),
+                diff_line(Some(2), Some(3), "keep2", "keep2", LineStatus::Equal),
+            ],
+            diff_count: 1,
+            diff_positions: vec![1],
+        };
+        let (mut left_buf, _right_buf) = build_pane_buffers_2way(&result, &[], &[], 4);
+        assert!(left_buf.model.row_data(1).unwrap().is_ghost);
+
+        assert!(materialize_ghost(&mut left_buf, 1));
+
+        // sync_pane_row_text takes &Option<PaneBuffer>; wrap temporarily.
+        let wrapped = Some(left_buf);
+        sync_pane_row_text(&wrapped, 1, "typed");
+        let mut left_buf = wrapped.unwrap();
+
+        assert_eq!(extract_real_lines(&left_buf), "keep1\ntyped\nkeep2\n");
+        assert_eq!(left_buf.line_to_row.len(), 3);
+
+        assert!(
+            !materialize_ghost(&mut left_buf, 1),
+            "row is already real; second call must be a no-op"
+        );
+        assert!(
+            !materialize_ghost(&mut left_buf, 0),
+            "row 0 was never a ghost"
+        );
     }
 }
