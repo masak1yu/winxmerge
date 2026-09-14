@@ -156,6 +156,7 @@ export component MainWindow inherits Window {
     preferred-height: 800px;
     min-width: 600px;
     min-height: 400px;
+    forward-focus: shortcuts;
 
     // Per-pane independent buffer properties
     in-out property <[PaneLineData]> left-lines;
@@ -362,8 +363,6 @@ export component MainWindow inherits Window {
     // File > Recompare As > Hex/Normal (true = Hex, false = Normal/auto-detect)
     callback recompare-as(bool);
     // /e — let Esc close the window. Off unless the CLI asked for it.
-    // ponytail: handled by the shortcut FocusScope below, so Esc does nothing while a
-    // pane TextInput holds focus — same limitation the existing Cmd+S / F5 shortcuts have.
     in-out property <bool> esc-closes: false;
     callback request-close();
 
@@ -788,6 +787,89 @@ export component MainWindow inherits Window {
         }
     }
 
+    // F1: not a 0x0 sibling FocusScope — keys only reach the focused item and its ancestors. Layout body below keeps its old indent to keep the diff small.
+    shortcuts := FocusScope {
+        // Cmd+Z and Alt+arrows: not in key-pressed — the row TextInput consumes them first (its own undo, Up/Down focus moves).
+        capture-key-pressed(event) => {
+            if (event.modifiers.meta || event.modifiers.control) && (event.text == "z" || event.text == "Z") {
+                if event.modifiers.shift {
+                    root.redo();
+                } else {
+                    root.undo();
+                }
+                return accept;
+            }
+            // Alt + arrow for diff navigation
+            if event.modifiers.alt {
+                if event.text == Key.DownArrow {
+                    root.next-diff();
+                    return accept;
+                }
+                if event.text == Key.UpArrow {
+                    root.prev-diff();
+                    return accept;
+                }
+                if event.text == Key.Home {
+                    root.first-diff();
+                    return accept;
+                }
+                if event.text == Key.End {
+                    root.last-diff();
+                    return accept;
+                }
+            }
+            return reject;
+        }
+        key-pressed(event) => {
+            // Cmd/Ctrl modifier
+            if event.modifiers.meta || event.modifiers.control {
+                if event.text == "s" {
+                    if root.has-unsaved-changes {
+                        root.save-left();
+                    }
+                    return accept;
+                }
+                if event.text == "f" {
+                    root.show-search = !root.show-search;
+                    return accept;
+                }
+                if event.text == "t" {
+                    root.new-tab();
+                    return accept;
+                }
+                if event.text == "w" {
+                    root.close-tab(root.active-tab-index);
+                    return accept;
+                }
+                if event.text == "n" {
+                    root.request-action(5);
+                    return accept;
+                }
+                if event.text == "g" {
+                    root.show-goto-dialog = true;
+                    return accept;
+                }
+                if event.text == "m" {
+                    root.toggle-bookmark(root.current-diff-index);
+                    return accept;
+                }
+            }
+            // F2 for next bookmark
+            if event.text == Key.F2 {
+                root.next-bookmark();
+                return accept;
+            }
+            // F5 for rescan
+            if event.text == Key.F5 {
+                root.rescan();
+                return accept;
+            }
+            if event.text == Key.Escape && root.esc-closes {
+                root.request-close();
+                return accept;
+            }
+            return reject;
+        }
     VerticalLayout {
         // Tab bar (hidden only on initial blank screen with single tab)
         if root.view-mode != 7 || root.tab-list.length > 1 : TabBar {
@@ -2044,88 +2126,6 @@ export component MainWindow inherits Window {
             }
         }
     }
-
-    // Keyboard shortcuts
-    FocusScope {
-        width: 0;
-        height: 0;
-        key-pressed(event) => {
-            // Cmd/Ctrl modifier
-            if event.modifiers.meta || event.modifiers.control {
-                if event.text == "s" {
-                    if root.has-unsaved-changes {
-                        root.save-left();
-                    }
-                    return accept;
-                }
-                if event.text == "f" {
-                    root.show-search = !root.show-search;
-                    return accept;
-                }
-                if event.text == "z" {
-                    if event.modifiers.shift {
-                        root.redo();
-                    } else {
-                        root.undo();
-                    }
-                    return accept;
-                }
-                if event.text == "t" {
-                    root.new-tab();
-                    return accept;
-                }
-                if event.text == "w" {
-                    root.close-tab(root.active-tab-index);
-                    return accept;
-                }
-                if event.text == "n" {
-                    root.request-action(5);
-                    return accept;
-                }
-                if event.text == "g" {
-                    root.show-goto-dialog = true;
-                    return accept;
-                }
-                if event.text == "m" {
-                    root.toggle-bookmark(root.current-diff-index);
-                    return accept;
-                }
-            }
-            // Alt + arrow for diff navigation
-            if event.modifiers.alt {
-                if event.text == Key.DownArrow {
-                    root.next-diff();
-                    return accept;
-                }
-                if event.text == Key.UpArrow {
-                    root.prev-diff();
-                    return accept;
-                }
-                if event.text == Key.Home {
-                    root.first-diff();
-                    return accept;
-                }
-                if event.text == Key.End {
-                    root.last-diff();
-                    return accept;
-                }
-            }
-            // F2 for next bookmark
-            if event.text == Key.F2 {
-                root.next-bookmark();
-                return accept;
-            }
-            // F5 for rescan
-            if event.text == Key.F5 {
-                root.rescan();
-                return accept;
-            }
-            if event.text == Key.Escape && root.esc-closes {
-                root.request-close();
-                return accept;
-            }
-            return reject;
-        }
     }
 
     // Options dialog
