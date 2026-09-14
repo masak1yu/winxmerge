@@ -386,11 +386,6 @@ export component OptionsDialog inherits Rectangle {
                     toggled => { root.opt-show-line-numbers = self.checked; }
                 }
                 CheckBox {
-                    text: @tr("Word wrap");
-                    checked: root.opt-word-wrap;
-                    toggled => { root.opt-word-wrap = self.checked; }
-                }
-                CheckBox {
                     text: @tr("Syntax highlighting");
                     checked: root.opt-syntax-highlighting;
                     toggled => { root.opt-syntax-highlighting = self.checked; }

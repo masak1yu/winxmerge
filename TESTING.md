@@ -60,7 +60,6 @@
 - [ ] View → Word Diff をONにすると、変更行の中で実際に異なる単語だけが強調表示され、行全体ではなく単語単位のハイライトになる
 - [ ] View → Diff Only をONにすると、差分のない行が畳まれて非表示になり、差分のある行の前後だけが表示される
 - [ ] View → Diff Detail Pane をONにすると、現在選択中の差分の詳細（変更前後のテキストなど）を表示する専用ペインが開く
-- [ ] View → Wrap Lines をONにすると、長い行がペイン幅で折り返して表示され、水平スクロールバーが消える
 - [ ] Merge → First Difference / Previous Difference / Next Difference / Last Difference をそれぞれクリックし、現在の差分がその通りに移動する（3件以上差分があるファイルペアで確認する）
 - [ ] Alt+↓（次）/ Alt+↑（前）/ Alt+Home（最初）/ Alt+End（最後）のキー操作でも同様に差分間を移動できる
 - [ ] ツールバーの先頭/前/次/末尾ボタン（Merge menuと同じ4操作）でも同様に移動できる

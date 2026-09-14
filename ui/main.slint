@@ -721,11 +721,6 @@ export component MainWindow inherits Window {
                 enabled: root.view-mode == 0;
                 activated => { root.opt-diff-only = !root.opt-diff-only; }
             }
-            MenuItem {
-                title: root.opt-word-wrap ? @tr("✓ Wrap Lines") : @tr("  Wrap Lines");
-                enabled: root.view-mode == 0;
-                activated => { root.opt-word-wrap = !root.opt-word-wrap; }
-            }
             MenuSeparator {}
             MenuItem {
                 title: @tr("Zoom In");
@@ -1163,7 +1158,8 @@ export component MainWindow inherits Window {
             show-line-numbers: root.opt-show-line-numbers;
             show-location-pane: root.show-location-pane;
             show-word-diff: root.show-word-diff;
-            word-wrap-mode: root.opt-word-wrap;
+            // F5: not opt-word-wrap — its UI is gone, and a true left in settings.json would lock the viewport width and hide long lines.
+            word-wrap-mode: false;
             // Suppress diff-only and status-filter when no files are loaded (blank new doc)
             diff-only-mode: root.opt-diff-only && (root.left-path != "" || root.right-path != "");
             diff-status-filter: (root.left-path != "" || root.right-path != "") ? root.diff-status-filter : 0;
