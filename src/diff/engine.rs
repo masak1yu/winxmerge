@@ -348,12 +348,12 @@ pub(super) fn normalize_text(text: &str, options: &DiffOptions) -> (String, Vec<
 
     let mut result = String::with_capacity(text.len());
     let mut map: Vec<usize> = Vec::new();
-    for (orig_idx, line) in text.lines().enumerate() {
-        let mut l = if options.ignore_eol {
-            line.trim_end_matches(['\r', '\n']).to_string()
-        } else {
-            line.to_string()
-        };
+    // F11: not lines() — it strips \r, so CRLF always matched LF. split_inclusive
+    // yields the same line count, so orig_idx still lines up with the display lines.
+    for (orig_idx, piece) in text.split_inclusive('\n').enumerate() {
+        let piece = piece.strip_suffix('\n').unwrap_or(piece);
+        let had_cr = piece.ends_with('\r');
+        let mut l = piece.strip_suffix('\r').unwrap_or(piece).to_string();
         if options.ignore_blank_lines && l.trim().is_empty() {
             continue;
         }
@@ -372,6 +372,11 @@ pub(super) fn normalize_text(text: &str, options: &DiffOptions) -> (String, Vec<
         }
         if options.ignore_case {
             l = l.to_lowercase();
+        }
+        // Reattach the \r after all other processing so ignore_whitespace/
+        // ignore_case/filters can't accidentally eat it or hide the EOL diff.
+        if !options.ignore_eol && had_cr {
+            l.push('\r');
         }
         result.push_str(&l);
         result.push('\n');
@@ -466,6 +471,26 @@ mod tests {
         };
         let result = compute_diff_with_options("Hello\n", "hello\n", &opts);
         assert_eq!(result.diff_count, 0);
+    }
+
+    #[test]
+    fn test_ignore_eol_crlf_vs_lf() {
+        // What: CRLF differs from LF unless ignore_eol is on (F11).
+        let left = "a\r\nb\r\n";
+        let right = "a\nb\n";
+
+        let default_result = compute_diff_with_options(left, right, &DiffOptions::default());
+        assert!(default_result.diff_count > 0);
+
+        let ignore_eol_result = compute_diff_with_options(
+            left,
+            right,
+            &DiffOptions {
+                ignore_eol: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(ignore_eol_result.diff_count, 0);
     }
 
     #[test]

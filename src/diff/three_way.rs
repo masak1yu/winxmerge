@@ -123,9 +123,10 @@ pub fn compute_three_way_diff_with_options(
     let (base_norm, _) = normalize_text(base_text, &opts);
     let (left_norm, _) = normalize_text(left_text, &opts);
     let (right_norm, _) = normalize_text(right_text, &opts);
-    let base_norm_lines: Vec<&str> = base_norm.lines().collect();
-    let left_norm_lines: Vec<&str> = left_norm.lines().collect();
-    let right_norm_lines: Vec<&str> = right_norm.lines().collect();
+    // F11: not lines() — it strips the \r normalize_text keeps when !ignore_eol.
+    let base_norm_lines: Vec<&str> = base_norm.split_terminator('\n').collect();
+    let left_norm_lines: Vec<&str> = left_norm.split_terminator('\n').collect();
+    let right_norm_lines: Vec<&str> = right_norm.split_terminator('\n').collect();
 
     // Step 1: Two pairwise 2-way diffs (base is "old" in both), run on the
     // normalized text so ignore-whitespace/case/eol take effect.
@@ -1137,6 +1138,56 @@ mod tests {
             },
         );
         assert_eq!(ignore_case_result.lines[0].status, ThreeWayStatus::Equal);
+    }
+
+    #[test]
+    fn test_ignore_eol_no_conflict() {
+        // What: a CRLF-only change on the right is a real change unless ignore_eol is on (F11).
+        let base = "abc\n";
+        let left = "abc\n";
+        let right = "abc\r\n";
+
+        let default_result =
+            compute_three_way_diff_with_options(base, left, right, &DiffOptions::default());
+        assert_eq!(default_result.lines[0].status, ThreeWayStatus::RightChanged);
+
+        let ignore_eol_result = compute_three_way_diff_with_options(
+            base,
+            left,
+            right,
+            &DiffOptions {
+                ignore_eol: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(ignore_eol_result.lines[0].status, ThreeWayStatus::Equal);
+    }
+
+    #[test]
+    fn test_same_change_with_different_eol_conflicts() {
+        // What: both sides make the same edit but one uses CRLF — a conflict
+        // unless ignore_eol is on (F11).
+        let base = "abc\n";
+        let left = "xyz\n";
+        let right = "xyz\r\n";
+
+        let default_result =
+            compute_three_way_diff_with_options(base, left, right, &DiffOptions::default());
+        assert_eq!(default_result.lines[0].status, ThreeWayStatus::Conflict);
+
+        let ignore_eol_result = compute_three_way_diff_with_options(
+            base,
+            left,
+            right,
+            &DiffOptions {
+                ignore_eol: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            ignore_eol_result.lines[0].status,
+            ThreeWayStatus::BothChanged
+        );
     }
 
     #[test]
