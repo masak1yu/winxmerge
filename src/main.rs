@@ -404,9 +404,10 @@ fn main() {
         let browse_ctx = browse_ctx.clone();
         window.on_save_and_proceed(move |left_choice, right_choice| {
             let window = window_weak.unwrap();
-            {
+            let blocked = {
                 let mut s = state.borrow_mut();
                 let vm = s.current_tab().view_mode;
+                let mut attempted_2way_save = false;
                 if left_choice == 0 {
                     if vm.is_table_mode() {
                         save_table_file(&window, &mut s, 0);
@@ -414,6 +415,7 @@ fn main() {
                         save_three_way_pane(&window, &mut s, 0);
                     } else {
                         save_file(&window, &mut s, true);
+                        attempted_2way_save = true;
                     }
                 }
                 if right_choice == 0 {
@@ -423,8 +425,16 @@ fn main() {
                         save_three_way_pane(&window, &mut s, 2);
                     } else {
                         save_file(&window, &mut s, false);
+                        attempted_2way_save = true;
                     }
                 }
+                // F14: not discard_and_proceed() — a blocked save_file only posts
+                // the #63 status, so proceeding would drop the edits.
+                attempted_2way_save && s.current_tab().save_blocked_by_hidden_lines()
+            };
+            if blocked {
+                window.set_pending_action(0);
+                return;
             }
             let ww = window.as_weak();
             let bc = browse_ctx.clone();
@@ -478,6 +488,15 @@ fn main() {
             } else {
                 save_file(&window, &mut s, true);
                 save_file(&window, &mut s, false);
+                // F14: not force_close_tab() — a blocked save_file only posts
+                // the #63 status, so closing would drop the edits.
+                if s.tabs
+                    .get(idx as usize)
+                    .is_some_and(|t| t.save_blocked_by_hidden_lines())
+                {
+                    s.active_tab = prev_active;
+                    return;
+                }
             }
             if let Some(tab) = s.tabs.get_mut(idx as usize) {
                 tab.has_unsaved_changes = false;
