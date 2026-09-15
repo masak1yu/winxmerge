@@ -217,8 +217,7 @@ A cross-platform file diff comparison and merge tool inspired by WinMerge, built
 
 ### View Menu Enhancements
 - **Zoom In / Zoom Out / Reset Zoom**: adjust editor font size from the View menu (range 8–32pt)
-- **Wrap Lines**: toggle line wrapping at the window edge (View → Wrap Lines, default off)
-- Row height adapts to font size in both normal and wrap modes
+- Row height adapts to font size
 
 ### Window Resizing
 - Window is now properly resizable (initial size 1200×800, minimum 600×400)

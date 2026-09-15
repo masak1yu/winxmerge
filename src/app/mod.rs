@@ -100,6 +100,11 @@ pub struct PendingDiffResult {
 pub(crate) struct TextSnapshot {
     pub(crate) left_text: String,
     pub(crate) right_text: String,
+    /// The tab's `hidden_lines_dropped` at the moment this snapshot was taken.
+    /// Restoring this snapshot ORs it back into the tab (see undo()/redo()) so
+    /// that a reload's fresh-read clear (run_diff) can't un-drop lines an old
+    /// undo entry is about to bring back.
+    pub(crate) hidden_lines_dropped: bool,
 }
 
 /// Snapshot for table undo/redo (stores cell texts as grids)
@@ -133,6 +138,12 @@ pub struct TabState {
     pub has_unsaved_changes: bool,
     // True after any inline edit; cleared on rescan/compare
     pub editing_dirty: bool,
+    /// True once a diff computed on this tab's current PaneBuffers used
+    /// `ignore_blank_lines` or non-empty `line_filters` and therefore may have
+    /// dropped lines from the buffers (#63). Stays true across a later option
+    /// toggle-off + rescan-from-VecModel (Gotcha 3) because that rebuild still
+    /// reads the already-reduced buffers — only a fresh disk read clears it.
+    pub hidden_lines_dropped: bool,
     // Undo/Redo
     pub(crate) undo_stack: Vec<TextSnapshot>,
     pub(crate) redo_stack: Vec<TextSnapshot>,
@@ -229,6 +240,7 @@ impl TabState {
             current_diff: -1,
             has_unsaved_changes: false,
             editing_dirty: false,
+            hidden_lines_dropped: false,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             left_folder: None,
@@ -284,6 +296,16 @@ impl TabState {
             table_redo_stack: Vec::new(),
             hex_rows: ModelRc::default(),
         }
+    }
+
+    /// True when saving this tab's PaneBuffers to disk could silently delete
+    /// lines (#63): either the current options would drop lines on the next
+    /// diff, or a past diff on these buffers already dropped some and no
+    /// fresh disk read has happened since (see `hidden_lines_dropped`).
+    pub fn save_blocked_by_hidden_lines(&self) -> bool {
+        self.diff_options.ignore_blank_lines
+            || !self.diff_options.line_filters.is_empty()
+            || self.hidden_lines_dropped
     }
 }
 
@@ -348,3 +370,68 @@ pub use tab::*;
 pub use table::*;
 pub use text_edit::*;
 pub use three_way::*;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // What: saving is allowed only when both diff options that drop lines
+    // are off AND no past diff on this tab's buffers already dropped lines
+    // (#63) — each of the three conditions alone must block the save.
+    #[test]
+    fn save_blocked_by_hidden_lines_truth_table() {
+        let mut tab = TabState::new();
+        assert!(
+            !tab.save_blocked_by_hidden_lines(),
+            "all clear: options off and nothing dropped"
+        );
+
+        tab.diff_options.ignore_blank_lines = true;
+        assert!(
+            tab.save_blocked_by_hidden_lines(),
+            "ignore_blank_lines alone must block"
+        );
+        tab.diff_options.ignore_blank_lines = false;
+
+        tab.diff_options.line_filters = vec!["^#".to_string()];
+        assert!(
+            tab.save_blocked_by_hidden_lines(),
+            "a non-empty line_filters alone must block"
+        );
+        tab.diff_options.line_filters.clear();
+
+        tab.hidden_lines_dropped = true;
+        assert!(
+            tab.save_blocked_by_hidden_lines(),
+            "hidden_lines_dropped alone must block, even with options now off"
+        );
+        tab.hidden_lines_dropped = false;
+
+        assert!(
+            !tab.save_blocked_by_hidden_lines(),
+            "clearing all three conditions must unblock the save"
+        );
+    }
+
+    // What: push_undo_snapshot (the one pure seam here that needs no
+    // MainWindow) captures the tab's hidden_lines_dropped at push time, so an
+    // old undo entry taken while lines were being dropped keeps that fact even
+    // after a later reload clears the tab's own flag. undo()/redo() restoring
+    // a snapshot and OR-ing the flag back in requires a MainWindow (they call
+    // recompute_diff_from_text), so that half is left to manual E2E.
+    #[test]
+    fn push_undo_snapshot_captures_hidden_lines_dropped_flag() {
+        let mut state = AppState::new();
+        state.current_tab_mut().hidden_lines_dropped = true;
+        push_undo_snapshot(&mut state);
+        let snapshot = state
+            .current_tab()
+            .undo_stack
+            .last()
+            .expect("push_undo_snapshot must push a snapshot");
+        assert!(
+            snapshot.hidden_lines_dropped,
+            "snapshot must carry the flag as it was at push time"
+        );
+    }
+}

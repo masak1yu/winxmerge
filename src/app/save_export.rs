@@ -3,12 +3,15 @@ use super::*;
 /// Save all tabs with unsaved changes.
 /// Tabs with file paths are auto-saved. Tabs without paths prompt for a filename via dialog.
 /// Sync VecModel, auto-save tabs with paths, and return a queue of
-/// (tab_index, is_left, text, encoding) for pathless sides needing a Save As dialog.
+/// (tab_index, is_left, text, encoding) for pathless sides needing a Save As dialog,
+/// plus whether any tab's save was blocked by `save_blocked_by_hidden_lines` (#63/F13) —
+/// the caller (on_quit_save_all in src/main.rs) must not proceed to quit when true.
 pub fn collect_pending_saves(
     window: &MainWindow,
     state: &mut AppState,
-) -> Vec<(usize, i32, String, String)> {
+) -> (Vec<(usize, i32, String, String)>, bool) {
     let mut queue = Vec::new();
+    let mut blocked_titles: Vec<String> = Vec::new();
     let n = state.tabs.len();
     for i in 0..n {
         if !state.tabs[i].has_unsaved_changes {
@@ -72,6 +75,22 @@ pub fn collect_pending_saves(
             }
         } else {
             // 2-way tab: extract text from PaneBuffers (authoritative source)
+
+            // ponytail: same provisional guard as save_file (see its comment for
+            // the full rationale) — this "Save All" path (used on quit) never
+            // calls save_file, so it needs its own copy of the check, keyed off
+            // this tab's own TabState. TabState::save_blocked_by_hidden_lines
+            // also covers F9 (toggling the option off after an edit made while
+            // it was on still leaves hidden_lines_dropped set — Gotcha 3).
+            // Skipping here leaves this tab's edits unsaved; per F13,
+            // on_quit_save_all (src/main.rs) sees the blocked flag this
+            // function returns and cancels the quit instead of losing them —
+            // the other, unblocked tabs in this loop are still saved normally.
+            if state.tabs[i].save_blocked_by_hidden_lines() {
+                blocked_titles.push(state.tabs[i].title.clone());
+                continue;
+            }
+
             let left_enc = state.tabs[i].left_encoding.clone();
             let left_text = state.tabs[i]
                 .left_buffer
@@ -109,7 +128,20 @@ pub fn collect_pending_saves(
             }
         }
     }
-    queue
+
+    let any_blocked = !blocked_titles.is_empty();
+    if any_blocked {
+        let titles = blocked_titles
+            .iter()
+            .map(|t| format!("\"{}\"", t))
+            .collect::<Vec<_>>()
+            .join(", ");
+        window.set_status_text(SharedString::from(format!(
+            "Quit cancelled — save blocked for {}: turn off \"Ignore blank lines\" and clear line filters first — saving now could permanently delete lines that were hidden from comparison (#63). If you edited while the option was on, close without saving and reopen the files instead.",
+            titles
+        )));
+    }
+    (queue, any_blocked)
 }
 
 /// Save text to path if available, otherwise queue for Save-As dialog.
@@ -495,6 +527,30 @@ pub fn export_folder_html_report(window: &MainWindow, state: &AppState) {
 
 pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
     let tab = state.current_tab();
+
+    // ponytail: provisional guard for #63 — normalize_text (src/diff/engine.rs)
+    // drops blank/filtered lines (and their line-number mapping) before diffing,
+    // so they never reach DiffResult, PaneBuffer, or extract_real_lines. Saving
+    // here would silently and irreversibly delete those lines from disk. We
+    // can't tell whether this compare actually dropped any lines — DiffResult
+    // (src/models/diff_line.rs) keeps only lines/diff_count/diff_positions, and
+    // normalize_text's line-number map is gone by the time compute_diff_with_options
+    // returns — so TabState::save_blocked_by_hidden_lines blocks on the toggle
+    // alone, whether or not a line was actually lost, OR on hidden_lines_dropped
+    // still being set from an earlier diff on these buffers (F9: toggling the
+    // option off doesn't undo a drop already baked into the PaneBuffers — see
+    // that method's doc comment). A false block just needs the toggle turned
+    // off (and, for F9, a close-and-reopen) to recover; a false save is
+    // unrecoverable, so we bias toward blocking. The real fix (carry dropped
+    // lines through via a new LineStatus variant instead of discarding them)
+    // is planned for v0.52.
+    if tab.save_blocked_by_hidden_lines() {
+        window.set_status_text(SharedString::from(
+            "Save blocked: turn off \"Ignore blank lines\" and clear line filters first — saving now could permanently delete lines that were hidden from comparison (#63). If you edited while the option was on, close without saving and reopen the files instead.",
+        ));
+        return;
+    }
+
     let (text, path, encoding) = if save_left {
         let text = tab
             .left_buffer

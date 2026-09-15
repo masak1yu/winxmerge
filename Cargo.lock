@@ -6356,7 +6356,7 @@ dependencies = [
 
 [[package]]
 name = "winxmerge"
-version = "0.50.0"
+version = "0.51.0"
 dependencies = [
  "arboard",
  "calamine",
@@ -6366,6 +6366,7 @@ dependencies = [
  "encoding_rs",
  "image",
  "js-sys",
+ "objc2 0.5.2",
  "open",
  "regex",
  "rfd",

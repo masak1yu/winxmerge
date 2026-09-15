@@ -15,7 +15,7 @@ component ThreeWayLineRow inherits Rectangle {
     in property <bool> is-search-match: false;
 
     callback text-edited(string);
-    callback return-pressed();
+    callback return-pressed(/* byte-offset */ int);
     callback backspace-at-start();
     callback focus-applied();
     callback move-up();
@@ -40,6 +40,9 @@ component ThreeWayLineRow inherits Rectangle {
             root.focus-applied();
         }
     }
+
+    // F6: not just `text: root.text` on ti — typing replaces that binding, so a row rewritten from Rust (the split head) would keep showing the old text.
+    changed text => { ti.text = root.text; }
 
     property <color> text-color: Palette.foreground;
 
@@ -98,7 +101,7 @@ component ThreeWayLineRow inherits Rectangle {
             vertical-alignment: center;
             color: root.text-color;
             edited => { root.text-edited(self.text); }
-            accepted => { root.return-pressed(); }
+            accepted => { root.return-pressed(self.cursor-position-byte-offset); }
             key-pressed(event) => {
                 if event.text == "\u{0009}" {
                     accept
@@ -234,7 +237,7 @@ export component DiffView3Way inherits Rectangle {
 
     // pane: 0=left, 1=base, 2=right
     callback edit-text-changed(/* row */ int, /* text */ string, /* pane */ int);
-    callback insert-line-after(/* row */ int, /* pane */ int);
+    callback insert-line-after(/* row */ int, /* pane */ int, /* byte-offset */ int);
     callback delete-line(/* row */ int, /* pane */ int);
     callback move-focus-up(/* row */ int, /* pane */ int);
     callback move-focus-down(/* row */ int, /* pane */ int);
@@ -329,11 +332,11 @@ export component DiffView3Way inherits Rectangle {
                         is-search-match: line.is-search-match;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
-                        editable: root.inline-edit-enabled && !line.is-ghost;
+                        editable: root.inline-edit-enabled;
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-left-row;
                         focus-at-end: root.focus-left-at-end;
                         text-edited(t) => { root.edit-text-changed(idx, t, 0); }
-                        return-pressed => { root.insert-line-after(idx, 0); }
+                        return-pressed(off) => { root.insert-line-after(idx, 0, off); }
                         backspace-at-start => { root.focus-left-at-end = true; root.delete-line(idx, 0); }
                         focus-applied => { root.edit-focus-left-row = -1; root.focus-left-at-end = false; }
                         move-up => { root.move-focus-up(idx, 0); }
@@ -362,11 +365,11 @@ export component DiffView3Way inherits Rectangle {
                         is-search-match: line.is-search-match;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
-                        editable: root.inline-edit-enabled && !line.is-ghost;
+                        editable: root.inline-edit-enabled;
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-base-row;
                         focus-at-end: root.focus-base-at-end;
                         text-edited(t) => { root.edit-text-changed(idx, t, 1); }
-                        return-pressed => { root.insert-line-after(idx, 1); }
+                        return-pressed(off) => { root.insert-line-after(idx, 1, off); }
                         backspace-at-start => { root.focus-base-at-end = true; root.delete-line(idx, 1); }
                         focus-applied => { root.edit-focus-base-row = -1; root.focus-base-at-end = false; }
                         move-up => { root.move-focus-up(idx, 1); }
@@ -395,11 +398,11 @@ export component DiffView3Way inherits Rectangle {
                         is-search-match: line.is-search-match;
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
-                        editable: root.inline-edit-enabled && !line.is-ghost;
+                        editable: root.inline-edit-enabled;
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-right-row;
                         focus-at-end: root.focus-right-at-end;
                         text-edited(t) => { root.edit-text-changed(idx, t, 2); }
-                        return-pressed => { root.insert-line-after(idx, 2); }
+                        return-pressed(off) => { root.insert-line-after(idx, 2, off); }
                         backspace-at-start => { root.focus-right-at-end = true; root.delete-line(idx, 2); }
                         focus-applied => { root.edit-focus-right-row = -1; root.focus-right-at-end = false; }
                         move-up => { root.move-focus-up(idx, 2); }

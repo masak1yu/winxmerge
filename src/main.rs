@@ -107,6 +107,8 @@ fn main() {
     }
 
     let window = MainWindow::new().unwrap();
+    #[cfg(target_os = "macos")]
+    install_quit_guard(&window);
     let state = Rc::new(RefCell::new(AppState::new()));
     let settings = Rc::new(RefCell::new(settings::AppSettings::load()));
     // browse_ctx: tracks which Browse action is pending when path picker dialog is shown
@@ -402,9 +404,10 @@ fn main() {
         let browse_ctx = browse_ctx.clone();
         window.on_save_and_proceed(move |left_choice, right_choice| {
             let window = window_weak.unwrap();
-            {
+            let blocked = {
                 let mut s = state.borrow_mut();
                 let vm = s.current_tab().view_mode;
+                let mut attempted_2way_save = false;
                 if left_choice == 0 {
                     if vm.is_table_mode() {
                         save_table_file(&window, &mut s, 0);
@@ -412,6 +415,7 @@ fn main() {
                         save_three_way_pane(&window, &mut s, 0);
                     } else {
                         save_file(&window, &mut s, true);
+                        attempted_2way_save = true;
                     }
                 }
                 if right_choice == 0 {
@@ -421,8 +425,16 @@ fn main() {
                         save_three_way_pane(&window, &mut s, 2);
                     } else {
                         save_file(&window, &mut s, false);
+                        attempted_2way_save = true;
                     }
                 }
+                // F14: not discard_and_proceed() — a blocked save_file only posts
+                // the #63 status, so proceeding would drop the edits.
+                attempted_2way_save && s.current_tab().save_blocked_by_hidden_lines()
+            };
+            if blocked {
+                window.set_pending_action(0);
+                return;
             }
             let ww = window.as_weak();
             let bc = browse_ctx.clone();
@@ -476,6 +488,15 @@ fn main() {
             } else {
                 save_file(&window, &mut s, true);
                 save_file(&window, &mut s, false);
+                // F14: not force_close_tab() — a blocked save_file only posts
+                // the #63 status, so closing would drop the edits.
+                if s.tabs
+                    .get(idx as usize)
+                    .is_some_and(|t| t.save_blocked_by_hidden_lines())
+                {
+                    s.active_tab = prev_active;
+                    return;
+                }
             }
             if let Some(tab) = s.tabs.get_mut(idx as usize) {
                 tab.has_unsaved_changes = false;
@@ -1196,9 +1217,9 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
-        window.on_insert_line_after(move |idx, is_left| {
+        window.on_insert_line_after(move |idx, is_left, off| {
             let window = window_weak.unwrap();
-            insert_line_after(&window, &mut state.borrow_mut(), idx, is_left);
+            insert_line_after(&window, &mut state.borrow_mut(), idx, is_left, off);
         });
     }
 
@@ -1285,9 +1306,9 @@ fn main() {
     {
         let window_weak = window.as_weak();
         let state = state.clone();
-        window.on_three_way_insert_line_after(move |row, pane| {
+        window.on_three_way_insert_line_after(move |row, pane, off| {
             let window = window_weak.unwrap();
-            three_way_insert_line_after(&window, &mut state.borrow_mut(), row, pane);
+            three_way_insert_line_after(&window, &mut state.borrow_mut(), row, pane, off);
         });
     }
 
@@ -2492,7 +2513,16 @@ fn main() {
         let advance = advance_pending.clone();
         window.on_quit_save_all(move || {
             let window = window_weak.unwrap();
-            let queue = collect_pending_saves(&window, &mut state.borrow_mut());
+            let (queue, blocked) = collect_pending_saves(&window, &mut state.borrow_mut());
+            if blocked {
+                // F13: not advance() — with an empty queue it quits and drops
+                // the blocked tab's edits (#63). Tabs already saved above stay saved.
+                window.set_show_quit_confirm(false);
+                let s = state.borrow();
+                window.set_has_unsaved_changes(s.current_tab().has_unsaved_changes);
+                app::sync_tab_list(&window, &s);
+                return;
+            }
             *pending_saves.borrow_mut() = queue;
             advance();
         });
@@ -2610,6 +2640,50 @@ fn main() {
     ipc::cleanup();
     if cli.enable_exit_code {
         std::process::exit(cli_exit_code.get());
+    }
+}
+
+/// App menu Quit and Cmd+Q send `terminate:` to NSApp, which never reaches winit's
+/// CloseRequested (winit's delegate has no `applicationShouldTerminate:`), so the
+/// unsaved-changes dialog was skipped. Route it through request_close instead.
+#[cfg(target_os = "macos")]
+fn install_quit_guard(window: &MainWindow) {
+    use objc2::runtime::{AnyClass, AnyObject, Sel};
+    use objc2::{class, ffi, msg_send, sel};
+
+    thread_local! {
+        static QUIT_WINDOW: std::cell::OnceCell<slint::Weak<MainWindow>> =
+            const { std::cell::OnceCell::new() };
+    }
+
+    // ponytail: always cancels, so a logout/shutdown stops once even with nothing unsaved;
+    // return NSTerminateLater and reply via replyToApplicationShouldTerminate: if that matters.
+    extern "C" fn should_terminate(_: *mut AnyObject, _: Sel, _: *mut AnyObject) -> usize {
+        QUIT_WINDOW.with(|w| {
+            if let Some(w) = w.get() {
+                let _ = w.upgrade_in_event_loop(|w| w.invoke_request_close());
+            }
+        });
+        0 // NSTerminateCancel
+    }
+
+    let _ = QUIT_WINDOW.with(|w| w.set(window.as_weak()));
+    unsafe {
+        let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+        let delegate: *mut AnyObject = msg_send![app, delegate];
+        let Some(delegate) = delegate.as_ref() else {
+            return;
+        };
+        let imp = std::mem::transmute::<
+            extern "C" fn(*mut AnyObject, Sel, *mut AnyObject) -> usize,
+            unsafe extern "C" fn(),
+        >(should_terminate);
+        ffi::class_addMethod(
+            delegate.class() as *const AnyClass as *mut ffi::objc_class,
+            sel!(applicationShouldTerminate:).as_ptr(),
+            Some(imp),
+            c"Q@:@".as_ptr(),
+        );
     }
 }
 

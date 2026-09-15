@@ -149,11 +149,14 @@ export component OptionsDialog inherits Rectangle {
                     checked: root.opt-ignore-whitespace;
                     toggled => { root.opt-ignore-whitespace = self.checked; }
                 }
-                CheckBox {
-                    text: @tr("Ignore all whitespace (not just changes in amount)");
-                    enabled: root.opt-ignore-whitespace;
-                    checked: root.opt-ignore-whitespace-all;
-                    toggled => { root.opt-ignore-whitespace-all = self.checked; }
+                HorizontalLayout {
+                    padding-left: 24px;
+                    CheckBox {
+                        text: @tr("Ignore all whitespace (not just changes in amount)");
+                        enabled: root.opt-ignore-whitespace;
+                        checked: root.opt-ignore-whitespace-all;
+                        toggled => { root.opt-ignore-whitespace-all = self.checked; }
+                    }
                 }
                 CheckBox {
                     text: @tr("Ignore case differences");
@@ -384,11 +387,6 @@ export component OptionsDialog inherits Rectangle {
                     text: @tr("Show line numbers");
                     checked: root.opt-show-line-numbers;
                     toggled => { root.opt-show-line-numbers = self.checked; }
-                }
-                CheckBox {
-                    text: @tr("Word wrap");
-                    checked: root.opt-word-wrap;
-                    toggled => { root.opt-word-wrap = self.checked; }
                 }
                 CheckBox {
                     text: @tr("Syntax highlighting");

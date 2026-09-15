@@ -14,10 +14,12 @@ pub(super) fn push_undo_snapshot(state: &mut AppState) {
         .as_ref()
         .map(|b| extract_real_lines(b))
         .unwrap_or_else(|| "\n".to_string());
+    let hidden_lines_dropped = tab.hidden_lines_dropped;
     let tab = state.current_tab_mut();
     tab.undo_stack.push(TextSnapshot {
         left_text,
         right_text,
+        hidden_lines_dropped,
     });
     tab.redo_stack.clear();
 }
@@ -45,15 +47,24 @@ pub fn undo(window: &MainWindow, state: &mut AppState) {
         .as_ref()
         .map(|b| extract_real_lines(b))
         .unwrap_or_else(|| "\n".to_string());
+    let current_hidden_lines_dropped = tab.hidden_lines_dropped;
     tab.redo_stack.push(TextSnapshot {
         left_text: current_left,
         right_text: current_right,
+        hidden_lines_dropped: current_hidden_lines_dropped,
     });
 
     let Some(snapshot) = tab.undo_stack.pop() else {
         return;
     };
     recompute_diff_from_text(window, state, &snapshot.left_text, &snapshot.right_text);
+
+    // OR (not assign): the restored snapshot may have been taken while lines
+    // were being dropped even though a later reload (run_diff) since cleared
+    // the tab's flag — a snapshot with the flag false must never clear a flag
+    // the tab already carries from elsewhere.
+    let tab = state.current_tab_mut();
+    tab.hidden_lines_dropped |= snapshot.hidden_lines_dropped;
 
     let tab = state.current_tab();
     window.set_can_undo(!tab.undo_stack.is_empty());
@@ -84,15 +95,22 @@ pub fn redo(window: &MainWindow, state: &mut AppState) {
         .as_ref()
         .map(|b| extract_real_lines(b))
         .unwrap_or_else(|| "\n".to_string());
+    let current_hidden_lines_dropped = tab.hidden_lines_dropped;
     tab.undo_stack.push(TextSnapshot {
         left_text: current_left,
         right_text: current_right,
+        hidden_lines_dropped: current_hidden_lines_dropped,
     });
 
     let Some(snapshot) = tab.redo_stack.pop() else {
         return;
     };
     recompute_diff_from_text(window, state, &snapshot.left_text, &snapshot.right_text);
+
+    // OR (not assign): same rationale as undo() above — don't let a
+    // false-flag snapshot clear a flag the tab already carries.
+    let tab = state.current_tab_mut();
+    tab.hidden_lines_dropped |= snapshot.hidden_lines_dropped;
 
     let tab = state.current_tab();
     window.set_can_undo(!tab.undo_stack.is_empty());
@@ -287,6 +305,7 @@ pub fn insert_line_after(
     state: &mut AppState,
     line_index: i32,
     is_left: bool,
+    byte_offset: i32,
 ) {
     {
         let tab = state.current_tab();
@@ -303,6 +322,23 @@ pub fn insert_line_after(
 
     push_undo_snapshot(state);
 
+    let tail = {
+        let tab = state.current_tab();
+        let buf = if is_left {
+            &tab.left_buffer
+        } else {
+            &tab.right_buffer
+        };
+        let text = buf
+            .as_ref()
+            .and_then(|b| b.model.row_data(line_index as usize))
+            .map(|r| r.text)
+            .unwrap_or_default();
+        let (head, tail) = split_at_cursor(&text, byte_offset);
+        sync_pane_row_text(buf, line_index as usize, head);
+        SharedString::from(tail)
+    };
+
     let insert_at = (line_index + 1) as usize;
 
     // Insert real row in target pane, ghost row in other pane
@@ -313,7 +349,7 @@ pub fn insert_line_after(
     };
     let real_row = PaneLineData {
         line_no: SharedString::from("?"),
-        text: SharedString::from(""),
+        text: tail,
         is_ghost: false,
         status,
         diff_index: -1,
@@ -390,44 +426,33 @@ pub fn delete_line(window: &MainWindow, state: &mut AppState, line_index: i32, i
     }
     let idx = line_index as usize;
 
-    let can_delete = {
+    let deletion = {
         let tab = state.current_tab();
-        let buf = if is_left {
-            &tab.left_buffer
+        let (target, other) = if is_left {
+            (&tab.left_buffer, &tab.right_buffer)
         } else {
-            &tab.right_buffer
+            (&tab.right_buffer, &tab.left_buffer)
         };
-        let Some(b) = buf else { return };
-        if idx >= b.model.row_count() {
+        let (Some(target), Some(other)) = (target, other) else {
+            return;
+        };
+        if idx >= target.model.row_count() {
             return;
         }
-        let Some(row) = b.model.row_data(idx) else {
-            return;
-        };
-        row.text.is_empty()
+        plan_line_deletion(target, other, idx)
     };
 
-    if can_delete {
+    if let Some(deletion) = deletion {
         push_undo_snapshot(state);
 
-        // Remove row from both PaneBuffers (aligned)
-        {
-            let tab = state.current_tab();
-            if let Some(lb) = &tab.left_buffer {
-                lb.model.remove(idx);
-            }
-            if let Some(rb) = &tab.right_buffer {
-                rb.model.remove(idx);
-            }
-        }
-
-        // Renumber line numbers in both PaneBuffers
         let tab = state.current_tab_mut();
-        if let Some(lb) = &mut tab.left_buffer {
-            renumber_pane_buffer(lb);
-        }
-        if let Some(rb) = &mut tab.right_buffer {
-            renumber_pane_buffer(rb);
+        let (target, other) = if is_left {
+            (tab.left_buffer.as_mut(), tab.right_buffer.as_mut())
+        } else {
+            (tab.right_buffer.as_mut(), tab.left_buffer.as_mut())
+        };
+        if let (Some(target), Some(other)) = (target, other) {
+            apply_line_deletion(target, other, idx, deletion);
         }
 
         mark_dirty_editing(window, state);
@@ -482,6 +507,19 @@ pub fn edit_line(
     }
 
     push_undo_snapshot(state);
+
+    // F7: not just sync_pane_row_text — a row left as ghost is skipped on save.
+    {
+        let tab = state.current_tab_mut();
+        let buf = if is_left {
+            tab.left_buffer.as_mut()
+        } else {
+            tab.right_buffer.as_mut()
+        };
+        if let Some(b) = buf {
+            materialize_ghost(b, line_index as usize);
+        }
+    }
 
     // Update PaneBuffer row text (authoritative source)
     {
@@ -642,6 +680,7 @@ pub fn new_blank_text(window: &MainWindow, state: &mut AppState) {
         tab.diff_stats = String::new();
         tab.has_unsaved_changes = false;
         tab.editing_dirty = false;
+        tab.hidden_lines_dropped = false;
         tab.left_encoding = "UTF-8".to_string();
         tab.right_encoding = "UTF-8".to_string();
         tab.left_eol_type = "LF".to_string();

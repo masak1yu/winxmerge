@@ -12,7 +12,6 @@ Settings are accessed via **Edit → Options...** and persisted to `~/.config/wi
 | Theme | Light or Dark |
 | Language | English or Japanese |
 | Font size | Editor font size (8–32pt), adjustable via View → Zoom In/Out |
-| Line wrapping | Toggle line wrapping at the window edge |
 
 ## Comparison
 

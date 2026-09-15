@@ -23,6 +23,8 @@ export struct PaneLineData {
 }
 
 component DiffLineRow inherits Rectangle {
+    // F3: rows collapsed to 0px by diff-only mode still draw their TextInput; not `visible: false`, which drops focus.
+    clip: true;
     in property <string> line-no;
     in-out property <string> text;
     in property <int> status;
@@ -43,7 +45,7 @@ component DiffLineRow inherits Rectangle {
     callback row-clicked(/* row-index */ int);
     callback row-shift-clicked(/* row-index */ int);
     callback text-edited(string);
-    callback return-pressed();
+    callback return-pressed(/* byte-offset */ int);
     callback focus-applied();
     callback backspace-at-start();
     callback move-up();
@@ -73,6 +75,9 @@ component DiffLineRow inherits Rectangle {
             root.focus-applied();
         }
     }
+
+    // F6: not just `text: root.text` on ti — typing replaces that binding, so a row rewritten from Rust (the split head) would keep showing the old text.
+    changed text => { ti.text = root.text; }
 
     background: is-current ? current-bg
               : is-selected ? Palette.accent-background.transparentize(0.6)
@@ -157,7 +162,7 @@ component DiffLineRow inherits Rectangle {
                 vertical-alignment: center;
                 color: parent.text-color;
                 edited => { root.text-edited(self.text); }
-                accepted => { root.return-pressed(); }
+                accepted => { root.return-pressed(self.cursor-position-byte-offset); }
                 key-pressed(event) => {
                     if event.text == "\u{0009}" {
                         // Tab: consume to prevent focus-move (insert-text not in Slint 1.15)
@@ -272,7 +277,7 @@ export component DiffView inherits Rectangle {
     callback select-diff(/* diff-index */ int);
     callback edit-left-line(/* line-index */ int, /* new-text */ string);
     callback edit-right-line(/* line-index */ int, /* new-text */ string);
-    callback insert-line-after(/* line-index */ int, /* is-left */ bool);
+    callback insert-line-after(/* line-index */ int, /* is-left */ bool, /* byte-offset */ int);
     callback delete-line(/* line-index */ int, /* is-left */ bool);
     callback move-focus-up(/* line-index */ int, /* is-left */ bool);
     callback move-focus-down(/* line-index */ int, /* is-left */ bool);
@@ -387,7 +392,7 @@ export component DiffView inherits Rectangle {
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
                         word-diff: root.show-word-diff ? line.word-diff : "";
-                        editable: root.inline-edit-enabled && !line.is-ghost;
+                        editable: root.inline-edit-enabled;
                         word-wrap-mode: root.word-wrap-mode;
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-row;
                         focus-at-end: root.focus-left-at-end;
@@ -395,7 +400,7 @@ export component DiffView inherits Rectangle {
                         row-clicked(ridx) => { root.drag-select-start(ridx); }
                         row-shift-clicked(ridx) => { root.row-shift-clicked(ridx); }
                         text-edited(new-text) => { root.edit-left-line(idx, new-text); }
-                        return-pressed => { root.insert-line-after(idx, true); }
+                        return-pressed(off) => { root.insert-line-after(idx, true, off); }
                         focus-applied => { root.edit-focus-row = -1; root.focus-left-at-end = false; }
                         backspace-at-start => { root.focus-left-at-end = true; root.delete-line(idx, true); }
                         move-up => { root.move-focus-up(idx, true); }
@@ -442,7 +447,7 @@ export component DiffView inherits Rectangle {
                         show-line-no: root.show-line-numbers;
                         text-font-size: root.editor-font-size;
                         word-diff: root.show-word-diff ? line.word-diff : "";
-                        editable: root.inline-edit-enabled && !line.is-ghost;
+                        editable: root.inline-edit-enabled;
                         word-wrap-mode: root.word-wrap-mode;
                         force-focus: root.inline-edit-enabled && idx == root.edit-focus-right-row;
                         focus-at-end: root.focus-right-at-end;
@@ -450,7 +455,7 @@ export component DiffView inherits Rectangle {
                         row-clicked(ridx) => { root.drag-select-start(ridx); }
                         row-shift-clicked(ridx) => { root.row-shift-clicked(ridx); }
                         text-edited(new-text) => { root.edit-right-line(idx, new-text); }
-                        return-pressed => { root.insert-line-after(idx, false); }
+                        return-pressed(off) => { root.insert-line-after(idx, false, off); }
                         focus-applied => { root.edit-focus-right-row = -1; root.focus-right-at-end = false; }
                         backspace-at-start => { root.focus-right-at-end = true; root.delete-line(idx, false); }
                         move-up => { root.move-focus-up(idx, false); }

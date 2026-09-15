@@ -52,23 +52,33 @@ fn try_bom(bytes: &[u8]) -> Option<(String, &'static str)> {
 
 /// Detect the dominant line ending type from raw file bytes.
 pub fn detect_eol(bytes: &[u8]) -> &'static str {
+    // F12: not `contains(&b'\n')` for LF — every CRLF has a \n too, so CRLF-only files read as Mixed.
+    let truncated = bytes.len() > 65536;
     let check = &bytes[..bytes.len().min(65536)];
-    let has_crlf = check.windows(2).any(|w| w == b"\r\n");
-    let has_cr_only = check
-        .iter()
-        .zip(check.iter().skip(1))
-        .any(|(&a, &b)| a == b'\r' && b != b'\n');
-    let has_lf = check.contains(&b'\n');
-    if has_crlf && !has_cr_only && !has_lf {
-        "CRLF"
-    } else if has_crlf {
-        "Mixed"
-    } else if has_cr_only {
-        "CR"
-    } else if has_lf {
-        "LF"
-    } else {
-        ""
+    let (mut crlf, mut cr, mut lf) = (false, false, false);
+    let mut i = 0;
+    while i < check.len() {
+        if check[i] == b'\r' {
+            if check.get(i + 1) == Some(&b'\n') {
+                crlf = true;
+                i += 2;
+                continue;
+            }
+            // Not counted when cut off at the scan limit: it may be half of a CRLF.
+            if i + 1 < check.len() || !truncated {
+                cr = true;
+            }
+        } else if check[i] == b'\n' {
+            lf = true;
+        }
+        i += 1;
+    }
+    match (crlf, cr, lf) {
+        (false, false, false) => "",
+        (true, false, false) => "CRLF",
+        (false, true, false) => "CR",
+        (false, false, true) => "LF",
+        _ => "Mixed",
     }
 }
 
@@ -87,5 +97,34 @@ pub fn encode_text(text: &str, encoding_name: &str) -> Vec<u8> {
         cow.into_owned()
     } else {
         text.as_bytes().to_vec()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_eol_classifies_lf_cr_crlf_mixed_empty_and_boundary_truncation() {
+        // What: detect_eol tells LF/CR/CRLF/Mixed/"" apart, and a \r cut off at
+        // the 64KiB scan limit changes nothing (F12).
+        assert_eq!(detect_eol(b"a\nb\n"), "LF");
+        assert_eq!(detect_eol(b"a\r\nb\r\n"), "CRLF");
+        assert_eq!(detect_eol(b"a\rb\r"), "CR");
+        assert_eq!(detect_eol(b"a\r\nb\n"), "Mixed");
+        assert_eq!(detect_eol(b""), "");
+        assert_eq!(detect_eol(b"abc"), "");
+
+        // CRLF file whose last \r\n straddles the limit.
+        let mut crlf_cut = b"a\r\n".to_vec();
+        crlf_cut.resize(65535, b'a');
+        crlf_cut.extend_from_slice(b"\r\n");
+        assert_eq!(detect_eol(&crlf_cut), "CRLF");
+
+        // CR file whose last scanned byte is a \r.
+        let mut cr_cut = b"a\r".to_vec();
+        cr_cut.resize(65535, b'a');
+        cr_cut.extend_from_slice(b"\rb");
+        assert_eq!(detect_eol(&cr_cut), "CR");
     }
 }

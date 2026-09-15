@@ -156,6 +156,7 @@ export component MainWindow inherits Window {
     preferred-height: 800px;
     min-width: 600px;
     min-height: 400px;
+    forward-focus: shortcuts;
 
     // Per-pane independent buffer properties
     in-out property <[PaneLineData]> left-lines;
@@ -310,13 +311,13 @@ export component MainWindow inherits Window {
     callback copy-all-right();
     callback edit-left-line(/* line-index */ int, /* new-text */ string);
     callback edit-right-line(/* line-index */ int, /* new-text */ string);
-    callback insert-line-after(/* line-index */ int, /* is-left */ bool);
+    callback insert-line-after(/* line-index */ int, /* is-left */ bool, /* byte-offset */ int);
     callback delete-line(/* line-index */ int, /* is-left */ bool);
     callback move-focus-up(/* line-index */ int, /* is-left */ bool);
     callback move-focus-down(/* line-index */ int, /* is-left */ bool);
     // 3-way pane editing (pane: 0=left, 1=base, 2=right)
     callback three-way-edit-line(/* row */ int, /* text */ string, /* pane */ int);
-    callback three-way-insert-line-after(/* row */ int, /* pane */ int);
+    callback three-way-insert-line-after(/* row */ int, /* pane */ int, /* byte-offset */ int);
     callback three-way-delete-line(/* row */ int, /* pane */ int);
     callback three-way-move-focus-up(/* row */ int, /* pane */ int);
     callback three-way-move-focus-down(/* row */ int, /* pane */ int);
@@ -362,8 +363,6 @@ export component MainWindow inherits Window {
     // File > Recompare As > Hex/Normal (true = Hex, false = Normal/auto-detect)
     callback recompare-as(bool);
     // /e — let Esc close the window. Off unless the CLI asked for it.
-    // ponytail: handled by the shortcut FocusScope below, so Esc does nothing while a
-    // pane TextInput holds focus — same limitation the existing Cmd+S / F5 shortcuts have.
     in-out property <bool> esc-closes: false;
     callback request-close();
 
@@ -721,11 +720,6 @@ export component MainWindow inherits Window {
                 enabled: root.view-mode == 0;
                 activated => { root.opt-diff-only = !root.opt-diff-only; }
             }
-            MenuItem {
-                title: root.opt-word-wrap ? @tr("✓ Wrap Lines") : @tr("  Wrap Lines");
-                enabled: root.view-mode == 0;
-                activated => { root.opt-word-wrap = !root.opt-word-wrap; }
-            }
             MenuSeparator {}
             MenuItem {
                 title: @tr("Zoom In");
@@ -793,6 +787,93 @@ export component MainWindow inherits Window {
         }
     }
 
+    // F1: not a 0x0 sibling FocusScope — keys only reach the focused item and its ancestors. Layout body below keeps its old indent to keep the diff small.
+    shortcuts := FocusScope {
+        // Cmd+Z and Alt+arrows: not in key-pressed — the row TextInput consumes them first (its own undo, Up/Down focus moves).
+        capture-key-pressed(event) => {
+            if (event.modifiers.meta || event.modifiers.control) && (event.text == "z" || event.text == "Z") {
+                if event.modifiers.shift {
+                    root.redo();
+                } else {
+                    root.undo();
+                }
+                // F1: not left on the row — undo/redo swap in new row models, the focused TextInput is destroyed and Slint drops keys while nothing has focus.
+                shortcuts.focus();
+                return accept;
+            }
+            // Alt + arrow for diff navigation
+            if event.modifiers.alt {
+                if event.text == Key.DownArrow {
+                    root.next-diff();
+                    return accept;
+                }
+                if event.text == Key.UpArrow {
+                    root.prev-diff();
+                    return accept;
+                }
+                if event.text == Key.Home {
+                    root.first-diff();
+                    return accept;
+                }
+                if event.text == Key.End {
+                    root.last-diff();
+                    return accept;
+                }
+            }
+            return reject;
+        }
+        key-pressed(event) => {
+            // Cmd/Ctrl modifier
+            if event.modifiers.meta || event.modifiers.control {
+                if event.text == "s" {
+                    if root.has-unsaved-changes {
+                        root.save-left();
+                    }
+                    return accept;
+                }
+                if event.text == "f" {
+                    root.show-search = !root.show-search;
+                    return accept;
+                }
+                if event.text == "t" {
+                    root.new-tab();
+                    return accept;
+                }
+                if event.text == "w" {
+                    root.close-tab(root.active-tab-index);
+                    return accept;
+                }
+                if event.text == "n" {
+                    root.request-action(5);
+                    return accept;
+                }
+                if event.text == "g" {
+                    root.show-goto-dialog = true;
+                    return accept;
+                }
+                if event.text == "m" {
+                    root.toggle-bookmark(root.current-diff-index);
+                    return accept;
+                }
+            }
+            // F2 for next bookmark
+            if event.text == Key.F2 {
+                root.next-bookmark();
+                return accept;
+            }
+            // F5 for rescan
+            if event.text == Key.F5 {
+                root.rescan();
+                // F1: same as undo/redo above — rescan rebuilds the row models.
+                shortcuts.focus();
+                return accept;
+            }
+            if event.text == Key.Escape && root.esc-closes {
+                root.request-close();
+                return accept;
+            }
+            return reject;
+        }
     VerticalLayout {
         // Tab bar (hidden only on initial blank screen with single tab)
         if root.view-mode != 7 || root.tab-list.length > 1 : TabBar {
@@ -1163,7 +1244,8 @@ export component MainWindow inherits Window {
             show-line-numbers: root.opt-show-line-numbers;
             show-location-pane: root.show-location-pane;
             show-word-diff: root.show-word-diff;
-            word-wrap-mode: root.opt-word-wrap;
+            // F5: not opt-word-wrap — its UI is gone, and a true left in settings.json would lock the viewport width and hide long lines.
+            word-wrap-mode: false;
             // Suppress diff-only and status-filter when no files are loaded (blank new doc)
             diff-only-mode: root.opt-diff-only && (root.left-path != "" || root.right-path != "");
             diff-status-filter: (root.left-path != "" || root.right-path != "") ? root.diff-status-filter : 0;
@@ -1180,7 +1262,7 @@ export component MainWindow inherits Window {
             inline-edit-enabled: root.opt-inline-edit;
             edit-left-line(idx, text) => { root.edit-left-line(idx, text); }
             edit-right-line(idx, text) => { root.edit-right-line(idx, text); }
-            insert-line-after(idx, is-left) => { root.insert-line-after(idx, is-left); }
+            insert-line-after(idx, is-left, off) => { root.insert-line-after(idx, is-left, off); }
             delete-line(idx, is-left) => { root.delete-line(idx, is-left); }
             move-focus-up(idx, is-left) => { root.move-focus-up(idx, is-left); }
             move-focus-down(idx, is-left) => { root.move-focus-down(idx, is-left); }
@@ -1288,7 +1370,7 @@ export component MainWindow inherits Window {
             use-left(idx) => { root.use-left(idx); }
             use-right(idx) => { root.use-right(idx); }
             edit-text-changed(row, text, pane) => { root.three-way-edit-line(row, text, pane); }
-            insert-line-after(row, pane) => { root.three-way-insert-line-after(row, pane); }
+            insert-line-after(row, pane, off) => { root.three-way-insert-line-after(row, pane, off); }
             delete-line(row, pane) => { root.three-way-delete-line(row, pane); }
             move-focus-up(row, pane) => { root.three-way-move-focus-up(row, pane); }
             move-focus-down(row, pane) => { root.three-way-move-focus-down(row, pane); }
@@ -1453,7 +1535,7 @@ export component MainWindow inherits Window {
                                     alignment: start;
                                     padding-left: 4px;
                                     for seg in line.segments: Rectangle {
-                                        background: seg.is-changed ? ThemeColors.removed-fg.transparentize(0.7) : transparent;
+                                        background: seg.is-changed && root.show-word-diff ? ThemeColors.removed-fg.transparentize(0.7) : transparent;
                                         border-radius: 2px;
                                         Text {
                                             text: seg.text;
@@ -1535,7 +1617,7 @@ export component MainWindow inherits Window {
                                     alignment: start;
                                     padding-left: 4px;
                                     for seg in line.segments: Rectangle {
-                                        background: seg.is-changed ? ThemeColors.added-fg.transparentize(0.7) : transparent;
+                                        background: seg.is-changed && root.show-word-diff ? ThemeColors.added-fg.transparentize(0.7) : transparent;
                                         border-radius: 2px;
                                         Text {
                                             text: seg.text;
@@ -2048,88 +2130,6 @@ export component MainWindow inherits Window {
             }
         }
     }
-
-    // Keyboard shortcuts
-    FocusScope {
-        width: 0;
-        height: 0;
-        key-pressed(event) => {
-            // Cmd/Ctrl modifier
-            if event.modifiers.meta || event.modifiers.control {
-                if event.text == "s" {
-                    if root.has-unsaved-changes {
-                        root.save-left();
-                    }
-                    return accept;
-                }
-                if event.text == "f" {
-                    root.show-search = !root.show-search;
-                    return accept;
-                }
-                if event.text == "z" {
-                    if event.modifiers.shift {
-                        root.redo();
-                    } else {
-                        root.undo();
-                    }
-                    return accept;
-                }
-                if event.text == "t" {
-                    root.new-tab();
-                    return accept;
-                }
-                if event.text == "w" {
-                    root.close-tab(root.active-tab-index);
-                    return accept;
-                }
-                if event.text == "n" {
-                    root.request-action(5);
-                    return accept;
-                }
-                if event.text == "g" {
-                    root.show-goto-dialog = true;
-                    return accept;
-                }
-                if event.text == "m" {
-                    root.toggle-bookmark(root.current-diff-index);
-                    return accept;
-                }
-            }
-            // Alt + arrow for diff navigation
-            if event.modifiers.alt {
-                if event.text == Key.DownArrow {
-                    root.next-diff();
-                    return accept;
-                }
-                if event.text == Key.UpArrow {
-                    root.prev-diff();
-                    return accept;
-                }
-                if event.text == Key.Home {
-                    root.first-diff();
-                    return accept;
-                }
-                if event.text == Key.End {
-                    root.last-diff();
-                    return accept;
-                }
-            }
-            // F2 for next bookmark
-            if event.text == Key.F2 {
-                root.next-bookmark();
-                return accept;
-            }
-            // F5 for rescan
-            if event.text == Key.F5 {
-                root.rescan();
-                return accept;
-            }
-            if event.text == Key.Escape && root.esc-closes {
-                root.request-close();
-                return accept;
-            }
-            return reject;
-        }
     }
 
     // Options dialog
