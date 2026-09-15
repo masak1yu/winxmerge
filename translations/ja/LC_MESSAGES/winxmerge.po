@@ -363,6 +363,9 @@ msgstr "比較"
 msgid "Ignore whitespace differences"
 msgstr "空白の違いを無視"
 
+msgid "Ignore all whitespace (not just changes in amount)"
+msgstr "空白をすべて無視（量の違い以外も）"
+
 msgid "Ignore case differences"
 msgstr "大文字小文字の違いを無視"
 

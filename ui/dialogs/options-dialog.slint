@@ -149,11 +149,14 @@ export component OptionsDialog inherits Rectangle {
                     checked: root.opt-ignore-whitespace;
                     toggled => { root.opt-ignore-whitespace = self.checked; }
                 }
-                CheckBox {
-                    text: @tr("Ignore all whitespace (not just changes in amount)");
-                    enabled: root.opt-ignore-whitespace;
-                    checked: root.opt-ignore-whitespace-all;
-                    toggled => { root.opt-ignore-whitespace-all = self.checked; }
+                HorizontalLayout {
+                    padding-left: 24px;
+                    CheckBox {
+                        text: @tr("Ignore all whitespace (not just changes in amount)");
+                        enabled: root.opt-ignore-whitespace;
+                        checked: root.opt-ignore-whitespace-all;
+                        toggled => { root.opt-ignore-whitespace-all = self.checked; }
+                    }
                 }
                 CheckBox {
                     text: @tr("Ignore case differences");
