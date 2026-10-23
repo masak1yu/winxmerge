@@ -49,7 +49,7 @@ export component ShortcutsDialog inherits Rectangle {
                         {key: "Ctrl+W", desc: @tr("Close tab")},
                         {key: "Ctrl+T", desc: @tr("New tab")},
                         {key: "Ctrl+S", desc: @tr("Save left file")},
-                        {key: "Ctrl+Shift+S", desc: @tr("Save left file")},
+                        {key: "Ctrl+Shift+S", desc: @tr("Save right file")},
                     ] : HorizontalLayout {
                         padding-left: 8px;
                         spacing: 8px;
@@ -68,8 +68,8 @@ export component ShortcutsDialog inherits Rectangle {
                     for row in [
                         {key: "F7 / Alt+Up", desc: @tr("Previous diff")},
                         {key: "F8 / Alt+Down", desc: @tr("Next diff")},
-                        {key: "Ctrl+Home", desc: @tr("First diff")},
-                        {key: "Ctrl+End", desc: @tr("Last diff")},
+                        {key: "Alt+Home", desc: @tr("First diff")},
+                        {key: "Alt+End", desc: @tr("Last diff")},
                         {key: "Ctrl+Tab", desc: @tr("Next tab")},
                         {key: "Ctrl+Shift+Tab", desc: @tr("Previous tab")},
                     ] : HorizontalLayout {
@@ -88,8 +88,8 @@ export component ShortcutsDialog inherits Rectangle {
                     Rectangle { height: 8px; }
                     Text { text: @tr("Merge"); font-size: 12px; font-weight: 700; color: Palette.foreground.transparentize(0.3); }
                     for row in [
-                        {key: "Ctrl+Right", desc: @tr("Copy block to right")},
-                        {key: "Ctrl+Left", desc: @tr("Copy block to left")},
+                        {key: "Alt+Shift+Right", desc: @tr("Copy block to right")},
+                        {key: "Alt+Shift+Left", desc: @tr("Copy block to left")},
                         {key: "Ctrl+Z", desc: @tr("Undo")},
                         {key: "Ctrl+Y", desc: @tr("Redo")},
                     ] : HorizontalLayout {
