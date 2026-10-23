@@ -930,3 +930,9 @@ msgstr "Hex"
 msgid "Normal"
 msgstr "通常"
 
+# 未翻訳の補完 (#84)
+msgid "Preview: "
+msgstr "プレビュー: "
+
+msgid "Tab"
+msgstr "タブ"

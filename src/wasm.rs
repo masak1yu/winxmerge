@@ -53,7 +53,7 @@ fn build_pane_line_data(
     let mut right_lines = Vec::with_capacity(result.lines.len());
     for (i, line) in result.lines.iter().enumerate() {
         let status = match line.status {
-            LineStatus::Equal => 0,
+            LineStatus::Equal | LineStatus::Ignored => 0,
             LineStatus::Added => 1,
             LineStatus::Removed => 2,
             LineStatus::Modified => 3,

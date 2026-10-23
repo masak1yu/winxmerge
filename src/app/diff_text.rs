@@ -19,10 +19,6 @@ pub fn run_diff(window: &MainWindow, state: &mut AppState) {
         Some(b) => b,
         None => return,
     };
-    // Fresh bytes from disk — any lines previously dropped by ignore_blank_lines/
-    // line_filters (#63) are gone from that snapshot. apply_diff_result below
-    // will re-set this if the diff it runs (sync or async) still uses those options.
-    state.current_tab_mut().hidden_lines_dropped = false;
 
     // A tab already forced into Hex (Recompare As / folder "Compare as Hex" /
     // CLI /t Binary) stays Hex on rescan/reload, skipping the ZIP/Excel/CSV/
@@ -245,13 +241,6 @@ pub(super) fn apply_diff_result(
     let tab = state.current_tab_mut();
     tab.is_computing = false;
     tab.editing_dirty = false;
-    // ponytail: only ever sets true here, never clears — a rescan-from-VecModel
-    // (Gotcha 3) rebuilds these same already-reduced PaneBuffers even after the
-    // options are toggled off, so the drop from an earlier diff still applies.
-    // Only a fresh disk read (run_diff/new_blank_text) clears it.
-    if tab.diff_options.ignore_blank_lines || !tab.diff_options.line_filters.is_empty() {
-        tab.hidden_lines_dropped = true;
-    }
 
     let current_diff = if result.diff_positions.is_empty() {
         -1
@@ -317,15 +306,44 @@ fn compute_diff_stats(result: &DiffResult) -> String {
     let mut added = 0u32;
     let mut removed = 0u32;
     let mut modified = 0u32;
+    let mut moved = 0u32;
     for line in &result.lines {
         match line.status {
             LineStatus::Added => added += 1,
             LineStatus::Removed => removed += 1,
             LineStatus::Modified => modified += 1,
+            LineStatus::Moved => moved += 1,
             _ => {}
         }
     }
-    format!("+{} -{} ~{}", added, removed, modified)
+    let mut s = format!("+{} -{} ~{}", added, removed, modified);
+    // Moved は移動元と移動先の 2 行で 1 組。組数を別枠で出す (#79)
+    if moved > 0 {
+        s.push_str(&format!(" Moved {}", moved / 2));
+    }
+    s
+}
+
+#[cfg(test)]
+mod moved_stats_tests {
+    use super::*;
+    use crate::diff::engine::DiffOptions;
+    use crate::diff::engine::compute_diff_with_options;
+
+    #[test]
+    fn stats_include_moved_pairs() {
+        // What: 件数に Moved の組数が出る。
+        let r = compute_diff_with_options(
+            "aaa\nbbb\nccc\n",
+            "ccc\nbbb\naaa\n",
+            &DiffOptions::default(),
+        );
+        assert!(
+            compute_diff_stats(&r).contains(" Moved "),
+            "{}",
+            compute_diff_stats(&r)
+        );
+    }
 }
 
 /// Poll the shared result slot and apply if a background diff has finished.

@@ -5,9 +5,16 @@ pub enum LineStatus {
     Removed,
     Modified,
     Moved,
+    /// 空行無視・行フィルタで比較対象から外れた行（保存で消さないために残す）
+    Ignored,
 }
 
 impl LineStatus {
+    /// 差分としてユーザーに見せる行か（Equal / Ignored は差分ではない）
+    pub fn is_change(&self) -> bool {
+        !matches!(self, Self::Equal | Self::Ignored)
+    }
+
     pub fn as_i32(&self) -> i32 {
         match self {
             Self::Equal => 0,
@@ -15,6 +22,7 @@ impl LineStatus {
             Self::Removed => 2,
             Self::Modified => 3,
             Self::Moved => 4,
+            Self::Ignored => 5,
         }
     }
 }

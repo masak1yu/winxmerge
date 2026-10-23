@@ -170,6 +170,8 @@ pub fn compute_diff_with_options(
         }
     }
 
+    let mut lines = reinsert_ignored_lines(lines, &left_orig_lines, &right_orig_lines);
+
     // Detect moved lines (if enabled)
     if options.detect_moved_lines {
         detect_moved_lines(&mut lines);
@@ -180,6 +182,10 @@ pub fn compute_diff_with_options(
     let mut diff_count: u32 = 0;
     let mut in_diff_block = false;
     for (idx, line) in lines.iter().enumerate() {
+        // Ignored は差分ブロックを切らず、数えもしない
+        if line.status == LineStatus::Ignored {
+            continue;
+        }
         if line.status != LineStatus::Equal {
             if !in_diff_block {
                 diff_positions.push(idx);
@@ -196,6 +202,66 @@ pub fn compute_diff_with_options(
         diff_count,
         diff_positions,
     }
+}
+
+/// normalize_text が捨てた元の行を `Ignored` として元の位置に戻す。
+///
+/// 左右で同じ位置に落ちた行は zip して 1 行にし、余りは片側だけの行にする。
+fn reinsert_ignored_lines(
+    lines: Vec<DiffLine>,
+    left_orig: &[&str],
+    right_orig: &[&str],
+) -> Vec<DiffLine> {
+    let mut out = Vec::with_capacity(lines.len());
+    let mut lc: usize = 0;
+    let mut rc: usize = 0;
+
+    let flush = |out: &mut Vec<DiffLine>, lc: &mut usize, rc: &mut usize, lt: usize, rt: usize| {
+        while *lc < lt || *rc < rt {
+            let l = (*lc < lt).then_some(*lc);
+            let r = (*rc < rt).then_some(*rc);
+            out.push(DiffLine {
+                left_line_no: l.map(|i| i as u32 + 1),
+                right_line_no: r.map(|i| i as u32 + 1),
+                left_text: l
+                    .map(|i| left_orig.get(i).unwrap_or(&"").to_string())
+                    .unwrap_or_default(),
+                right_text: r
+                    .map(|i| right_orig.get(i).unwrap_or(&"").to_string())
+                    .unwrap_or_default(),
+                status: LineStatus::Ignored,
+                left_word_segments: Vec::new(),
+                right_word_segments: Vec::new(),
+            });
+            if l.is_some() {
+                *lc += 1;
+            }
+            if r.is_some() {
+                *rc += 1;
+            }
+        }
+    };
+
+    for line in lines {
+        let lt = line.left_line_no.map_or(lc, |n| (n as usize - 1).max(lc));
+        let rt = line.right_line_no.map_or(rc, |n| (n as usize - 1).max(rc));
+        flush(&mut out, &mut lc, &mut rc, lt, rt);
+        if let Some(n) = line.left_line_no {
+            lc = n as usize;
+        }
+        if let Some(n) = line.right_line_no {
+            rc = n as usize;
+        }
+        out.push(line);
+    }
+    flush(
+        &mut out,
+        &mut lc,
+        &mut rc,
+        left_orig.len(),
+        right_orig.len(),
+    );
+    out
 }
 
 /// Split `s` into identifier / whitespace / punctuation tokens.
@@ -628,11 +694,12 @@ mod tests {
         // normalized line 2 is the original line 3.
         let result = compute_diff_with_options("hello\n\nworld\n", "hello\nworld\n", &opts);
         assert_eq!(result.diff_count, 0);
-        assert_eq!(result.lines.len(), 2);
-        assert_eq!(result.lines[1].left_text, "world");
-        assert_eq!(result.lines[1].right_text, "world");
-        assert_eq!(result.lines[1].left_line_no, Some(3));
-        assert_eq!(result.lines[1].right_line_no, Some(2));
+        // Equal, Ignored（空行）, Equal の順
+        assert_eq!(result.lines.len(), 3);
+        assert_eq!(result.lines[2].left_text, "world");
+        assert_eq!(result.lines[2].right_text, "world");
+        assert_eq!(result.lines[2].left_line_no, Some(3));
+        assert_eq!(result.lines[2].right_line_no, Some(2));
     }
 
     #[test]
@@ -643,10 +710,11 @@ mod tests {
         };
         let result = compute_diff_with_options("# note\nkeep\n", "keep\n", &opts);
         assert_eq!(result.diff_count, 0);
-        assert_eq!(result.lines.len(), 1);
-        assert_eq!(result.lines[0].left_text, "keep");
-        assert_eq!(result.lines[0].left_line_no, Some(2));
-        assert_eq!(result.lines[0].right_line_no, Some(1));
+        // Ignored（フィルタ行）, Equal の順
+        assert_eq!(result.lines.len(), 2);
+        assert_eq!(result.lines[1].left_text, "keep");
+        assert_eq!(result.lines[1].left_line_no, Some(2));
+        assert_eq!(result.lines[1].right_line_no, Some(1));
     }
 
     #[test]
@@ -685,5 +753,59 @@ mod tests {
 
         assert_eq!(left_changed, vec!["foo"]);
         assert_eq!(right_changed, vec!["foobar"]);
+    }
+
+    // What: ignore_blank_lines で落ちた左の空行は Ignored 1 行として結果に残り、差分に数えない
+    #[test]
+    fn ignored_blank_line_is_kept_and_not_counted() {
+        let opts = DiffOptions {
+            ignore_blank_lines: true,
+            ..Default::default()
+        };
+        let result = compute_diff_with_options("hello\n\nworld\n", "hello\nworld\n", &opts);
+        let ignored: Vec<_> = result
+            .lines
+            .iter()
+            .filter(|l| l.status == LineStatus::Ignored)
+            .collect();
+        assert_eq!(ignored.len(), 1);
+        assert_eq!(ignored[0].left_line_no, Some(2));
+        assert_eq!(ignored[0].right_line_no, None);
+        assert_eq!(result.diff_count, 0);
+    }
+
+    // What: 行フィルタで両側の同じ位置に落ちた行は zip されて 1 行（両側に行番号）になる
+    #[test]
+    fn ignored_lines_on_both_sides_are_zipped_into_one_row() {
+        let opts = DiffOptions {
+            line_filters: vec!["^#".to_string()],
+            ..Default::default()
+        };
+        let result = compute_diff_with_options("# a\nkeep\n", "# b\nkeep\n", &opts);
+        let ignored: Vec<_> = result
+            .lines
+            .iter()
+            .filter(|l| l.status == LineStatus::Ignored)
+            .collect();
+        assert_eq!(ignored.len(), 1);
+        assert_eq!(ignored[0].left_line_no, Some(1));
+        assert_eq!(ignored[0].right_line_no, Some(1));
+        assert_eq!(ignored[0].left_text, "# a");
+        assert_eq!(ignored[0].right_text, "# b");
+        assert_eq!(result.diff_count, 0);
+    }
+
+    // What: 差分行の間に Ignored が挟まっても差分ブロックは 1 つのまま
+    #[test]
+    fn ignored_line_between_diff_lines_does_not_split_block() {
+        let opts = DiffOptions {
+            ignore_blank_lines: true,
+            detect_moved_lines: false,
+            ..Default::default()
+        };
+        let result = compute_diff_with_options("a\nb\n\nc\nd\n", "a\nB\nC\nd\n", &opts);
+        assert!(result.lines.iter().any(|l| l.status == LineStatus::Ignored));
+        assert_eq!(result.diff_count, 1);
+        assert_eq!(result.diff_positions.len(), 1);
     }
 }

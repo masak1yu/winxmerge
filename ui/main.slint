@@ -650,7 +650,7 @@ export component MainWindow inherits Window {
             MenuItem { title: @tr("Open Left in Editor"); enabled: root.left-path != ""; activated => { root.open-left-in-editor(); } }
             MenuItem { title: @tr("Open Right in Editor"); enabled: root.right-path != ""; activated => { root.open-right-in-editor(); } }
             MenuSeparator {}
-            MenuItem { title: @tr("Rescan (F5)"); activated => { root.rescan(); } }
+            MenuItem { title: @tr("Rescan (F5)"); activated => { root.rescan(); shortcuts.focus(); } }
             Menu {
                 title: @tr("Recompare As");
                 MenuItem { title: @tr("Hex"); enabled: (root.view-mode == 0 || root.view-mode == 4 || root.view-mode == 5 || root.view-mode == 6) && !root.has-unsaved-changes; activated => { root.recompare-as(true); } }
@@ -671,8 +671,8 @@ export component MainWindow inherits Window {
         }
         Menu {
             title: @tr("Edit");
-            MenuItem { title: @tr("Undo"); enabled: root.can-undo; activated => { root.undo(); } }
-            MenuItem { title: @tr("Redo"); enabled: root.can-redo; activated => { root.redo(); } }
+            MenuItem { title: @tr("Undo"); enabled: root.can-undo; activated => { root.undo(); shortcuts.focus(); } }
+            MenuItem { title: @tr("Redo"); enabled: root.can-redo; activated => { root.redo(); shortcuts.focus(); } }
             MenuSeparator {}
             MenuItem {
                 title: @tr("Find / Replace...");
@@ -801,6 +801,40 @@ export component MainWindow inherits Window {
                 shortcuts.focus();
                 return accept;
             }
+            // Cmd/Ctrl+Y: Redo は Windows 慣習。TextInput に先に食われるのでここで処理する。
+            if (event.modifiers.meta || event.modifiers.control) && (event.text == "y" || event.text == "Y") {
+                root.redo();
+                shortcuts.focus();
+                return accept;
+            }
+            // Ctrl+(Shift+)Tab: TextInput が Tab を食うので capture で奪う。Shift 時は Backtab で来ることがあるので両方見る。
+            if (event.modifiers.meta || event.modifiers.control) && (event.text == Key.Tab || event.text == Key.Backtab) {
+                if root.tab-list.length > 1 {
+                    if event.modifiers.shift || event.text == Key.Backtab {
+                        root.switch-tab(Math.mod(root.active-tab-index + root.tab-list.length - 1, root.tab-list.length));
+                    } else {
+                        root.switch-tab(Math.mod(root.active-tab-index + 1, root.tab-list.length));
+                    }
+                }
+                return accept;
+            }
+            // Alt+Shift+←/→: ブロックコピー。素の Alt+矢印は差分移動なので、先に Shift 付きを判定する。Ctrl+矢印は TextInput の単語移動と重なるため使わない。 3-way・テーブルはツールバーと違い use-left 等に分岐していないので 2-way テキストに限る。
+            if event.modifiers.alt && event.modifiers.shift && root.view-mode == 0 {
+                if event.text == Key.RightArrow {
+                    if root.current-diff-index >= 0 {
+                        root.copy-to-right(root.current-diff-index);
+                        shortcuts.focus();
+                    }
+                    return accept;
+                }
+                if event.text == Key.LeftArrow {
+                    if root.current-diff-index >= 0 {
+                        root.copy-to-left(root.current-diff-index);
+                        shortcuts.focus();
+                    }
+                    return accept;
+                }
+            }
             // Alt + arrow for diff navigation
             if event.modifiers.alt {
                 if event.text == Key.DownArrow {
@@ -831,6 +865,30 @@ export component MainWindow inherits Window {
                     }
                     return accept;
                 }
+                // Shift 付きは "S" で届くため "s" 判定と衝突しない。
+                if event.text == "S" {
+                    if root.has-unsaved-changes {
+                        root.save-right();
+                    }
+                    return accept;
+                }
+                if event.text == "o" {
+                    root.show-open-dialog = true;
+                    return accept;
+                }
+                if event.text == "d" {
+                    root.opt-diff-only = !root.opt-diff-only;
+                    return accept;
+                }
+                // "=" は US 配列で Shift なしの "+"。
+                if event.text == "+" || event.text == "=" {
+                    root.opt-font-size = Math.min(root.opt-font-size + 1, 32);
+                    return accept;
+                }
+                if event.text == "-" {
+                    root.opt-font-size = Math.max(root.opt-font-size - 1, 8);
+                    return accept;
+                }
                 if event.text == "f" {
                     root.show-search = !root.show-search;
                     return accept;
@@ -855,6 +913,14 @@ export component MainWindow inherits Window {
                     root.toggle-bookmark(root.current-diff-index);
                     return accept;
                 }
+            }
+            if event.text == Key.F7 {
+                root.prev-diff();
+                return accept;
+            }
+            if event.text == Key.F8 {
+                root.next-diff();
+                return accept;
             }
             // F2 for next bookmark
             if event.text == Key.F2 {
@@ -1049,12 +1115,12 @@ export component MainWindow inherits Window {
 
                 sep-save := ToolSep { visible: root.view-mode == 0 || root.view-mode == 3; }
 
-                tb-undo := ToolBtn { icon: @image-url("icons/undo.svg"); visible: root.view-mode == 0 || root.view-mode == 3; clicked => { root.undo(); } }
-                tb-redo := ToolBtn { icon: @image-url("icons/redo.svg"); visible: root.view-mode == 0 || root.view-mode == 3; clicked => { root.redo(); } }
+                tb-undo := ToolBtn { icon: @image-url("icons/undo.svg"); visible: root.view-mode == 0 || root.view-mode == 3; clicked => { root.undo(); shortcuts.focus(); } }
+                tb-redo := ToolBtn { icon: @image-url("icons/redo.svg"); visible: root.view-mode == 0 || root.view-mode == 3; clicked => { root.redo(); shortcuts.focus(); } }
 
                 ToolSep {}
 
-                tb-rescan := ToolBtn { icon: @image-url("icons/refresh.svg"); btn-enabled: root.view-mode != 7; clicked => { root.rescan(); } }
+                tb-rescan := ToolBtn { icon: @image-url("icons/refresh.svg"); btn-enabled: root.view-mode != 7; clicked => { root.rescan(); shortcuts.focus(); } }
                 tb-options := ToolBtn { icon: @image-url("icons/settings.svg"); clicked => { root.show-options-dialog = true; } }
 
                 ToolSep {}
