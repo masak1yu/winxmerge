@@ -47,6 +47,10 @@ pub fn collect_pending_saves(
                 &state.tabs[i].left_path,
                 left_text,
                 left_enc,
+                state.tabs[i]
+                    .left_path
+                    .as_deref()
+                    .map_or("", detect_eol_of_file),
             );
             save_or_queue(
                 window,
@@ -56,6 +60,10 @@ pub fn collect_pending_saves(
                 &state.tabs[i].base_path,
                 base_text,
                 base_enc,
+                state.tabs[i]
+                    .base_path
+                    .as_deref()
+                    .map_or("", detect_eol_of_file),
             );
             save_or_queue(
                 window,
@@ -65,6 +73,10 @@ pub fn collect_pending_saves(
                 &state.tabs[i].right_path,
                 right_text,
                 right_enc,
+                state.tabs[i]
+                    .right_path
+                    .as_deref()
+                    .map_or("", detect_eol_of_file),
             );
 
             if state.tabs[i].left_path.is_some()
@@ -105,6 +117,7 @@ pub fn collect_pending_saves(
                 &state.tabs[i].left_path,
                 left_text,
                 left_enc,
+                &state.tabs[i].left_eol_type.clone(),
             );
 
             let right_enc = state.tabs[i].right_encoding.clone();
@@ -121,6 +134,7 @@ pub fn collect_pending_saves(
                 &state.tabs[i].right_path,
                 right_text,
                 right_enc,
+                &state.tabs[i].right_eol_type.clone(),
             );
 
             if state.tabs[i].left_path.is_some() && state.tabs[i].right_path.is_some() {
@@ -153,7 +167,9 @@ fn save_or_queue(
     path: &Option<std::path::PathBuf>,
     text: String,
     encoding: String,
+    eol: &str,
 ) {
+    let text = apply_eol(&text, eol);
     if let Some(path) = path {
         let bytes = encode_text(&text, &encoding);
         if let Err(e) = fs::write(path, bytes) {
@@ -587,7 +603,12 @@ pub fn save_file(window: &MainWindow, state: &mut AppState, save_left: bool) {
         }
     };
 
-    let bytes = encode_text(&text, &encoding);
+    let eol = if save_left {
+        state.current_tab().left_eol_type.clone()
+    } else {
+        state.current_tab().right_eol_type.clone()
+    };
+    let bytes = encode_text(&apply_eol(&text, &eol), &encoding);
     if let Err(e) = fs::write(&path, &bytes) {
         window.set_status_text(SharedString::from(format!("Error saving: {}", e)));
         return;
@@ -647,7 +668,8 @@ pub fn save_three_way_pane(window: &MainWindow, state: &mut AppState, pane: i32)
         }
     };
 
-    let bytes = encode_text(&text, &encoding);
+    // 3-way は EOL を保持していないため、保存先の既存ファイルから検出する
+    let bytes = encode_text(&apply_eol(&text, detect_eol_of_file(&path)), &encoding);
     if let Err(e) = fs::write(&path, &bytes) {
         window.set_status_text(SharedString::from(format!("Error saving: {}", e)));
         return;
@@ -746,7 +768,8 @@ pub fn save_table_file(window: &MainWindow, state: &mut AppState, pane: i32) {
         }
     };
 
-    let bytes = encode_text(&text, &encoding);
+    // テーブルタブは EOL を保持しないため、保存先の既存ファイルから検出する
+    let bytes = encode_text(&apply_eol(&text, detect_eol_of_file(&path)), &encoding);
     if let Err(e) = fs::write(&path, &bytes) {
         window.set_status_text(SharedString::from(format!("Error saving: {}", e)));
         return;

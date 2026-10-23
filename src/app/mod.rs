@@ -11,7 +11,9 @@ use crate::csv::{compare_csv_full, compare_csv_full_3way, is_csv_path};
 use crate::diff::engine::{DiffOptions, compute_diff_with_options};
 use crate::diff::folder::{CompareMethod, FolderCompareOptions, compare_folders_with_options};
 use crate::diff::three_way::compute_three_way_diff_with_options;
-use crate::encoding::{decode_file, detect_eol, encode_text, is_binary};
+use crate::encoding::{
+    apply_eol, decode_file, detect_eol, detect_eol_of_file, encode_text, is_binary,
+};
 use crate::excel::{compare_excel_full, is_excel_path};
 use crate::highlight::{detect_file_type, highlight_lines};
 use crate::image_compare::{compare_images, is_image_path};

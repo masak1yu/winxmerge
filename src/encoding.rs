@@ -82,6 +82,21 @@ pub fn detect_eol(bytes: &[u8]) -> &'static str {
     }
 }
 
+/// 保存用に `\n` 区切りの本文を元ファイルの改行コードへ戻す (#75)。
+/// `eol` は `detect_eol` の戻り値。"CRLF"/"CR" のみ変換し、LF/Mixed/空は LF のまま。
+pub fn apply_eol(text: &str, eol: &str) -> String {
+    match eol {
+        "CRLF" => text.replace('\n', "\r\n"),
+        "CR" => text.replace('\n', "\r"),
+        _ => text.to_string(),
+    }
+}
+
+/// 既存ファイルの改行コードを検出する。読めなければ空文字 (= LF 扱い)。
+pub fn detect_eol_of_file(path: &std::path::Path) -> &'static str {
+    std::fs::read(path).map(|b| detect_eol(&b)).unwrap_or("")
+}
+
 /// Encode text back to the specified encoding.
 pub fn encode_text(text: &str, encoding_name: &str) -> Vec<u8> {
     if encoding_name.starts_with("UTF-8") {
@@ -103,6 +118,20 @@ pub fn encode_text(text: &str, encoding_name: &str) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apply_eol_converts_only_crlf_and_cr() {
+        // What: CRLF/CR は \n を置換し、LF/Mixed/空はそのまま。
+        assert_eq!(apply_eol("a\nb\n", "CRLF"), "a\r\nb\r\n");
+        assert_eq!(apply_eol("a\nb\n", "CR"), "a\rb\r");
+        assert_eq!(apply_eol("a\nb\n", "LF"), "a\nb\n");
+        assert_eq!(apply_eol("a\nb\n", "Mixed"), "a\nb\n");
+        assert_eq!(apply_eol("a\nb\n", ""), "a\nb\n");
+        // 往復: CRLF バイト列 -> 行分割 -> 結合 -> 戻すと元のバイト列になる
+        let orig = "x\r\ny\r\n";
+        let joined: String = orig.lines().map(|l| format!("{}\n", l)).collect();
+        assert_eq!(apply_eol(&joined, detect_eol(orig.as_bytes())), orig);
+    }
 
     #[test]
     fn detect_eol_classifies_lf_cr_crlf_mixed_empty_and_boundary_truncation() {
