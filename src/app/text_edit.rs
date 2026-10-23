@@ -19,6 +19,7 @@ pub(super) fn push_undo_snapshot(state: &mut AppState) {
     tab.undo_stack.push(TextSnapshot {
         left_text,
         right_text,
+        middle_text: None,
         hidden_lines_dropped,
     });
     tab.redo_stack.clear();
@@ -26,6 +27,10 @@ pub(super) fn push_undo_snapshot(state: &mut AppState) {
 
 pub fn undo(window: &MainWindow, state: &mut AppState) {
     let vm = state.current_tab().view_mode;
+    if vm == ViewMode::ThreeWayText {
+        three_way_undo(window, state);
+        return;
+    }
     if vm.is_table_mode() {
         table_undo(window, state);
         return;
@@ -51,6 +56,7 @@ pub fn undo(window: &MainWindow, state: &mut AppState) {
     tab.redo_stack.push(TextSnapshot {
         left_text: current_left,
         right_text: current_right,
+        middle_text: None,
         hidden_lines_dropped: current_hidden_lines_dropped,
     });
 
@@ -74,6 +80,10 @@ pub fn undo(window: &MainWindow, state: &mut AppState) {
 
 pub fn redo(window: &MainWindow, state: &mut AppState) {
     let vm = state.current_tab().view_mode;
+    if vm == ViewMode::ThreeWayText {
+        three_way_redo(window, state);
+        return;
+    }
     if vm.is_table_mode() {
         table_redo(window, state);
         return;
@@ -99,6 +109,7 @@ pub fn redo(window: &MainWindow, state: &mut AppState) {
     tab.undo_stack.push(TextSnapshot {
         left_text: current_left,
         right_text: current_right,
+        middle_text: None,
         hidden_lines_dropped: current_hidden_lines_dropped,
     });
 

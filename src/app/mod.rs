@@ -102,6 +102,8 @@ pub struct PendingDiffResult {
 pub(crate) struct TextSnapshot {
     pub(crate) left_text: String,
     pub(crate) right_text: String,
+    /// 3-way 表示のときだけ middle ペインの本文を持つ（2-way は None）。
+    pub(crate) middle_text: Option<String>,
     /// The tab's `hidden_lines_dropped` at the moment this snapshot was taken.
     /// Restoring this snapshot ORs it back into the tab (see undo()/redo()) so
     /// that a reload's fresh-read clear (run_diff) can't un-drop lines an old

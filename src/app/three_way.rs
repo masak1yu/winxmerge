@@ -386,12 +386,12 @@ pub(super) fn update_three_way_detail_pane(
 
 /// Copy left text to base (middle) pane for the given diff index.
 pub fn resolve_conflict_use_left(window: &MainWindow, state: &mut AppState, conflict_index: i32) {
-    resolve_conflict_copy_to_base(window, state, conflict_index, true);
+    resolve_conflict_copy_to_base(window, state, conflict_index, true, true);
 }
 
 /// Copy right text to base (middle) pane for the given diff index.
 pub fn resolve_conflict_use_right(window: &MainWindow, state: &mut AppState, conflict_index: i32) {
-    resolve_conflict_copy_to_base(window, state, conflict_index, false);
+    resolve_conflict_copy_to_base(window, state, conflict_index, false, true);
 }
 
 /// Copy left or right text to base (middle) pane for the given diff index.
@@ -400,6 +400,7 @@ fn resolve_conflict_copy_to_base(
     state: &mut AppState,
     conflict_index: i32,
     use_left: bool,
+    snapshot: bool,
 ) {
     let tab = state.current_tab();
     if conflict_index < 0 || conflict_index as usize >= tab.three_way_conflict_positions.len() {
@@ -418,6 +419,13 @@ fn resolve_conflict_copy_to_base(
         return;
     }
 
+    if tab.middle_buffer.is_none() || tab.right_buffer.is_none() {
+        return;
+    }
+    if snapshot {
+        push_undo_snapshot_3way(state);
+    }
+    let tab = state.current_tab();
     let (Some(lb), Some(mb), Some(rb)) = (&tab.left_buffer, &tab.middle_buffer, &tab.right_buffer)
     else {
         return;
@@ -478,6 +486,8 @@ fn resolve_conflict_copy_to_base(
     tab.has_unsaved_changes = true;
     tab.editing_dirty = true;
     window.set_has_unsaved_changes(true);
+    window.set_can_undo(true);
+    window.set_can_redo(false);
     let msg = if use_left {
         "Left → Middle copied"
     } else {
@@ -515,9 +525,11 @@ pub fn resolve_all_use_left(window: &MainWindow, state: &mut AppState) {
     if count == 0 {
         return;
     }
+    // 全ブロックで 1 回の Undo にまとめる
+    push_undo_snapshot_3way(state);
     // Resolve from last to first to avoid index shifts
     for i in (0..count as i32).rev() {
-        resolve_conflict_use_left(window, state, i);
+        resolve_conflict_copy_to_base(window, state, i, true, false);
     }
     window.set_status_text(SharedString::from(format!(
         "All {} blocks: Left → Middle",
@@ -532,8 +544,9 @@ pub fn resolve_all_use_right(window: &MainWindow, state: &mut AppState) {
     if count == 0 {
         return;
     }
+    push_undo_snapshot_3way(state);
     for i in (0..count as i32).rev() {
-        resolve_conflict_use_right(window, state, i);
+        resolve_conflict_copy_to_base(window, state, i, false, false);
     }
     window.set_status_text(SharedString::from(format!(
         "All {} blocks: Right → Middle",
@@ -551,6 +564,20 @@ pub fn three_way_edit_line(
     if row_index < 0 {
         return;
     }
+    let tab = state.current_tab();
+    let buf_opt = match pane {
+        0 => &tab.left_buffer,
+        1 => &tab.middle_buffer,
+        _ => &tab.right_buffer,
+    };
+    if let Some(buf) = buf_opt {
+        if row_index as usize >= buf.model.row_count() {
+            return;
+        }
+    } else {
+        return;
+    }
+    push_undo_snapshot_3way(state);
     {
         let tab = state.current_tab_mut();
         let buf_opt = match pane {
@@ -569,16 +596,11 @@ pub fn three_way_edit_line(
         1 => &tab.middle_buffer,
         _ => &tab.right_buffer,
     };
-    if let Some(buf) = buf_opt {
-        if row_index as usize >= buf.model.row_count() {
-            return;
-        }
-    } else {
-        return;
-    }
     // Update PaneBuffer (authoritative source)
     sync_pane_row_text(buf_opt, row_index as usize, new_text);
     mark_dirty_editing(window, state);
+    window.set_can_undo(true);
+    window.set_can_redo(false);
 }
 
 /// Insert a row after `row_index` in the 3-way view, splitting the target
@@ -594,15 +616,24 @@ pub fn three_way_insert_line_after(
     if row_index < 0 {
         return;
     }
+    {
+        let tab = state.current_tab();
+        let (Some(lb), Some(_), Some(_)) =
+            (&tab.left_buffer, &tab.middle_buffer, &tab.right_buffer)
+        else {
+            return;
+        };
+        if (row_index + 1) as usize > lb.model.row_count() {
+            return;
+        }
+    }
+    push_undo_snapshot_3way(state);
     let tab = state.current_tab();
     let (Some(lb), Some(mb), Some(rb)) = (&tab.left_buffer, &tab.middle_buffer, &tab.right_buffer)
     else {
         return;
     };
     let insert_at = (row_index + 1) as usize;
-    if insert_at > lb.model.row_count() {
-        return;
-    }
 
     let target_buf = match pane {
         0 => &tab.left_buffer,
@@ -672,6 +703,8 @@ pub fn three_way_insert_line_after(
         _ => window.set_three_way_edit_focus_right_row(insert_at as i32),
     }
     mark_dirty_editing(window, state);
+    window.set_can_undo(true);
+    window.set_can_redo(false);
 }
 
 /// Delete the row at `row_index` in the 3-way view if the pane's cell is empty.
@@ -716,6 +749,8 @@ pub fn three_way_delete_line(window: &MainWindow, state: &mut AppState, row_inde
             .collect();
         let deletion = plan_line_deletion_3way(others_ghost[0], others_ghost[1]);
 
+        push_undo_snapshot_3way(state);
+
         let tab = state.current_tab_mut();
         match deletion {
             LineDeletion::RemoveBoth => {
@@ -749,11 +784,108 @@ pub fn three_way_delete_line(window: &MainWindow, state: &mut AppState, row_inde
             }
         }
         mark_dirty_editing(window, state);
+        window.set_can_undo(true);
+        window.set_can_redo(false);
     }
     let prev = if row_index > 0 { row_index - 1 } else { 0 };
     match pane {
         0 => window.set_three_way_edit_focus_left_row(prev),
         1 => window.set_three_way_edit_focus_base_row(prev),
         _ => window.set_three_way_edit_focus_right_row(prev),
+    }
+}
+
+/// 3-way の現在テキスト (base, left, right)。PaneBuffer が正でゴースト行は除く。
+fn three_way_texts(tab: &TabState) -> (String, String, String) {
+    let get = |b: &Option<PaneBuffer>| {
+        b.as_ref()
+            .map(extract_real_lines)
+            .unwrap_or_else(|| "\n".to_string())
+    };
+    (
+        get(&tab.middle_buffer),
+        get(&tab.left_buffer),
+        get(&tab.right_buffer),
+    )
+}
+
+fn three_way_snapshot(tab: &TabState) -> TextSnapshot {
+    let (base, left, right) = three_way_texts(tab);
+    TextSnapshot {
+        left_text: left,
+        right_text: right,
+        middle_text: Some(base),
+        hidden_lines_dropped: tab.hidden_lines_dropped,
+    }
+}
+
+/// 3-way の編集前に undo スナップショットを積み、redo を捨てる。
+pub(super) fn push_undo_snapshot_3way(state: &mut AppState) {
+    let tab = state.current_tab_mut();
+    let snap = three_way_snapshot(tab);
+    tab.undo_stack.push(snap);
+    tab.redo_stack.clear();
+}
+
+fn restore_three_way(window: &MainWindow, state: &mut AppState, snap: &TextSnapshot) {
+    recompute_three_way_from_text(
+        window,
+        state,
+        snap.middle_text.as_deref().unwrap_or(""),
+        &snap.left_text,
+        &snap.right_text,
+    );
+    let tab = state.current_tab_mut();
+    tab.hidden_lines_dropped |= snap.hidden_lines_dropped;
+    let tab = state.current_tab();
+    window.set_can_undo(!tab.undo_stack.is_empty());
+    window.set_can_redo(!tab.redo_stack.is_empty());
+}
+
+pub fn three_way_undo(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab_mut();
+    let Some(snap) = tab.undo_stack.pop() else {
+        return;
+    };
+    let cur = three_way_snapshot(tab);
+    tab.redo_stack.push(cur);
+    restore_three_way(window, state, &snap);
+    window.set_status_text(SharedString::from("Undo"));
+}
+
+pub fn three_way_redo(window: &MainWindow, state: &mut AppState) {
+    let tab = state.current_tab_mut();
+    let Some(snap) = tab.redo_stack.pop() else {
+        return;
+    };
+    let cur = three_way_snapshot(tab);
+    tab.undo_stack.push(cur);
+    restore_three_way(window, state, &snap);
+    window.set_status_text(SharedString::from("Redo"));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // What: 3-way スナップショットは middle を含み、ゴースト行を除いた本文を持つ。
+    #[test]
+    fn push_undo_snapshot_3way_captures_middle_text() {
+        let mut state = AppState::new();
+        push_undo_snapshot_3way(&mut state);
+        let snap = state.current_tab().undo_stack.last().unwrap();
+        assert!(snap.middle_text.is_some());
+    }
+
+    // What: 新しい編集のスナップショットは redo スタックを破棄する。
+    #[test]
+    fn push_undo_snapshot_3way_clears_redo() {
+        let mut state = AppState::new();
+        push_undo_snapshot_3way(&mut state);
+        let snap = state.current_tab().undo_stack.last().unwrap().clone();
+        state.current_tab_mut().redo_stack.push(snap);
+        push_undo_snapshot_3way(&mut state);
+        assert!(state.current_tab().redo_stack.is_empty());
+        assert_eq!(state.current_tab().undo_stack.len(), 2);
     }
 }
