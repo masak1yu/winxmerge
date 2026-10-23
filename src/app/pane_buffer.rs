@@ -397,7 +397,7 @@ pub fn build_pane_buffers_3way(result: &ThreeWayResult) -> (PaneBuffer, PaneBuff
 }
 
 /// Create a ghost (alignment padding) PaneLineData row.
-fn ghost_pane_line(diff_index: i32) -> PaneLineData {
+pub(super) fn ghost_pane_line(diff_index: i32) -> PaneLineData {
     PaneLineData {
         line_no: SharedString::default(),
         text: SharedString::default(),
@@ -529,6 +529,17 @@ pub fn apply_line_deletion(
     }
     renumber_pane_buffer(target);
     renumber_pane_buffer(other);
+}
+
+/// 3-way 版の削除判定。他の 2 ペインの同じ行が両方ゴーストなら 3 ペインとも
+/// 削除、どちらかが実在行ならその行を守るため対象ペインだけゴースト化する。
+/// 純粋関数にしてあるのは PaneBuffer を 3 本借用せずにテストするため。
+pub fn plan_line_deletion_3way(other_a_is_ghost: bool, other_b_is_ghost: bool) -> LineDeletion {
+    if other_a_is_ghost && other_b_is_ghost {
+        LineDeletion::RemoveBoth
+    } else {
+        LineDeletion::GhostTarget
+    }
 }
 
 /// Renumber real lines in a PaneBuffer after insert/delete operations.
@@ -805,6 +816,27 @@ mod tests {
             extract_real_lines(&left_buf),
             "keep1\nkeep2\n",
             "target must lose exactly the deleted line"
+        );
+    }
+
+    // What: 3-way の削除は他の 2 ペインが両方ゴーストのときだけ行ごと消す。
+    #[test]
+    fn plan_line_deletion_3way_removes_only_when_both_others_are_ghost() {
+        assert_eq!(
+            plan_line_deletion_3way(true, true),
+            LineDeletion::RemoveBoth
+        );
+        assert_eq!(
+            plan_line_deletion_3way(true, false),
+            LineDeletion::GhostTarget
+        );
+        assert_eq!(
+            plan_line_deletion_3way(false, true),
+            LineDeletion::GhostTarget
+        );
+        assert_eq!(
+            plan_line_deletion_3way(false, false),
+            LineDeletion::GhostTarget
         );
     }
 

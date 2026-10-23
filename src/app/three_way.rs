@@ -679,6 +679,7 @@ pub fn three_way_delete_line(window: &MainWindow, state: &mut AppState, row_inde
     if row_index < 0 {
         return;
     }
+    let pane_slot = pane.clamp(0, 2) as usize;
     let tab = state.current_tab();
     let buf_opt = match pane {
         0 => &tab.left_buffer,
@@ -699,17 +700,45 @@ pub fn three_way_delete_line(window: &MainWindow, state: &mut AppState, row_inde
     let real_line_count = buf.line_to_row.len();
 
     // Don't delete the last real line — keep at least one row so user can type
-    let can_delete = text_empty && real_line_count > 1;
+    let can_delete = text_empty && !row.is_ghost && real_line_count > 1;
     if can_delete {
-        // Remove row from all three PaneBuffer models in lockstep
-        let tab = state.current_tab();
-        for buf_opt in [&tab.left_buffer, &tab.middle_buffer, &tab.right_buffer] {
-            if let Some(buf) = buf_opt {
-                buf.model.remove(idx);
+        // 他の 2 ペインの同じ行がゴーストか（実在行を巻き込まないため）
+        let others_ghost: Vec<bool> = [&tab.left_buffer, &tab.middle_buffer, &tab.right_buffer]
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != pane_slot)
+            .map(|(_, b)| {
+                b.as_ref()
+                    .and_then(|b| b.model.row_data(idx))
+                    .map(|r| r.is_ghost)
+                    .unwrap_or(true)
+            })
+            .collect();
+        let deletion = plan_line_deletion_3way(others_ghost[0], others_ghost[1]);
+
+        let tab = state.current_tab_mut();
+        match deletion {
+            LineDeletion::RemoveBoth => {
+                for buf in [&tab.left_buffer, &tab.middle_buffer, &tab.right_buffer]
+                    .into_iter()
+                    .flatten()
+                {
+                    buf.model.remove(idx);
+                }
+            }
+            LineDeletion::GhostTarget => {
+                let target = match pane_slot {
+                    0 => &tab.left_buffer,
+                    1 => &tab.middle_buffer,
+                    _ => &tab.right_buffer,
+                };
+                if let Some(target) = target {
+                    let diff_index = row.diff_index;
+                    target.model.set_row_data(idx, ghost_pane_line(diff_index));
+                }
             }
         }
         // Renumber all three PaneBuffers and rebuild metadata
-        let tab = state.current_tab_mut();
         for buf_opt in [
             &mut tab.left_buffer,
             &mut tab.middle_buffer,
