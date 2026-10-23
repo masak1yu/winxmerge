@@ -410,6 +410,7 @@ pub fn insert_line_after(
 
     mark_dirty_editing(window, state);
     window.set_can_undo(true);
+    window.set_can_redo(false);
 
     // Move focus to the newly inserted row
     if is_left {
@@ -457,6 +458,7 @@ pub fn delete_line(window: &MainWindow, state: &mut AppState, line_index: i32, i
 
         mark_dirty_editing(window, state);
         window.set_can_undo(true);
+        window.set_can_redo(false);
     }
 
     // Find the nearest previous editable (non-ghost) row
@@ -534,6 +536,7 @@ pub fn edit_line(
 
     mark_dirty_editing(window, state);
     window.set_can_undo(true);
+    window.set_can_redo(false);
 }
 
 pub fn copy_current_line_text(window: &MainWindow, state: &AppState, is_left: bool) {

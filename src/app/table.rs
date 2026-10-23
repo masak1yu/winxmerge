@@ -155,6 +155,7 @@ pub fn table_cell_edit(
     tab.editing_dirty = true;
     window.set_has_unsaved_changes(true);
     window.set_can_undo(true);
+    window.set_can_redo(false);
     window.set_status_text(SharedString::from("Editing \u{2014} press F5 to compare"));
 }
 
