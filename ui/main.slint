@@ -650,7 +650,7 @@ export component MainWindow inherits Window {
             MenuItem { title: @tr("Open Left in Editor"); enabled: root.left-path != ""; activated => { root.open-left-in-editor(); } }
             MenuItem { title: @tr("Open Right in Editor"); enabled: root.right-path != ""; activated => { root.open-right-in-editor(); } }
             MenuSeparator {}
-            MenuItem { title: @tr("Rescan (F5)"); activated => { root.rescan(); } }
+            MenuItem { title: @tr("Rescan (F5)"); activated => { root.rescan(); shortcuts.focus(); } }
             Menu {
                 title: @tr("Recompare As");
                 MenuItem { title: @tr("Hex"); enabled: (root.view-mode == 0 || root.view-mode == 4 || root.view-mode == 5 || root.view-mode == 6) && !root.has-unsaved-changes; activated => { root.recompare-as(true); } }
@@ -671,8 +671,8 @@ export component MainWindow inherits Window {
         }
         Menu {
             title: @tr("Edit");
-            MenuItem { title: @tr("Undo"); enabled: root.can-undo; activated => { root.undo(); } }
-            MenuItem { title: @tr("Redo"); enabled: root.can-redo; activated => { root.redo(); } }
+            MenuItem { title: @tr("Undo"); enabled: root.can-undo; activated => { root.undo(); shortcuts.focus(); } }
+            MenuItem { title: @tr("Redo"); enabled: root.can-redo; activated => { root.redo(); shortcuts.focus(); } }
             MenuSeparator {}
             MenuItem {
                 title: @tr("Find / Replace...");
@@ -1049,12 +1049,12 @@ export component MainWindow inherits Window {
 
                 sep-save := ToolSep { visible: root.view-mode == 0 || root.view-mode == 3; }
 
-                tb-undo := ToolBtn { icon: @image-url("icons/undo.svg"); visible: root.view-mode == 0 || root.view-mode == 3; clicked => { root.undo(); } }
-                tb-redo := ToolBtn { icon: @image-url("icons/redo.svg"); visible: root.view-mode == 0 || root.view-mode == 3; clicked => { root.redo(); } }
+                tb-undo := ToolBtn { icon: @image-url("icons/undo.svg"); visible: root.view-mode == 0 || root.view-mode == 3; clicked => { root.undo(); shortcuts.focus(); } }
+                tb-redo := ToolBtn { icon: @image-url("icons/redo.svg"); visible: root.view-mode == 0 || root.view-mode == 3; clicked => { root.redo(); shortcuts.focus(); } }
 
                 ToolSep {}
 
-                tb-rescan := ToolBtn { icon: @image-url("icons/refresh.svg"); btn-enabled: root.view-mode != 7; clicked => { root.rescan(); } }
+                tb-rescan := ToolBtn { icon: @image-url("icons/refresh.svg"); btn-enabled: root.view-mode != 7; clicked => { root.rescan(); shortcuts.focus(); } }
                 tb-options := ToolBtn { icon: @image-url("icons/settings.svg"); clicked => { root.show-options-dialog = true; } }
 
                 ToolSep {}
