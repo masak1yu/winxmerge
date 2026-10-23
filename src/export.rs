@@ -1,4 +1,4 @@
-use crate::models::diff_line::{DiffResult, LineStatus};
+use crate::models::diff_line::{DiffLine, DiffResult, LineStatus};
 
 /// One comment entry across all tabs
 pub struct CommentEntry {
@@ -47,6 +47,27 @@ pub fn export_all_comments_json(entries: &[CommentEntry]) -> String {
     }
     out.push_str("]\n");
     out
+}
+
+/// 出力用の左右テキスト。Moved 行は表示用に相手側のテキストがコピーされているため、
+/// 行番号のない側は空にする (#79)。
+fn display_texts(line: &DiffLine) -> (&str, &str) {
+    if line.status == LineStatus::Moved {
+        (
+            if line.left_line_no.is_some() {
+                &line.left_text
+            } else {
+                ""
+            },
+            if line.right_line_no.is_some() {
+                &line.right_text
+            } else {
+                ""
+            },
+        )
+    } else {
+        (&line.left_text, &line.right_text)
+    }
 }
 
 /// Generate HTML for printing: includes auto-print script and print-optimized CSS
@@ -124,7 +145,7 @@ pub fn export_html(
         ));
         html.push_str(&format!(
             "<td class=\"content\">{}</td>\n",
-            escape_html(&line.left_text)
+            escape_html(display_texts(line).0)
         ));
 
         // Right side
@@ -136,7 +157,7 @@ pub fn export_html(
         ));
         html.push_str(&format!(
             "<td class=\"content\">{}</td>\n",
-            escape_html(&line.right_text)
+            escape_html(display_texts(line).1)
         ));
 
         html.push_str("</tr>\n");
@@ -263,14 +284,16 @@ pub fn export_unified_diff(
                     output.push('\n');
                 }
                 LineStatus::Modified | LineStatus::Moved => {
-                    if !line.left_text.is_empty() {
+                    // Moved は行番号のある側だけ出す (移動元 -, 移動先 +)
+                    let (left, right) = display_texts(line);
+                    if !left.is_empty() {
                         output.push('-');
-                        output.push_str(&line.left_text);
+                        output.push_str(left);
                         output.push('\n');
                     }
-                    if !line.right_text.is_empty() {
+                    if !right.is_empty() {
                         output.push('+');
-                        output.push_str(&line.right_text);
+                        output.push_str(right);
                         output.push('\n');
                     }
                 }
@@ -312,9 +335,9 @@ pub fn export_csv(result: &DiffResult, left_title: &str, right_title: &str, sep:
             sep,
             right_no,
             sep,
-            escape(&line.left_text),
+            escape(display_texts(line).0),
             sep,
-            escape(&line.right_text)
+            escape(display_texts(line).1)
         ));
     }
     let _ = left_title;
@@ -445,7 +468,7 @@ pub fn export_xlsx(
                     .map_err(|e| e.to_string())?;
             }
             sheet
-                .write_string_with_format(row, 2, &line.left_text, fmt)
+                .write_string_with_format(row, 2, display_texts(line).0, fmt)
                 .map_err(|e| e.to_string())?;
             if let Some(n) = right_no {
                 sheet
@@ -453,7 +476,7 @@ pub fn export_xlsx(
                     .map_err(|e| e.to_string())?;
             }
             sheet
-                .write_string_with_format(row, 4, &line.right_text, fmt)
+                .write_string_with_format(row, 4, display_texts(line).1, fmt)
                 .map_err(|e| e.to_string())?;
 
             // Comment column
@@ -475,13 +498,13 @@ pub fn export_xlsx(
                 sheet.write_number(row, 1, n).map_err(|e| e.to_string())?;
             }
             sheet
-                .write_string(row, 2, &line.left_text)
+                .write_string(row, 2, display_texts(line).0)
                 .map_err(|e| e.to_string())?;
             if let Some(n) = right_no {
                 sheet.write_number(row, 3, n).map_err(|e| e.to_string())?;
             }
             sheet
-                .write_string(row, 4, &line.right_text)
+                .write_string(row, 4, display_texts(line).1)
                 .map_err(|e| e.to_string())?;
         }
 
@@ -542,3 +565,65 @@ tr.moved { background: #e0e8ff; }
     .header h1 { font-size: 16px; }
 }
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diff::engine::DiffOptions;
+    use crate::diff::engine::compute_diff_with_options;
+
+    fn moved_result() -> DiffResult {
+        compute_diff_with_options(
+            "aaa\nbbb\nccc\n",
+            "ccc\nbbb\naaa\n",
+            &DiffOptions::default(),
+        )
+    }
+
+    #[test]
+    fn unified_diff_emits_one_side_per_moved_row() {
+        // What: Moved 行は移動元が - だけ、移動先が + だけになる。
+        let r = moved_result();
+        let moved = r
+            .lines
+            .iter()
+            .filter(|l| l.status == LineStatus::Moved)
+            .count();
+        assert!(moved > 0);
+        let out = export_unified_diff(&r, "l", "r");
+        let minus = out
+            .lines()
+            .filter(|l| l.starts_with('-') && !l.starts_with("---"))
+            .count();
+        let plus = out
+            .lines()
+            .filter(|l| l.starts_with('+') && !l.starts_with("+++"))
+            .count();
+        assert_eq!(
+            minus,
+            r.lines
+                .iter()
+                .filter(|l| l.left_line_no.is_some() && l.status != LineStatus::Equal)
+                .count()
+        );
+        assert_eq!(
+            plus,
+            r.lines
+                .iter()
+                .filter(|l| l.right_line_no.is_some() && l.status != LineStatus::Equal)
+                .count()
+        );
+    }
+
+    #[test]
+    fn csv_blanks_copied_text_on_moved_rows() {
+        // What: Moved 行の行番号のない側のテキストは空になる。
+        let r = moved_result();
+        let csv = export_csv(&r, "l", "r", ',');
+        for row in csv.lines().filter(|l| l.starts_with("Moved,")) {
+            let f: Vec<&str> = row.split(',').collect();
+            assert!(f[1].is_empty() == (f[3] == "\"\""), "{}", row);
+            assert!(f[2].is_empty() == (f[4] == "\"\""), "{}", row);
+        }
+    }
+}

@@ -317,15 +317,44 @@ fn compute_diff_stats(result: &DiffResult) -> String {
     let mut added = 0u32;
     let mut removed = 0u32;
     let mut modified = 0u32;
+    let mut moved = 0u32;
     for line in &result.lines {
         match line.status {
             LineStatus::Added => added += 1,
             LineStatus::Removed => removed += 1,
             LineStatus::Modified => modified += 1,
+            LineStatus::Moved => moved += 1,
             _ => {}
         }
     }
-    format!("+{} -{} ~{}", added, removed, modified)
+    let mut s = format!("+{} -{} ~{}", added, removed, modified);
+    // Moved は移動元と移動先の 2 行で 1 組。組数を別枠で出す (#79)
+    if moved > 0 {
+        s.push_str(&format!(" Moved {}", moved / 2));
+    }
+    s
+}
+
+#[cfg(test)]
+mod moved_stats_tests {
+    use super::*;
+    use crate::diff::engine::DiffOptions;
+    use crate::diff::engine::compute_diff_with_options;
+
+    #[test]
+    fn stats_include_moved_pairs() {
+        // What: 件数に Moved の組数が出る。
+        let r = compute_diff_with_options(
+            "aaa\nbbb\nccc\n",
+            "ccc\nbbb\naaa\n",
+            &DiffOptions::default(),
+        );
+        assert!(
+            compute_diff_stats(&r).contains(" Moved "),
+            "{}",
+            compute_diff_stats(&r)
+        );
+    }
 }
 
 /// Poll the shared result slot and apply if a background diff has finished.
