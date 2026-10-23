@@ -815,7 +815,6 @@ fn three_way_snapshot(tab: &TabState) -> TextSnapshot {
         left_text: left,
         right_text: right,
         middle_text: Some(base),
-        hidden_lines_dropped: tab.hidden_lines_dropped,
     }
 }
 
@@ -835,8 +834,6 @@ fn restore_three_way(window: &MainWindow, state: &mut AppState, snap: &TextSnaps
         &snap.left_text,
         &snap.right_text,
     );
-    let tab = state.current_tab_mut();
-    tab.hidden_lines_dropped |= snap.hidden_lines_dropped;
     let tab = state.current_tab();
     window.set_can_undo(!tab.undo_stack.is_empty());
     window.set_can_redo(!tab.redo_stack.is_empty());
