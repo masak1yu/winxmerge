@@ -137,7 +137,7 @@ pub fn collect_pending_saves(
             .collect::<Vec<_>>()
             .join(", ");
         window.set_status_text(SharedString::from(format!(
-            "Quit cancelled — save blocked for {}: turn off \"Ignore blank lines\" and clear line filters first — saving now could permanently delete lines that were hidden from comparison (#63). If you edited while the option was on, close without saving and reopen the files instead.",
+            "Quit cancelled: cannot save {} (ignore-blank-lines/filters, #63). Close without saving and reopen.",
             titles
         )));
     }
