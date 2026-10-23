@@ -43,6 +43,10 @@ pub fn build_pane_buffers_2way(
     let mut current_block = -1i32;
     let mut was_in_diff = false;
     for (i, line) in result.lines.iter().enumerate() {
+        // Ignored は差分ブロックを切らず、ブロックにも数えない
+        if line.status == LineStatus::Ignored {
+            continue;
+        }
         if line.status != LineStatus::Equal {
             if !was_in_diff {
                 current_block += 1;
@@ -80,7 +84,9 @@ pub fn build_pane_buffers_2way(
         let right_word_diff = build_word_diff_string(&line.right_word_segments);
 
         match line.status {
-            LineStatus::Equal => {
+            LineStatus::Equal | LineStatus::Ignored
+                if line.left_line_no.is_some() && line.right_line_no.is_some() =>
+            {
                 // Both sides are real lines
                 let left_ln = line.left_line_no.unwrap();
                 let right_ln = line.right_line_no.unwrap();
@@ -113,10 +119,16 @@ pub fn build_pane_buffers_2way(
                 right_row_to_line.push(Some(right_line_to_row.len()));
                 right_line_to_row.push(row_idx);
             }
-            LineStatus::Added | LineStatus::Moved if line.left_line_no.is_none() => {
+            LineStatus::Added | LineStatus::Moved | LineStatus::Ignored
+                if line.left_line_no.is_none() =>
+            {
                 // Right-only (or the "added" half of a moved pair): left gets a ghost row
                 let right_ln = line.right_line_no.unwrap();
-                let status = line.status.as_i32();
+                let status = if line.status == LineStatus::Ignored {
+                    STATUS_EQUAL
+                } else {
+                    line.status.as_i32()
+                };
                 left_rows.push(PaneLineData {
                     line_no: SharedString::default(),
                     text: SharedString::default(),
@@ -146,10 +158,16 @@ pub fn build_pane_buffers_2way(
                 right_row_to_line.push(Some(right_line_to_row.len()));
                 right_line_to_row.push(row_idx);
             }
-            LineStatus::Removed | LineStatus::Moved if line.right_line_no.is_none() => {
+            LineStatus::Removed | LineStatus::Moved | LineStatus::Ignored
+                if line.right_line_no.is_none() =>
+            {
                 // Left-only (or the "removed" half of a moved pair): right gets a ghost row
                 let left_ln = line.left_line_no.unwrap();
-                let status = line.status.as_i32();
+                let status = if line.status == LineStatus::Ignored {
+                    STATUS_EQUAL
+                } else {
+                    line.status.as_i32()
+                };
                 left_rows.push(PaneLineData {
                     line_no: SharedString::from(left_ln.to_string()),
                     text: SharedString::from(expand_tabs(&line.left_text, tab_width)),
@@ -216,7 +234,7 @@ pub fn build_pane_buffers_2way(
             // Unreachable per diff engine invariants (Added always has left_line_no
             // == None, Removed always has right_line_no == None), but the guarded
             // arms above don't count toward exhaustiveness, so rustc needs this.
-            LineStatus::Added | LineStatus::Removed => {
+            LineStatus::Equal | LineStatus::Added | LineStatus::Removed | LineStatus::Ignored => {
                 unreachable!(
                     "Added must have left_line_no == None and Removed must have right_line_no == None"
                 )
@@ -597,15 +615,11 @@ mod tests {
     use crate::diff::engine::{DiffOptions, compute_diff_with_options};
     use crate::models::diff_line::DiffLine;
 
-    // What: with `ignore_blank_lines` enabled, a blank line present in the
-    // original left-side file vanishes from `extract_real_lines`' reconstructed
-    // text after the full `compute_diff_with_options` → `build_pane_buffers_2way`
-    // → `extract_real_lines` round trip. `normalize_text` drops the blank line
-    // (and its position from the line-number map) before diffing, so it never
-    // reaches `DiffResult.lines`, `PaneBuffer.model`, or the saved file — this
-    // pins the round-trip data-loss behavior fixed provisionally by issue #63.
+    // What: with `ignore_blank_lines` enabled, the full round trip
+    // `compute_diff_with_options` → `build_pane_buffers_2way` → `extract_real_lines`
+    // returns the original text of both panes unchanged (issue #63 repro).
     #[test]
-    fn ignore_blank_lines_drops_blank_line_after_full_roundtrip() {
+    fn ignore_blank_lines_keeps_blank_line_after_full_roundtrip() {
         let opts = DiffOptions {
             ignore_blank_lines: true,
             ..Default::default()
@@ -615,26 +629,14 @@ mod tests {
         let result = compute_diff_with_options(left, right, &opts);
         let (left_buf, right_buf) = build_pane_buffers_2way(&result, &[], &[], 4);
 
-        let left_out = extract_real_lines(&left_buf);
-        let right_out = extract_real_lines(&right_buf);
-
-        assert_eq!(
-            left_out, "hello\nworld\n",
-            "blank line silently dropped from the reconstructed left text"
-        );
-        assert_eq!(right_out, "hello\nworld\n");
-        assert_ne!(
-            left_out, left,
-            "round-tripped text no longer matches the original file contents"
-        );
+        assert_eq!(extract_real_lines(&left_buf), left);
+        assert_eq!(extract_real_lines(&right_buf), right);
     }
 
-    // What: a line matching an active line filter vanishes from
-    // `extract_real_lines`' reconstructed text after the same round trip —
-    // same data-loss mechanism as `ignore_blank_lines`, just triggered by
-    // `line_filters` instead of the blank-line check in `normalize_text`.
+    // What: a line matching an active line filter also survives the same round
+    // trip on the side where it exists, and the other side is unchanged.
     #[test]
-    fn line_filter_drops_filtered_line_after_full_roundtrip() {
+    fn line_filter_keeps_filtered_line_after_full_roundtrip() {
         let opts = DiffOptions {
             line_filters: vec!["^#".to_string()],
             ..Default::default()
@@ -644,18 +646,8 @@ mod tests {
         let result = compute_diff_with_options(left, right, &opts);
         let (left_buf, right_buf) = build_pane_buffers_2way(&result, &[], &[], 4);
 
-        let left_out = extract_real_lines(&left_buf);
-        let right_out = extract_real_lines(&right_buf);
-
-        assert_eq!(
-            left_out, "keep\n",
-            "filtered line silently dropped from the reconstructed left text"
-        );
-        assert_eq!(right_out, "keep\n");
-        assert_ne!(
-            left_out, left,
-            "round-tripped text no longer matches the original file contents"
-        );
+        assert_eq!(extract_real_lines(&left_buf), left);
+        assert_eq!(extract_real_lines(&right_buf), right);
     }
 
     // What: with `detect_moved_lines` enabled, a block that moved position

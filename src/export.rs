@@ -129,7 +129,7 @@ pub fn export_html(
     let mut diff_block_idx: usize = 0;
     for line in &diff_result.lines {
         let class = match line.status {
-            LineStatus::Equal => "",
+            LineStatus::Equal | LineStatus::Ignored => "",
             LineStatus::Added => "added",
             LineStatus::Removed => "removed",
             LineStatus::Modified => "modified",
@@ -163,7 +163,7 @@ pub fn export_html(
         html.push_str("</tr>\n");
 
         // After each non-Equal row, emit comment row if present
-        if line.status != LineStatus::Equal {
+        if line.status.is_change() {
             if let Some(comment) = comments.get(&diff_block_idx) {
                 if !comment.is_empty() {
                     html.push_str(&format!(
@@ -203,7 +203,7 @@ pub fn export_unified_diff(
     let mut i = 0;
     while i < lines.len() {
         // Find the start of a change
-        if lines[i].status == LineStatus::Equal {
+        if !lines[i].status.is_change() {
             i += 1;
             continue;
         }
@@ -213,13 +213,12 @@ pub fn export_unified_diff(
         // Find the end of changes (merging nearby changes)
         let mut hunk_end = i;
         while hunk_end < lines.len() {
-            if lines[hunk_end].status != LineStatus::Equal {
+            if lines[hunk_end].status.is_change() {
                 hunk_end += 1;
             } else {
                 // Check if another change is within context range
                 let lookahead = (hunk_end + context_lines * 2 + 1).min(lines.len());
-                let next_change =
-                    (hunk_end..lookahead).find(|&j| lines[j].status != LineStatus::Equal);
+                let next_change = (hunk_end..lookahead).find(|&j| lines[j].status.is_change());
                 if let Some(nc) = next_change {
                     hunk_end = nc + 1;
                 } else {
@@ -273,6 +272,29 @@ pub fn export_unified_diff(
                     output.push_str(&line.left_text);
                     output.push('\n');
                 }
+                // ハンクを作るのは is_change の行だけ（diff -B 相当）。ハンク内の Ignored は
+                // 文脈行に寄せると右の行数がずれて patch が当たらないので、実在する側をそのまま出す
+                LineStatus::Ignored => {
+                    if line.left_line_no.is_some()
+                        && line.right_line_no.is_some()
+                        && line.left_text == line.right_text
+                    {
+                        output.push(' ');
+                        output.push_str(&line.left_text);
+                        output.push('\n');
+                    } else {
+                        if line.left_line_no.is_some() {
+                            output.push('-');
+                            output.push_str(&line.left_text);
+                            output.push('\n');
+                        }
+                        if line.right_line_no.is_some() {
+                            output.push('+');
+                            output.push_str(&line.right_text);
+                            output.push('\n');
+                        }
+                    }
+                }
                 LineStatus::Removed => {
                     output.push('-');
                     output.push_str(&line.left_text);
@@ -316,6 +338,7 @@ pub fn export_csv(result: &DiffResult, left_title: &str, right_title: &str, sep:
     for line in &result.lines {
         let status = match line.status {
             LineStatus::Equal => "Equal",
+            LineStatus::Ignored => "Ignored",
             LineStatus::Added => "Added",
             LineStatus::Removed => "Removed",
             LineStatus::Modified => "Modified",
@@ -449,6 +472,7 @@ pub fn export_xlsx(
     for line in &diff_result.lines {
         let (status_str, fmt) = match line.status {
             LineStatus::Equal => ("Equal", None),
+            LineStatus::Ignored => ("Ignored", None),
             LineStatus::Added => ("Added", Some(&fmt_added)),
             LineStatus::Removed => ("Removed", Some(&fmt_removed)),
             LineStatus::Modified => ("Modified", Some(&fmt_modified)),
@@ -603,14 +627,14 @@ mod tests {
             minus,
             r.lines
                 .iter()
-                .filter(|l| l.left_line_no.is_some() && l.status != LineStatus::Equal)
+                .filter(|l| l.left_line_no.is_some() && l.status.is_change())
                 .count()
         );
         assert_eq!(
             plus,
             r.lines
                 .iter()
-                .filter(|l| l.right_line_no.is_some() && l.status != LineStatus::Equal)
+                .filter(|l| l.right_line_no.is_some() && l.status.is_change())
                 .count()
         );
     }
@@ -624,6 +648,38 @@ mod tests {
             let f: Vec<&str> = row.split(',').collect();
             assert!(f[1].is_empty() == (f[3] == "\"\""), "{}", row);
             assert!(f[2].is_empty() == (f[4] == "\"\""), "{}", row);
+        }
+    }
+
+    // What: 空行の違いだけではハンクが出ず、ハンク内の Ignored 行は実在する側として出るので
+    // ヘッダーの行数と本文の行数が一致する
+    #[test]
+    fn unified_diff_ignored_lines_keep_hunk_counts_consistent() {
+        let opts = DiffOptions {
+            ignore_blank_lines: true,
+            detect_moved_lines: false,
+            ..Default::default()
+        };
+        let r = compute_diff_with_options("a\nb\n", "a\n\nb\n", &opts);
+        assert!(!export_unified_diff(&r, "l", "r").contains("@@"));
+
+        for (l, rt) in [("a\nb\nc\n", "a\n\nB\nc\n"), ("a\n\nb\nc\n", "a\nB\nc\n")] {
+            let r = compute_diff_with_options(l, rt, &opts);
+            let out = export_unified_diff(&r, "l", "r");
+            let header = out.lines().find(|x| x.starts_with("@@")).unwrap();
+            let body: Vec<_> = out
+                .lines()
+                .skip_while(|x| !x.starts_with("@@"))
+                .skip(1)
+                .collect();
+            let minus = body.iter().filter(|x| !x.starts_with('+')).count();
+            let plus = body.iter().filter(|x| !x.starts_with('-')).count();
+            let nums: Vec<u32> = header
+                .split(|c: char| !c.is_ascii_digit())
+                .filter(|x| !x.is_empty())
+                .map(|x| x.parse().unwrap())
+                .collect();
+            assert_eq!((nums[1], nums[3]), (minus as u32, plus as u32), "{}", out);
         }
     }
 }
